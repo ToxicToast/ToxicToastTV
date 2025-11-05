@@ -32,7 +32,8 @@
       "Bash(make proto-clean:*)",
       "Bash(find:*)",
       "Bash(timeout 30 go build:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(./bin/link-service:*)"
     ],
     "deny": [],
     "ask": []

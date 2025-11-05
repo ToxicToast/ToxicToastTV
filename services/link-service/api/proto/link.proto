@@ -1,0 +1,192 @@
+syntax = "proto3";
+
+package link;
+
+option go_package = "toxictoast/services/link-service/api/proto/link";
+
+import "google/protobuf/timestamp.proto";
+
+// Link Service - URL Shortener
+service LinkService {
+  // Link operations
+  rpc CreateLink(CreateLinkRequest) returns (CreateLinkResponse);
+  rpc GetLink(GetLinkRequest) returns (GetLinkResponse);
+  rpc GetLinkByShortCode(GetLinkByShortCodeRequest) returns (GetLinkResponse);
+  rpc ListLinks(ListLinksRequest) returns (ListLinksResponse);
+  rpc UpdateLink(UpdateLinkRequest) returns (UpdateLinkResponse);
+  rpc DeleteLink(DeleteLinkRequest) returns (DeleteResponse);
+  rpc IncrementClick(IncrementClickRequest) returns (IncrementClickResponse);
+
+  // Analytics
+  rpc GetLinkStats(GetLinkStatsRequest) returns (GetLinkStatsResponse);
+  rpc RecordClick(RecordClickRequest) returns (RecordClickResponse);
+  rpc GetLinkClicks(GetLinkClicksRequest) returns (GetLinkClicksResponse);
+  rpc GetClicksByDate(GetClicksByDateRequest) returns (GetClicksByDateResponse);
+}
+
+// Link entity
+message Link {
+  string id = 1;
+  string original_url = 2;
+  string short_code = 3;
+  optional string custom_alias = 4;
+  optional string title = 5;
+  optional string description = 6;
+  optional google.protobuf.Timestamp expires_at = 7;
+  bool is_active = 8;
+  int32 click_count = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  optional google.protobuf.Timestamp deleted_at = 12;
+}
+
+// Click entity (Analytics)
+message Click {
+  string id = 1;
+  string link_id = 2;
+  string ip_address = 3;
+  string user_agent = 4;
+  optional string referer = 5;
+  optional string country = 6;
+  optional string city = 7;
+  optional string device_type = 8;
+  google.protobuf.Timestamp clicked_at = 9;
+  google.protobuf.Timestamp created_at = 10;
+}
+
+// Link requests/responses
+message CreateLinkRequest {
+  string original_url = 1;
+  optional string custom_alias = 2;
+  optional string title = 3;
+  optional string description = 4;
+  optional google.protobuf.Timestamp expires_at = 5;
+}
+
+message CreateLinkResponse {
+  Link link = 1;
+  string short_url = 2; // Full URL like https://short.link/abc123
+}
+
+message GetLinkRequest {
+  string id = 1;
+}
+
+message GetLinkByShortCodeRequest {
+  string short_code = 1;
+}
+
+message GetLinkResponse {
+  Link link = 1;
+}
+
+message ListLinksRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  optional bool is_active = 3;
+  optional bool include_expired = 4;
+  optional string search = 5;
+}
+
+message ListLinksResponse {
+  repeated Link links = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message UpdateLinkRequest {
+  string id = 1;
+  optional string original_url = 2;
+  optional string custom_alias = 3;
+  optional string title = 4;
+  optional string description = 5;
+  optional google.protobuf.Timestamp expires_at = 6;
+  optional bool is_active = 7;
+}
+
+message UpdateLinkResponse {
+  Link link = 1;
+}
+
+message DeleteLinkRequest {
+  string id = 1;
+}
+
+message IncrementClickRequest {
+  string short_code = 1;
+}
+
+message IncrementClickResponse {
+  int32 click_count = 1;
+}
+
+// Analytics requests/responses
+message GetLinkStatsRequest {
+  string link_id = 1;
+}
+
+message GetLinkStatsResponse {
+  string link_id = 1;
+  int32 total_clicks = 2;
+  int32 unique_ips = 3;
+  int32 clicks_today = 4;
+  int32 clicks_this_week = 5;
+  int32 clicks_this_month = 6;
+  map<string, int32> clicks_by_country = 7;
+  map<string, int32> clicks_by_device = 8;
+  repeated string top_referers = 9;
+}
+
+message RecordClickRequest {
+  string link_id = 1;
+  string ip_address = 2;
+  string user_agent = 3;
+  optional string referer = 4;
+  optional string country = 5;
+  optional string city = 6;
+  optional string device_type = 7;
+}
+
+message RecordClickResponse {
+  Click click = 1;
+}
+
+message GetLinkClicksRequest {
+  string link_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  optional google.protobuf.Timestamp start_date = 4;
+  optional google.protobuf.Timestamp end_date = 5;
+}
+
+message GetLinkClicksResponse {
+  repeated Click clicks = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message GetClicksByDateRequest {
+  string link_id = 1;
+  google.protobuf.Timestamp start_date = 2;
+  google.protobuf.Timestamp end_date = 3;
+}
+
+message ClicksByDate {
+  string date = 1; // Format: YYYY-MM-DD
+  int32 clicks = 2;
+}
+
+message GetClicksByDateResponse {
+  repeated ClicksByDate data = 1;
+  int32 total_clicks = 2;
+}
+
+// Common messages
+message DeleteResponse {
+  bool success = 1;
+  string message = 2;
+}
