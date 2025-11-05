@@ -1,0 +1,159 @@
+package mapper
+
+import (
+	"toxictoast/services/foodfolio-service/internal/domain"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+)
+
+// TypeToProto converts domain Type to protobuf
+func TypeToProto(t *domain.Type) *pb.Type {
+	if t == nil {
+		return nil
+	}
+
+	return &pb.Type{
+		Id:         t.ID,
+		Name:       t.Name,
+		Slug:       t.Slug,
+		Timestamps: ToTimestamps(t.CreatedAt, t.UpdatedAt, nil),
+		ItemCount:  0,
+	}
+}
+
+// TypesToProto converts slice of Types
+func TypesToProto(types []*domain.Type) []*pb.Type {
+	result := make([]*pb.Type, len(types))
+	for i, t := range types {
+		result[i] = TypeToProto(t)
+	}
+	return result
+}
+
+// SizeToProto converts domain Size to protobuf
+func SizeToProto(size *domain.Size) *pb.Size {
+	if size == nil {
+		return nil
+	}
+
+	return &pb.Size{
+		Id:           size.ID,
+		Name:         size.Name,
+		Value:        size.Value,
+		Unit:         size.Unit,
+		Timestamps:   ToTimestamps(size.CreatedAt, size.UpdatedAt, nil),
+		VariantCount: 0,
+	}
+}
+
+// SizesToProto converts slice of Sizes
+func SizesToProto(sizes []*domain.Size) []*pb.Size {
+	result := make([]*pb.Size, len(sizes))
+	for i, size := range sizes {
+		result[i] = SizeToProto(size)
+	}
+	return result
+}
+
+// WarehouseToProto converts domain Warehouse to protobuf
+func WarehouseToProto(warehouse *domain.Warehouse) *pb.Warehouse {
+	if warehouse == nil {
+		return nil
+	}
+
+	return &pb.Warehouse{
+		Id:            warehouse.ID,
+		Name:          warehouse.Name,
+		Slug:          warehouse.Slug,
+		Timestamps:    ToTimestamps(warehouse.CreatedAt, warehouse.UpdatedAt, nil),
+		PurchaseCount: 0,
+	}
+}
+
+// WarehousesToProto converts slice of Warehouses
+func WarehousesToProto(warehouses []*domain.Warehouse) []*pb.Warehouse {
+	result := make([]*pb.Warehouse, len(warehouses))
+	for i, warehouse := range warehouses {
+		result[i] = WarehouseToProto(warehouse)
+	}
+	return result
+}
+
+// CategoryToProto converts domain Category to protobuf
+func CategoryToProto(category *domain.Category) *pb.Category {
+	if category == nil {
+		return nil
+	}
+
+	cat := &pb.Category{
+		Id:         category.ID,
+		Name:       category.Name,
+		Slug:       category.Slug,
+		Timestamps: ToTimestamps(category.CreatedAt, category.UpdatedAt, nil),
+		ItemCount:  0,
+	}
+
+	if category.ParentID != nil {
+		cat.ParentId = *category.ParentID
+	}
+
+	// Include parent if loaded
+	if category.Parent != nil {
+		cat.Parent = CategoryToProto(category.Parent)
+	}
+
+	// Include children if loaded
+	if len(category.Children) > 0 {
+		cat.Children = CategoriesToProto(category.Children)
+	}
+
+	return cat
+}
+
+// CategoriesToProto converts slice of Categories
+func CategoriesToProto(categories []*domain.Category) []*pb.Category {
+	result := make([]*pb.Category, len(categories))
+	for i, category := range categories {
+		result[i] = CategoryToProto(category)
+	}
+	return result
+}
+
+// LocationToProto converts domain Location to protobuf
+func LocationToProto(location *domain.Location) *pb.Location {
+	if location == nil {
+		return nil
+	}
+
+	loc := &pb.Location{
+		Id:         location.ID,
+		Name:       location.Name,
+		Slug:       location.Slug,
+		Timestamps: ToTimestamps(location.CreatedAt, location.UpdatedAt, nil),
+		ItemCount:  0,
+	}
+
+	if location.ParentID != nil {
+		loc.ParentId = *location.ParentID
+	}
+
+	// Include parent if loaded
+	if location.Parent != nil {
+		loc.Parent = LocationToProto(location.Parent)
+	}
+
+	// Include children if loaded
+	if len(location.Children) > 0 {
+		loc.Children = LocationsToProto(location.Children)
+	}
+
+	return loc
+}
+
+// LocationsToProto converts slice of Locations
+func LocationsToProto(locations []*domain.Location) []*pb.Location {
+	result := make([]*pb.Location, len(locations))
+	for i, location := range locations {
+		result[i] = LocationToProto(location)
+	}
+	return result
+}
