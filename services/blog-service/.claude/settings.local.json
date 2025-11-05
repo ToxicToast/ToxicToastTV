@@ -18,7 +18,9 @@
       "Bash(git reset:*)",
       "Bash(git rm:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\nAdd complete ToxicToastGo monorepo with blog-service\n\nFeatures:\n- Blog service with gRPC API (Posts, Categories, Tags, Comments, Media)\n- Shared modules (Auth, Kafka, Database, Logger, Config)\n- Go workspace setup for monorepo\n- Media upload with streaming, thumbnails, and image resizing\n- Keycloak authentication (optional)\n- PostgreSQL with GORM\n- Kafka/Redpanda event publishing\n- Markdown support with sanitization\n- Image processing (resize, thumbnails, metadata extraction)\n\nServices:\n- blog-service: Complete blog CMS backend\n\nShared modules:\n- auth: Keycloak JWT authentication\n- kafka: Event producer with typed events\n- database: PostgreSQL connection with retry\n- logger: Structured logging\n- config: Environment-based configuration\n\nTech Stack:\n- Go 1.24\n- gRPC with Protocol Buffers\n- PostgreSQL with GORM\n- Kafka/Redpanda for events\n- Keycloak for authentication\n- Gorilla Mux for HTTP\n- Imaging library for image processing\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
