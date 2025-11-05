@@ -1,8 +1,10 @@
 package mapper
 
 import (
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"toxictoast/services/foodfolio-service/internal/domain"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 )
 
 // ItemToProto converts domain Item to protobuf
@@ -18,7 +20,9 @@ func ItemToProto(item *domain.Item) *pb.Item {
 		CategoryId:   item.CategoryID,
 		CompanyId:    item.CompanyID,
 		TypeId:       item.TypeID,
-		Timestamps:   ToTimestamps(item.CreatedAt, item.UpdatedAt, nil),
+		CreatedAt:    timestamppb.New(item.CreatedAt),
+		UpdatedAt:    timestamppb.New(item.UpdatedAt),
+		DeletedAt:    timestampOrNil(nil),
 		VariantCount: int32(len(item.ItemVariants)),
 	}
 
@@ -61,7 +65,9 @@ func ItemVariantToProto(variant *domain.ItemVariant) *pb.ItemVariant {
 		MinSku:           int32(variant.MinSKU),
 		MaxSku:           int32(variant.MaxSKU),
 		IsNormallyFrozen: variant.IsNormallyFrozen,
-		Timestamps:       ToTimestamps(variant.CreatedAt, variant.UpdatedAt, nil),
+		CreatedAt:        timestamppb.New(variant.CreatedAt),
+		UpdatedAt:        timestamppb.New(variant.UpdatedAt),
+		DeletedAt:        timestampOrNil(nil),
 		CurrentStock:     int32(variant.CurrentStock()),
 		DetailCount:      int32(len(variant.ItemDetails)),
 	}
@@ -98,19 +104,21 @@ func ItemDetailToProto(detail *domain.ItemDetail) *pb.ItemDetail {
 	}
 
 	d := &pb.ItemDetail{
-		Id:            detail.ID,
-		ItemVariantId: detail.ItemVariantID,
-		WarehouseId:   detail.WarehouseID,
-		LocationId:    detail.LocationID,
-		PurchasePrice: detail.PurchasePrice,
-		PurchaseDate:  TimeToProto(detail.PurchaseDate),
-		IsOpened:      detail.IsOpened,
-		HasDeposit:    detail.HasDeposit,
-		IsFrozen:      detail.IsFrozen,
-		Timestamps:    ToTimestamps(detail.CreatedAt, detail.UpdatedAt, nil),
-		IsExpired:     detail.IsExpired(),
+		Id:             detail.ID,
+		ItemVariantId:  detail.ItemVariantID,
+		WarehouseId:    detail.WarehouseID,
+		LocationId:     detail.LocationID,
+		PurchasePrice:  detail.PurchasePrice,
+		PurchaseDate:   TimeToProto(detail.PurchaseDate),
+		IsOpened:       detail.IsOpened,
+		HasDeposit:     detail.HasDeposit,
+		IsFrozen:       detail.IsFrozen,
+		CreatedAt:      timestamppb.New(detail.CreatedAt),
+		UpdatedAt:      timestamppb.New(detail.UpdatedAt),
+		DeletedAt:      timestampOrNil(nil),
+		IsExpired:      detail.IsExpired(),
 		IsExpiringSoon: detail.IsExpiringSoon(7),
-		IsConsumed:    detail.IsConsumed(),
+		IsConsumed:     detail.IsConsumed(),
 	}
 
 	if detail.ArticleNumber != nil {

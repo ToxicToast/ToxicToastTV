@@ -8,7 +8,7 @@ import (
 
 	"toxictoast/services/foodfolio-service/internal/handler/mapper"
 	"toxictoast/services/foodfolio-service/internal/usecase"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 )
 
 type ShoppinglistHandler struct {
@@ -48,29 +48,26 @@ func (h *ShoppinglistHandler) GetShoppinglist(ctx context.Context, req *pb.IdReq
 }
 
 func (h *ShoppinglistHandler) ListShoppinglists(ctx context.Context, req *pb.ListShoppinglistsRequest) (*pb.ListShoppinglistsResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
-
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
 	includeDeleted := false
 	if req.DeletedFilter != nil {
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	lists, total, err := h.shoppinglistUC.ListShoppinglists(ctx, page, pageSize, includeDeleted)
+	lists, total, err := h.shoppinglistUC.ListShoppinglists(ctx, int(page), int(pageSize), includeDeleted)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.ListShoppinglistsResponse{
 		Shoppinglists: mapper.ShoppinglistsToProto(lists),
-		Pagination:    mapper.ToPaginationResponse(page, pageSize, total),
+		Total:         int32(total),
+		Page:          page,
+		PageSize:      pageSize,
+		TotalPages:    int32(totalPages),
 	}, nil
 }
 
@@ -88,7 +85,7 @@ func (h *ShoppinglistHandler) UpdateShoppinglist(ctx context.Context, req *pb.Up
 	}, nil
 }
 
-func (h *ShoppinglistHandler) DeleteShoppinglist(ctx context.Context, req *pb.IdRequest) (*pb.SuccessResponse, error) {
+func (h *ShoppinglistHandler) DeleteShoppinglist(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
 	err := h.shoppinglistUC.DeleteShoppinglist(ctx, req.Id)
 	if err != nil {
 		if err == usecase.ErrShoppinglistNotFound {
@@ -97,7 +94,7 @@ func (h *ShoppinglistHandler) DeleteShoppinglist(ctx context.Context, req *pb.Id
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &pb.SuccessResponse{
+	return &pb.DeleteResponse{
 		Success: true,
 		Message: "Shoppinglist deleted successfully",
 	}, nil
@@ -120,7 +117,7 @@ func (h *ShoppinglistHandler) AddItemToShoppinglist(ctx context.Context, req *pb
 	}, nil
 }
 
-func (h *ShoppinglistHandler) RemoveItemFromShoppinglist(ctx context.Context, req *pb.RemoveItemFromShoppinglistRequest) (*pb.SuccessResponse, error) {
+func (h *ShoppinglistHandler) RemoveItemFromShoppinglist(ctx context.Context, req *pb.RemoveItemFromShoppinglistRequest) (*pb.DeleteResponse, error) {
 	err := h.shoppinglistUC.RemoveItemFromShoppinglist(ctx, req.ShoppinglistId, req.ItemId)
 	if err != nil {
 		if err == usecase.ErrShoppinglistItemNotFound {
@@ -129,7 +126,7 @@ func (h *ShoppinglistHandler) RemoveItemFromShoppinglist(ctx context.Context, re
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &pb.SuccessResponse{
+	return &pb.DeleteResponse{
 		Success: true,
 		Message: "Item removed from shoppinglist successfully",
 	}, nil

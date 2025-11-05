@@ -4,37 +4,25 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
-
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
 )
 
-// ToTimestamps converts domain timestamps to protobuf timestamps
-func ToTimestamps(createdAt, updatedAt time.Time, deletedAt *time.Time) *pb.Timestamps {
-	ts := &pb.Timestamps{
-		CreatedAt: timestamppb.New(createdAt),
-		UpdatedAt: timestamppb.New(updatedAt),
+// timestampOrNil converts *time.Time to protobuf timestamp, returning nil if input is nil
+func timestampOrNil(t *time.Time) *timestamppb.Timestamp {
+	if t == nil {
+		return nil
 	}
-
-	if deletedAt != nil {
-		ts.DeletedAt = timestamppb.New(*deletedAt)
-	}
-
-	return ts
+	return timestamppb.New(*t)
 }
 
-// ToPaginationResponse converts pagination info to protobuf
-func ToPaginationResponse(page, pageSize int, totalItems int64) *pb.PaginationResponse {
-	totalPages := int32((totalItems + int64(pageSize) - 1) / int64(pageSize))
-	if totalPages == 0 {
-		totalPages = 1
+// GetDefaultPagination returns page and pageSize with defaults if not provided
+func GetDefaultPagination(page, pageSize int32) (int32, int32) {
+	if page <= 0 {
+		page = 1
 	}
-
-	return &pb.PaginationResponse{
-		Page:       int32(page),
-		PageSize:   int32(pageSize),
-		TotalItems: int32(totalItems),
-		TotalPages: totalPages,
+	if pageSize <= 0 {
+		pageSize = 10
 	}
+	return page, pageSize
 }
 
 // TimeToProto converts Go time to protobuf timestamp

@@ -1,8 +1,10 @@
 package mapper
 
 import (
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"toxictoast/services/foodfolio-service/internal/domain"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 )
 
 // ReceiptToProto converts domain Receipt to protobuf
@@ -16,7 +18,9 @@ func ReceiptToProto(receipt *domain.Receipt) *pb.Receipt {
 		WarehouseId: receipt.WarehouseID,
 		ScanDate:    TimeToProto(receipt.ScanDate),
 		TotalPrice:  receipt.TotalPrice,
-		Timestamps:  ToTimestamps(receipt.CreatedAt, receipt.UpdatedAt, nil),
+		CreatedAt:   timestamppb.New(receipt.CreatedAt),
+		UpdatedAt:   timestamppb.New(receipt.UpdatedAt),
+		DeletedAt:   timestampOrNil(nil),
 		TotalItems:  int32(len(receipt.Items)),
 	}
 
@@ -56,14 +60,16 @@ func ReceiptItemToProto(item *domain.ReceiptItem) *pb.ReceiptItem {
 	}
 
 	ri := &pb.ReceiptItem{
-		Id:            item.ID,
-		ReceiptId:     item.ReceiptID,
-		ItemName:      item.ItemName,
-		Quantity:      int32(item.Quantity),
-		UnitPrice:     item.UnitPrice,
-		TotalPrice:    item.TotalPrice,
-		IsMatched:     item.IsMatched,
-		Timestamps:    ToTimestamps(item.CreatedAt, item.UpdatedAt, nil),
+		Id:         item.ID,
+		ReceiptId:  item.ReceiptID,
+		ItemName:   item.ItemName,
+		Quantity:   int32(item.Quantity),
+		UnitPrice:  item.UnitPrice,
+		TotalPrice: item.TotalPrice,
+		IsMatched:  item.IsMatched,
+		CreatedAt:  timestamppb.New(item.CreatedAt),
+		UpdatedAt:  timestamppb.New(item.UpdatedAt),
+		DeletedAt:  timestampOrNil(nil),
 	}
 
 	if item.ItemVariantID != nil {

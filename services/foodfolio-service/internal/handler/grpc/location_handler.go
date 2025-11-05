@@ -8,7 +8,7 @@ import (
 
 	"toxictoast/services/foodfolio-service/internal/handler/mapper"
 	"toxictoast/services/foodfolio-service/internal/usecase"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 )
 
 type LocationHandler struct {
@@ -53,15 +53,7 @@ func (h *LocationHandler) GetLocation(ctx context.Context, req *pb.IdRequest) (*
 }
 
 func (h *LocationHandler) ListLocations(ctx context.Context, req *pb.ListLocationsRequest) (*pb.ListLocationsResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
-
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
 	var parentID *string
 	if req.ParentId != nil {
@@ -75,14 +67,19 @@ func (h *LocationHandler) ListLocations(ctx context.Context, req *pb.ListLocatio
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	locations, total, err := h.locationUC.ListLocations(ctx, page, pageSize, parentID, includeChildren, includeDeleted)
+	locations, total, err := h.locationUC.ListLocations(ctx, int(page), int(pageSize), parentID, includeChildren, includeDeleted)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.ListLocationsResponse{
 		Locations:  mapper.LocationsToProto(locations),
-		Pagination: mapper.ToPaginationResponse(page, pageSize, total),
+		Total:      int32(total),
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int32(totalPages),
 	}, nil
 }
 
@@ -123,7 +120,7 @@ func (h *LocationHandler) UpdateLocation(ctx context.Context, req *pb.UpdateLoca
 	}, nil
 }
 
-func (h *LocationHandler) DeleteLocation(ctx context.Context, req *pb.IdRequest) (*pb.SuccessResponse, error) {
+func (h *LocationHandler) DeleteLocation(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
 	err := h.locationUC.DeleteLocation(ctx, req.Id)
 	if err != nil {
 		if err == usecase.ErrLocationNotFound {
@@ -132,7 +129,7 @@ func (h *LocationHandler) DeleteLocation(ctx context.Context, req *pb.IdRequest)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &pb.SuccessResponse{
+	return &pb.DeleteResponse{
 		Success: true,
 		Message: "Location deleted successfully",
 	}, nil

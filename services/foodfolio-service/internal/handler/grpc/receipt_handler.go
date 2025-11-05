@@ -9,7 +9,7 @@ import (
 
 	"toxictoast/services/foodfolio-service/internal/handler/mapper"
 	"toxictoast/services/foodfolio-service/internal/usecase"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 )
 
 type ReceiptHandler struct {
@@ -95,15 +95,7 @@ func (h *ReceiptHandler) GetReceipt(ctx context.Context, req *pb.IdRequest) (*pb
 }
 
 func (h *ReceiptHandler) ListReceipts(ctx context.Context, req *pb.ListReceiptsRequest) (*pb.ListReceiptsResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
-
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
 	var warehouseID *string
 	if req.WarehouseId != nil {
@@ -125,14 +117,26 @@ func (h *ReceiptHandler) ListReceipts(ctx context.Context, req *pb.ListReceiptsR
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	receipts, total, err := h.receiptUC.ListReceipts(ctx, page, pageSize, warehouseID, startDate, endDate, includeDeleted)
+	receipts, total, err := h.receiptUC.ListReceipts(ctx, int(page), int(pageSize), warehouseID, startDate, endDate, includeDeleted)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// Calculate total amount
+	var totalAmount float64
+	for _, receipt := range receipts {
+		totalAmount += receipt.TotalPrice
+	}
+
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.ListReceiptsResponse{
-		Receipts:   mapper.ReceiptsToProto(receipts),
-		Pagination: mapper.ToPaginationResponse(page, pageSize, total),
+		Receipts:    mapper.ReceiptsToProto(receipts),
+		Total:       int32(total),
+		Page:        page,
+		PageSize:    pageSize,
+		TotalPages:  int32(totalPages),
+		TotalAmount: totalAmount,
 	}, nil
 }
 
@@ -174,7 +178,7 @@ func (h *ReceiptHandler) UpdateReceipt(ctx context.Context, req *pb.UpdateReceip
 	}, nil
 }
 
-func (h *ReceiptHandler) DeleteReceipt(ctx context.Context, req *pb.IdRequest) (*pb.SuccessResponse, error) {
+func (h *ReceiptHandler) DeleteReceipt(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
 	err := h.receiptUC.DeleteReceipt(ctx, req.Id)
 	if err != nil {
 		if err == usecase.ErrReceiptNotFound {
@@ -183,7 +187,7 @@ func (h *ReceiptHandler) DeleteReceipt(ctx context.Context, req *pb.IdRequest) (
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &pb.SuccessResponse{
+	return &pb.DeleteResponse{
 		Success: true,
 		Message: "Receipt deleted successfully",
 	}, nil

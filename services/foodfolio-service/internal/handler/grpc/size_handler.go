@@ -8,7 +8,7 @@ import (
 
 	"toxictoast/services/foodfolio-service/internal/handler/mapper"
 	"toxictoast/services/foodfolio-service/internal/usecase"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 )
 
 type SizeHandler struct {
@@ -48,15 +48,7 @@ func (h *SizeHandler) GetSize(ctx context.Context, req *pb.IdRequest) (*pb.GetSi
 }
 
 func (h *SizeHandler) ListSizes(ctx context.Context, req *pb.ListSizesRequest) (*pb.ListSizesResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
-
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
 	unit := ""
 	if req.Unit != nil {
@@ -76,14 +68,19 @@ func (h *SizeHandler) ListSizes(ctx context.Context, req *pb.ListSizesRequest) (
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	sizes, total, err := h.sizeUC.ListSizes(ctx, page, pageSize, unit, minValue, maxValue, includeDeleted)
+	sizes, total, err := h.sizeUC.ListSizes(ctx, int(page), int(pageSize), unit, minValue, maxValue, includeDeleted)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.ListSizesResponse{
 		Sizes:      mapper.SizesToProto(sizes),
-		Pagination: mapper.ToPaginationResponse(page, pageSize, total),
+		Total:      int32(total),
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int32(totalPages),
 	}, nil
 }
 
@@ -135,7 +132,7 @@ func (h *SizeHandler) UpdateSize(ctx context.Context, req *pb.UpdateSizeRequest)
 	}, nil
 }
 
-func (h *SizeHandler) DeleteSize(ctx context.Context, req *pb.IdRequest) (*pb.SuccessResponse, error) {
+func (h *SizeHandler) DeleteSize(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
 	err := h.sizeUC.DeleteSize(ctx, req.Id)
 	if err != nil {
 		if err == usecase.ErrSizeNotFound {
@@ -144,7 +141,7 @@ func (h *SizeHandler) DeleteSize(ctx context.Context, req *pb.IdRequest) (*pb.Su
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &pb.SuccessResponse{
+	return &pb.DeleteResponse{
 		Success: true,
 		Message: "Size deleted successfully",
 	}, nil

@@ -33,7 +33,7 @@ import (
 	grpcHandler "toxictoast/services/foodfolio-service/internal/handler/grpc"
 
 	// Proto definitions
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 )
 
 var (

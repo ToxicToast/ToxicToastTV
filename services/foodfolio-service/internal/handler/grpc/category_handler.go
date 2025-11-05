@@ -8,7 +8,7 @@ import (
 
 	"toxictoast/services/foodfolio-service/internal/handler/mapper"
 	"toxictoast/services/foodfolio-service/internal/usecase"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 )
 
 type CategoryHandler struct {
@@ -53,15 +53,7 @@ func (h *CategoryHandler) GetCategory(ctx context.Context, req *pb.IdRequest) (*
 }
 
 func (h *CategoryHandler) ListCategories(ctx context.Context, req *pb.ListCategoriesRequest) (*pb.ListCategoriesResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
-
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
 	var parentID *string
 	if req.ParentId != nil {
@@ -75,14 +67,19 @@ func (h *CategoryHandler) ListCategories(ctx context.Context, req *pb.ListCatego
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	categories, total, err := h.categoryUC.ListCategories(ctx, page, pageSize, parentID, includeChildren, includeDeleted)
+	categories, total, err := h.categoryUC.ListCategories(ctx, int(page), int(pageSize), parentID, includeChildren, includeDeleted)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.ListCategoriesResponse{
 		Categories: mapper.CategoriesToProto(categories),
-		Pagination: mapper.ToPaginationResponse(page, pageSize, total),
+		Total:      int32(total),
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int32(totalPages),
 	}, nil
 }
 
@@ -123,7 +120,7 @@ func (h *CategoryHandler) UpdateCategory(ctx context.Context, req *pb.UpdateCate
 	}, nil
 }
 
-func (h *CategoryHandler) DeleteCategory(ctx context.Context, req *pb.IdRequest) (*pb.SuccessResponse, error) {
+func (h *CategoryHandler) DeleteCategory(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
 	err := h.categoryUC.DeleteCategory(ctx, req.Id)
 	if err != nil {
 		if err == usecase.ErrCategoryNotFound {
@@ -132,7 +129,7 @@ func (h *CategoryHandler) DeleteCategory(ctx context.Context, req *pb.IdRequest)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &pb.SuccessResponse{
+	return &pb.DeleteResponse{
 		Success: true,
 		Message: "Category deleted successfully",
 	}, nil

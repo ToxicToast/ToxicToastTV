@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 	"toxictoast/services/foodfolio-service/internal/handler/mapper"
 	"toxictoast/services/foodfolio-service/internal/usecase"
 )
@@ -106,15 +106,7 @@ func (h *ItemDetailHandler) GetItemDetail(ctx context.Context, req *pb.IdRequest
 }
 
 func (h *ItemDetailHandler) ListItemDetails(ctx context.Context, req *pb.ListItemDetailsRequest) (*pb.ListItemDetailsResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
-
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
 	var variantID, warehouseID, locationID *string
 	var isOpened, hasDeposit, isFrozen *bool
@@ -143,14 +135,19 @@ func (h *ItemDetailHandler) ListItemDetails(ctx context.Context, req *pb.ListIte
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	details, total, err := h.detailUC.ListItemDetails(ctx, page, pageSize, variantID, warehouseID, locationID, isOpened, hasDeposit, isFrozen, includeDeleted)
+	details, total, err := h.detailUC.ListItemDetails(ctx, int(page), int(pageSize), variantID, warehouseID, locationID, isOpened, hasDeposit, isFrozen, includeDeleted)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.ListItemDetailsResponse{
 		ItemDetails: mapper.ItemDetailsToProto(details),
-		Pagination:  mapper.ToPaginationResponse(page, pageSize, total),
+		Total:       int32(total),
+		Page:        page,
+		PageSize:    pageSize,
+		TotalPages:  int32(totalPages),
 	}, nil
 }
 
@@ -212,7 +209,7 @@ func (h *ItemDetailHandler) UpdateItemDetail(ctx context.Context, req *pb.Update
 	}, nil
 }
 
-func (h *ItemDetailHandler) DeleteItemDetail(ctx context.Context, req *pb.IdRequest) (*pb.SuccessResponse, error) {
+func (h *ItemDetailHandler) DeleteItemDetail(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
 	err := h.detailUC.DeleteItemDetail(ctx, req.Id)
 	if err != nil {
 		if err == usecase.ErrItemDetailNotFound {
@@ -221,7 +218,7 @@ func (h *ItemDetailHandler) DeleteItemDetail(ctx context.Context, req *pb.IdRequ
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &pb.SuccessResponse{
+	return &pb.DeleteResponse{
 		Success: true,
 		Message: "Item detail deleted successfully",
 	}, nil
@@ -257,86 +254,72 @@ func (h *ItemDetailHandler) MoveItems(ctx context.Context, req *pb.MoveItemsRequ
 }
 
 func (h *ItemDetailHandler) GetExpiringItems(ctx context.Context, req *pb.GetExpiringItemsRequest) (*pb.GetExpiringItemsResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
-
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
 	days := int(req.Days)
 	if days < 1 {
 		days = 7 // Default to 7 days
 	}
 
-	details, total, err := h.detailUC.GetExpiringItems(ctx, days, page, pageSize)
+	details, total, err := h.detailUC.GetExpiringItems(ctx, days, int(page), int(pageSize))
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.GetExpiringItemsResponse{
-		ItemDetails: mapper.ItemDetailsToProto(details),
-		Pagination:  mapper.ToPaginationResponse(page, pageSize, total),
+		ItemDetails:    mapper.ItemDetailsToProto(details),
+		Total:          int32(total),
+		Page:           page,
+		PageSize:       pageSize,
+		TotalPages:     int32(totalPages),
+		TotalExpiring:  int32(total),
 	}, nil
 }
 
 func (h *ItemDetailHandler) GetExpiredItems(ctx context.Context, req *pb.GetExpiredItemsRequest) (*pb.GetExpiredItemsResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
-
-	details, total, err := h.detailUC.GetExpiredItems(ctx, page, pageSize)
+	details, total, err := h.detailUC.GetExpiredItems(ctx, int(page), int(pageSize))
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.GetExpiredItemsResponse{
-		ItemDetails: mapper.ItemDetailsToProto(details),
-		Pagination:  mapper.ToPaginationResponse(page, pageSize, total),
+		ItemDetails:   mapper.ItemDetailsToProto(details),
+		Total:         int32(total),
+		Page:          page,
+		PageSize:      pageSize,
+		TotalPages:    int32(totalPages),
+		TotalExpired:  int32(total),
 	}, nil
 }
 
 func (h *ItemDetailHandler) GetItemsWithDeposit(ctx context.Context, req *pb.GetItemsWithDepositRequest) (*pb.GetItemsWithDepositResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
-
-	details, total, err := h.detailUC.GetItemsWithDeposit(ctx, page, pageSize)
+	details, total, err := h.detailUC.GetItemsWithDeposit(ctx, int(page), int(pageSize))
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.GetItemsWithDepositResponse{
-		ItemDetails: mapper.ItemDetailsToProto(details),
-		Pagination:  mapper.ToPaginationResponse(page, pageSize, total),
+		ItemDetails:       mapper.ItemDetailsToProto(details),
+		Total:             int32(total),
+		Page:              page,
+		PageSize:          pageSize,
+		TotalPages:        int32(totalPages),
+		TotalDepositValue: 0.0, // TODO: Calculate actual deposit value
 	}, nil
 }
 
 func (h *ItemDetailHandler) GetItemsByLocation(ctx context.Context, req *pb.GetItemsByLocationRequest) (*pb.GetItemsByLocationResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
-
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
 	// Get all items for location
 	allDetails, err := h.detailUC.GetByLocation(ctx, req.LocationId, req.IncludeChildren)
@@ -346,8 +329,8 @@ func (h *ItemDetailHandler) GetItemsByLocation(ctx context.Context, req *pb.GetI
 
 	// Manual pagination
 	total := int64(len(allDetails))
-	offset := (page - 1) * pageSize
-	end := offset + pageSize
+	offset := (int(page) - 1) * int(pageSize)
+	end := offset + int(pageSize)
 
 	if offset > len(allDetails) {
 		offset = len(allDetails)
@@ -357,9 +340,13 @@ func (h *ItemDetailHandler) GetItemsByLocation(ctx context.Context, req *pb.GetI
 	}
 
 	paginatedDetails := allDetails[offset:end]
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.GetItemsByLocationResponse{
 		ItemDetails: mapper.ItemDetailsToProto(paginatedDetails),
-		Pagination:  mapper.ToPaginationResponse(page, pageSize, total),
+		Total:       int32(total),
+		Page:        page,
+		PageSize:    pageSize,
+		TotalPages:  int32(totalPages),
 	}, nil
 }

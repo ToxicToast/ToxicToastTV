@@ -8,7 +8,7 @@ import (
 
 	"toxictoast/services/foodfolio-service/internal/handler/mapper"
 	"toxictoast/services/foodfolio-service/internal/usecase"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 )
 
 type ItemVariantHandler struct {
@@ -65,15 +65,7 @@ func (h *ItemVariantHandler) GetItemVariant(ctx context.Context, req *pb.IdReque
 }
 
 func (h *ItemVariantHandler) ListItemVariants(ctx context.Context, req *pb.ListItemVariantsRequest) (*pb.ListItemVariantsResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
-
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
 	var itemID, sizeID *string
 	var isNormallyFrozen *bool
@@ -93,14 +85,19 @@ func (h *ItemVariantHandler) ListItemVariants(ctx context.Context, req *pb.ListI
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	variants, total, err := h.variantUC.ListItemVariants(ctx, page, pageSize, itemID, sizeID, isNormallyFrozen, includeDeleted)
+	variants, total, err := h.variantUC.ListItemVariants(ctx, int(page), int(pageSize), itemID, sizeID, isNormallyFrozen, includeDeleted)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.ListItemVariantsResponse{
 		ItemVariants: mapper.ItemVariantsToProto(variants),
-		Pagination:   mapper.ToPaginationResponse(page, pageSize, total),
+		Total:        int32(total),
+		Page:         page,
+		PageSize:     pageSize,
+		TotalPages:   int32(totalPages),
 	}, nil
 }
 
@@ -165,7 +162,7 @@ func (h *ItemVariantHandler) UpdateItemVariant(ctx context.Context, req *pb.Upda
 	}, nil
 }
 
-func (h *ItemVariantHandler) DeleteItemVariant(ctx context.Context, req *pb.IdRequest) (*pb.SuccessResponse, error) {
+func (h *ItemVariantHandler) DeleteItemVariant(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
 	err := h.variantUC.DeleteItemVariant(ctx, req.Id)
 	if err != nil {
 		if err == usecase.ErrItemVariantNotFound {
@@ -174,7 +171,7 @@ func (h *ItemVariantHandler) DeleteItemVariant(ctx context.Context, req *pb.IdRe
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &pb.SuccessResponse{
+	return &pb.DeleteResponse{
 		Success: true,
 		Message: "Item variant deleted successfully",
 	}, nil
@@ -197,46 +194,40 @@ func (h *ItemVariantHandler) GetCurrentStock(ctx context.Context, req *pb.GetCur
 }
 
 func (h *ItemVariantHandler) GetLowStockVariants(ctx context.Context, req *pb.GetLowStockVariantsRequest) (*pb.GetLowStockVariantsResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
-
-	variants, total, err := h.variantUC.GetLowStockVariants(ctx, page, pageSize)
+	variants, total, err := h.variantUC.GetLowStockVariants(ctx, int(page), int(pageSize))
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.GetLowStockVariantsResponse{
 		ItemVariants: mapper.ItemVariantsToProto(variants),
-		Pagination:   mapper.ToPaginationResponse(page, pageSize, total),
+		Total:        int32(total),
+		Page:         page,
+		PageSize:     pageSize,
+		TotalPages:   int32(totalPages),
 	}, nil
 }
 
 func (h *ItemVariantHandler) GetOverstockedVariants(ctx context.Context, req *pb.GetOverstockedVariantsRequest) (*pb.GetOverstockedVariantsResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
-
-	variants, total, err := h.variantUC.GetOverstockedVariants(ctx, page, pageSize)
+	variants, total, err := h.variantUC.GetOverstockedVariants(ctx, int(page), int(pageSize))
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.GetOverstockedVariantsResponse{
 		ItemVariants: mapper.ItemVariantsToProto(variants),
-		Pagination:   mapper.ToPaginationResponse(page, pageSize, total),
+		Total:        int32(total),
+		Page:         page,
+		PageSize:     pageSize,
+		TotalPages:   int32(totalPages),
 	}, nil
 }
 

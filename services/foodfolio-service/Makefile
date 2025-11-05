@@ -2,7 +2,7 @@
 
 # Variables
 PROTO_DIR := api/proto
-PROTO_OUT_DIR := api/proto/foodfolio/v1
+PROTO_OUT_DIR := api/proto/foodfolio
 PROTO_FILES := $(wildcard $(PROTO_DIR)/*.proto)
 
 # Proto generation

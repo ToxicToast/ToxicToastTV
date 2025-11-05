@@ -1,8 +1,10 @@
 package mapper
 
 import (
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"toxictoast/services/foodfolio-service/internal/domain"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 )
 
 // TypeToProto converts domain Type to protobuf
@@ -12,11 +14,13 @@ func TypeToProto(t *domain.Type) *pb.Type {
 	}
 
 	return &pb.Type{
-		Id:         t.ID,
-		Name:       t.Name,
-		Slug:       t.Slug,
-		Timestamps: ToTimestamps(t.CreatedAt, t.UpdatedAt, nil),
-		ItemCount:  0,
+		Id:        t.ID,
+		Name:      t.Name,
+		Slug:      t.Slug,
+		CreatedAt: timestamppb.New(t.CreatedAt),
+		UpdatedAt: timestamppb.New(t.UpdatedAt),
+		DeletedAt: timestampOrNil(nil),
+		ItemCount: 0,
 	}
 }
 
@@ -40,7 +44,9 @@ func SizeToProto(size *domain.Size) *pb.Size {
 		Name:         size.Name,
 		Value:        size.Value,
 		Unit:         size.Unit,
-		Timestamps:   ToTimestamps(size.CreatedAt, size.UpdatedAt, nil),
+		CreatedAt:    timestamppb.New(size.CreatedAt),
+		UpdatedAt:    timestamppb.New(size.UpdatedAt),
+		DeletedAt:    timestampOrNil(nil),
 		VariantCount: 0,
 	}
 }
@@ -64,7 +70,9 @@ func WarehouseToProto(warehouse *domain.Warehouse) *pb.Warehouse {
 		Id:            warehouse.ID,
 		Name:          warehouse.Name,
 		Slug:          warehouse.Slug,
-		Timestamps:    ToTimestamps(warehouse.CreatedAt, warehouse.UpdatedAt, nil),
+		CreatedAt:     timestamppb.New(warehouse.CreatedAt),
+		UpdatedAt:     timestamppb.New(warehouse.UpdatedAt),
+		DeletedAt:     timestampOrNil(nil),
 		PurchaseCount: 0,
 	}
 }
@@ -85,11 +93,13 @@ func CategoryToProto(category *domain.Category) *pb.Category {
 	}
 
 	cat := &pb.Category{
-		Id:         category.ID,
-		Name:       category.Name,
-		Slug:       category.Slug,
-		Timestamps: ToTimestamps(category.CreatedAt, category.UpdatedAt, nil),
-		ItemCount:  0,
+		Id:        category.ID,
+		Name:      category.Name,
+		Slug:      category.Slug,
+		CreatedAt: timestamppb.New(category.CreatedAt),
+		UpdatedAt: timestamppb.New(category.UpdatedAt),
+		DeletedAt: timestampOrNil(nil),
+		ItemCount: 0,
 	}
 
 	if category.ParentID != nil {
@@ -131,11 +141,13 @@ func LocationToProto(location *domain.Location) *pb.Location {
 	}
 
 	loc := &pb.Location{
-		Id:         location.ID,
-		Name:       location.Name,
-		Slug:       location.Slug,
-		Timestamps: ToTimestamps(location.CreatedAt, location.UpdatedAt, nil),
-		ItemCount:  0,
+		Id:        location.ID,
+		Name:      location.Name,
+		Slug:      location.Slug,
+		CreatedAt: timestamppb.New(location.CreatedAt),
+		UpdatedAt: timestamppb.New(location.UpdatedAt),
+		DeletedAt: timestampOrNil(nil),
+		ItemCount: 0,
 	}
 
 	if location.ParentID != nil {

@@ -1,8 +1,10 @@
 package mapper
 
 import (
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"toxictoast/services/foodfolio-service/internal/domain"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 )
 
 // ShoppinglistToProto converts domain Shoppinglist to protobuf
@@ -12,9 +14,11 @@ func ShoppinglistToProto(list *domain.Shoppinglist) *pb.Shoppinglist {
 	}
 
 	sl := &pb.Shoppinglist{
-		Id:         list.ID,
-		Name:       list.Name,
-		Timestamps: ToTimestamps(list.CreatedAt, list.UpdatedAt, nil),
+		Id:        list.ID,
+		Name:      list.Name,
+		CreatedAt: timestamppb.New(list.CreatedAt),
+		UpdatedAt: timestamppb.New(list.UpdatedAt),
+		DeletedAt: timestampOrNil(nil),
 	}
 
 	// Include items if loaded
@@ -46,7 +50,9 @@ func ShoppinglistItemToProto(item *domain.ShoppinglistItem) *pb.ShoppinglistItem
 		ItemVariantId:  item.ItemVariantID,
 		Quantity:       int32(item.Quantity),
 		IsPurchased:    item.IsPurchased,
-		Timestamps:     ToTimestamps(item.CreatedAt, item.UpdatedAt, nil),
+		CreatedAt:      timestamppb.New(item.CreatedAt),
+		UpdatedAt:      timestamppb.New(item.UpdatedAt),
+		DeletedAt:      timestampOrNil(nil),
 	}
 
 	// Include relations if loaded

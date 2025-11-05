@@ -22,7 +22,17 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(go work sync:*)",
-      "Bash(timeout 10 go build:*)"
+      "Bash(timeout 10 go build:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker-compose rm:*)",
+      "Bash(./bin/foodfolio-service)",
+      "Bash(grpcurl:*)",
+      "Bash(go install:*)",
+      "Bash(export PATH=$PATH:~/go/bin)",
+      "Bash(make proto-clean:*)",
+      "Bash(find:*)",
+      "Bash(timeout 30 go build:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

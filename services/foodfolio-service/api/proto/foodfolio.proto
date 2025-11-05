@@ -1,0 +1,1144 @@
+syntax = "proto3";
+
+package foodfolio;
+
+option go_package = "toxictoast/services/foodfolio-service/api/proto/foodfolio";
+
+import "google/protobuf/timestamp.proto";
+
+// Common messages
+message DeleteResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message IdRequest {
+  string id = 1;
+}
+
+message IdsRequest {
+  repeated string ids = 1;
+}
+
+message DeletedFilter {
+  bool include_deleted = 1;
+  bool only_deleted = 2;
+}
+
+// Category Service
+service CategoryService {
+  rpc CreateCategory(CreateCategoryRequest) returns (CreateCategoryResponse);
+  rpc GetCategory(IdRequest) returns (GetCategoryResponse);
+  rpc ListCategories(ListCategoriesRequest) returns (ListCategoriesResponse);
+  rpc UpdateCategory(UpdateCategoryRequest) returns (UpdateCategoryResponse);
+  rpc DeleteCategory(IdRequest) returns (DeleteResponse);
+  rpc GetCategoryTree(GetCategoryTreeRequest) returns (GetCategoryTreeResponse);
+}
+
+// Company Service
+service CompanyService {
+  rpc CreateCompany(CreateCompanyRequest) returns (CreateCompanyResponse);
+  rpc GetCompany(IdRequest) returns (GetCompanyResponse);
+  rpc ListCompanies(ListCompaniesRequest) returns (ListCompaniesResponse);
+  rpc UpdateCompany(UpdateCompanyRequest) returns (UpdateCompanyResponse);
+  rpc DeleteCompany(IdRequest) returns (DeleteResponse);
+}
+
+// Type Service
+service TypeService {
+  rpc CreateType(CreateTypeRequest) returns (CreateTypeResponse);
+  rpc GetType(IdRequest) returns (GetTypeResponse);
+  rpc ListTypes(ListTypesRequest) returns (ListTypesResponse);
+  rpc UpdateType(UpdateTypeRequest) returns (UpdateTypeResponse);
+  rpc DeleteType(IdRequest) returns (DeleteResponse);
+}
+
+// Size Service
+service SizeService {
+  rpc CreateSize(CreateSizeRequest) returns (CreateSizeResponse);
+  rpc GetSize(IdRequest) returns (GetSizeResponse);
+  rpc ListSizes(ListSizesRequest) returns (ListSizesResponse);
+  rpc UpdateSize(UpdateSizeRequest) returns (UpdateSizeResponse);
+  rpc DeleteSize(IdRequest) returns (DeleteResponse);
+}
+
+// Warehouse Service
+service WarehouseService {
+  rpc CreateWarehouse(CreateWarehouseRequest) returns (CreateWarehouseResponse);
+  rpc GetWarehouse(IdRequest) returns (GetWarehouseResponse);
+  rpc ListWarehouses(ListWarehousesRequest) returns (ListWarehousesResponse);
+  rpc UpdateWarehouse(UpdateWarehouseRequest) returns (UpdateWarehouseResponse);
+  rpc DeleteWarehouse(IdRequest) returns (DeleteResponse);
+}
+
+// Location Service
+service LocationService {
+  rpc CreateLocation(CreateLocationRequest) returns (CreateLocationResponse);
+  rpc GetLocation(IdRequest) returns (GetLocationResponse);
+  rpc ListLocations(ListLocationsRequest) returns (ListLocationsResponse);
+  rpc UpdateLocation(UpdateLocationRequest) returns (UpdateLocationResponse);
+  rpc DeleteLocation(IdRequest) returns (DeleteResponse);
+  rpc GetLocationTree(GetLocationTreeRequest) returns (GetLocationTreeResponse);
+}
+
+// Item Service
+service ItemService {
+  rpc CreateItem(CreateItemRequest) returns (CreateItemResponse);
+  rpc GetItem(IdRequest) returns (GetItemResponse);
+  rpc ListItems(ListItemsRequest) returns (ListItemsResponse);
+  rpc UpdateItem(UpdateItemRequest) returns (UpdateItemResponse);
+  rpc DeleteItem(IdRequest) returns (DeleteResponse);
+  rpc SearchItems(SearchItemsRequest) returns (SearchItemsResponse);
+}
+
+// ItemVariant Service
+service ItemVariantService {
+  rpc CreateItemVariant(CreateItemVariantRequest) returns (CreateItemVariantResponse);
+  rpc GetItemVariant(IdRequest) returns (GetItemVariantResponse);
+  rpc ListItemVariants(ListItemVariantsRequest) returns (ListItemVariantsResponse);
+  rpc UpdateItemVariant(UpdateItemVariantRequest) returns (UpdateItemVariantResponse);
+  rpc DeleteItemVariant(IdRequest) returns (DeleteResponse);
+  rpc GetCurrentStock(GetCurrentStockRequest) returns (GetCurrentStockResponse);
+  rpc GetLowStockVariants(GetLowStockVariantsRequest) returns (GetLowStockVariantsResponse);
+  rpc GetOverstockedVariants(GetOverstockedVariantsRequest) returns (GetOverstockedVariantsResponse);
+  rpc GetItemWithVariants(GetItemWithVariantsRequest) returns (GetItemWithVariantsResponse);
+  rpc ScanBarcode(ScanBarcodeRequest) returns (ScanBarcodeResponse);
+}
+
+// ItemDetail Service
+service ItemDetailService {
+  rpc CreateItemDetail(CreateItemDetailRequest) returns (CreateItemDetailResponse);
+  rpc BatchCreateItemDetails(BatchCreateItemDetailsRequest) returns (BatchCreateItemDetailsResponse);
+  rpc GetItemDetail(IdRequest) returns (GetItemDetailResponse);
+  rpc ListItemDetails(ListItemDetailsRequest) returns (ListItemDetailsResponse);
+  rpc UpdateItemDetail(UpdateItemDetailRequest) returns (UpdateItemDetailResponse);
+  rpc DeleteItemDetail(IdRequest) returns (DeleteResponse);
+  rpc OpenItem(OpenItemRequest) returns (OpenItemResponse);
+  rpc MoveItems(MoveItemsRequest) returns (MoveItemsResponse);
+  rpc GetExpiringItems(GetExpiringItemsRequest) returns (GetExpiringItemsResponse);
+  rpc GetExpiredItems(GetExpiredItemsRequest) returns (GetExpiredItemsResponse);
+  rpc GetItemsWithDeposit(GetItemsWithDepositRequest) returns (GetItemsWithDepositResponse);
+  rpc GetItemsByLocation(GetItemsByLocationRequest) returns (GetItemsByLocationResponse);
+}
+
+// Shoppinglist Service
+service ShoppinglistService {
+  rpc CreateShoppinglist(CreateShoppinglistRequest) returns (CreateShoppinglistResponse);
+  rpc GetShoppinglist(IdRequest) returns (GetShoppinglistResponse);
+  rpc ListShoppinglists(ListShoppinglistsRequest) returns (ListShoppinglistsResponse);
+  rpc UpdateShoppinglist(UpdateShoppinglistRequest) returns (UpdateShoppinglistResponse);
+  rpc DeleteShoppinglist(IdRequest) returns (DeleteResponse);
+  rpc AddItemToShoppinglist(AddItemToShoppinglistRequest) returns (AddItemToShoppinglistResponse);
+  rpc RemoveItemFromShoppinglist(RemoveItemFromShoppinglistRequest) returns (DeleteResponse);
+  rpc UpdateShoppinglistItem(UpdateShoppinglistItemRequest) returns (UpdateShoppinglistItemResponse);
+  rpc MarkItemPurchased(MarkItemPurchasedRequest) returns (MarkItemPurchasedResponse);
+  rpc MarkAllItemsPurchased(MarkAllItemsPurchasedRequest) returns (MarkAllItemsPurchasedResponse);
+  rpc ClearPurchasedItems(ClearPurchasedItemsRequest) returns (ClearPurchasedItemsResponse);
+  rpc GenerateFromLowStock(GenerateFromLowStockRequest) returns (GenerateFromLowStockResponse);
+}
+
+// Receipt Service
+service ReceiptService {
+  rpc UploadReceipt(UploadReceiptRequest) returns (UploadReceiptResponse);
+  rpc ProcessReceipt(ProcessReceiptRequest) returns (ProcessReceiptResponse);
+  rpc CreateReceipt(CreateReceiptRequest) returns (CreateReceiptResponse);
+  rpc GetReceipt(IdRequest) returns (GetReceiptResponse);
+  rpc ListReceipts(ListReceiptsRequest) returns (ListReceiptsResponse);
+  rpc UpdateReceipt(UpdateReceiptRequest) returns (UpdateReceiptResponse);
+  rpc DeleteReceipt(IdRequest) returns (DeleteResponse);
+  rpc AddItemToReceipt(AddItemToReceiptRequest) returns (AddItemToReceiptResponse);
+  rpc UpdateReceiptItem(UpdateReceiptItemRequest) returns (UpdateReceiptItemResponse);
+  rpc MatchReceiptItem(MatchReceiptItemRequest) returns (MatchReceiptItemResponse);
+  rpc AutoMatchReceiptItems(AutoMatchReceiptItemsRequest) returns (AutoMatchReceiptItemsResponse);
+  rpc CreateInventoryFromReceipt(CreateInventoryFromReceiptRequest) returns (CreateInventoryFromReceiptResponse);
+  rpc GetReceiptStatistics(GetReceiptStatisticsRequest) returns (GetReceiptStatisticsResponse);
+}
+
+// Category messages
+message Category {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  optional string parent_id = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  optional google.protobuf.Timestamp deleted_at = 7;
+  optional Category parent = 8;
+  repeated Category children = 9;
+  int32 item_count = 10;
+}
+
+message CreateCategoryRequest {
+  string name = 1;
+  optional string parent_id = 2;
+}
+
+message CreateCategoryResponse {
+  Category category = 1;
+}
+
+message GetCategoryResponse {
+  Category category = 1;
+}
+
+message ListCategoriesRequest {
+  optional string parent_id = 1;
+  bool include_children = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  DeletedFilter deleted_filter = 5;
+}
+
+message ListCategoriesResponse {
+  repeated Category categories = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message UpdateCategoryRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string parent_id = 3;
+}
+
+message UpdateCategoryResponse {
+  Category category = 1;
+}
+
+message GetCategoryTreeRequest {
+  optional string root_id = 1;
+  int32 max_depth = 2;
+}
+
+message GetCategoryTreeResponse {
+  repeated Category categories = 1;
+}
+
+// Company messages
+message Company {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+  optional google.protobuf.Timestamp deleted_at = 6;
+  int32 item_count = 7;
+}
+
+message CreateCompanyRequest {
+  string name = 1;
+}
+
+message CreateCompanyResponse {
+  Company company = 1;
+}
+
+message GetCompanyResponse {
+  Company company = 1;
+}
+
+message ListCompaniesRequest {
+  optional string search = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  DeletedFilter deleted_filter = 4;
+}
+
+message ListCompaniesResponse {
+  repeated Company companies = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message UpdateCompanyRequest {
+  string id = 1;
+  string name = 2;
+}
+
+message UpdateCompanyResponse {
+  Company company = 1;
+}
+
+// Type messages
+message Type {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+  optional google.protobuf.Timestamp deleted_at = 6;
+  int32 item_count = 7;
+}
+
+message CreateTypeRequest {
+  string name = 1;
+}
+
+message CreateTypeResponse {
+  Type type = 1;
+}
+
+message GetTypeResponse {
+  Type type = 1;
+}
+
+message ListTypesRequest {
+  optional string search = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  DeletedFilter deleted_filter = 4;
+}
+
+message ListTypesResponse {
+  repeated Type types = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message UpdateTypeRequest {
+  string id = 1;
+  string name = 2;
+}
+
+message UpdateTypeResponse {
+  Type type = 1;
+}
+
+// Size messages
+message Size {
+  string id = 1;
+  string name = 2;
+  double value = 3;
+  string unit = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  optional google.protobuf.Timestamp deleted_at = 7;
+  int32 variant_count = 8;
+}
+
+message CreateSizeRequest {
+  string name = 1;
+  double value = 2;
+  string unit = 3;
+}
+
+message CreateSizeResponse {
+  Size size = 1;
+}
+
+message GetSizeResponse {
+  Size size = 1;
+}
+
+message ListSizesRequest {
+  optional string unit = 1;
+  optional double min_value = 2;
+  optional double max_value = 3;
+  int32 page = 4;
+  int32 page_size = 5;
+  DeletedFilter deleted_filter = 6;
+}
+
+message ListSizesResponse {
+  repeated Size sizes = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message UpdateSizeRequest {
+  string id = 1;
+  optional string name = 2;
+  optional double value = 3;
+  optional string unit = 4;
+}
+
+message UpdateSizeResponse {
+  Size size = 1;
+}
+
+// Warehouse messages
+message Warehouse {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+  optional google.protobuf.Timestamp deleted_at = 6;
+  int32 purchase_count = 7;
+}
+
+message CreateWarehouseRequest {
+  string name = 1;
+}
+
+message CreateWarehouseResponse {
+  Warehouse warehouse = 1;
+}
+
+message GetWarehouseResponse {
+  Warehouse warehouse = 1;
+}
+
+message ListWarehousesRequest {
+  optional string search = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  DeletedFilter deleted_filter = 4;
+}
+
+message ListWarehousesResponse {
+  repeated Warehouse warehouses = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message UpdateWarehouseRequest {
+  string id = 1;
+  string name = 2;
+}
+
+message UpdateWarehouseResponse {
+  Warehouse warehouse = 1;
+}
+
+// Location messages
+message Location {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  optional string parent_id = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  optional google.protobuf.Timestamp deleted_at = 7;
+  optional Location parent = 8;
+  repeated Location children = 9;
+  int32 item_count = 10;
+}
+
+message CreateLocationRequest {
+  string name = 1;
+  optional string parent_id = 2;
+}
+
+message CreateLocationResponse {
+  Location location = 1;
+}
+
+message GetLocationResponse {
+  Location location = 1;
+}
+
+message ListLocationsRequest {
+  optional string parent_id = 1;
+  bool include_children = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  DeletedFilter deleted_filter = 5;
+}
+
+message ListLocationsResponse {
+  repeated Location locations = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message UpdateLocationRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string parent_id = 3;
+}
+
+message UpdateLocationResponse {
+  Location location = 1;
+}
+
+message GetLocationTreeRequest {
+  optional string root_id = 1;
+  int32 max_depth = 2;
+}
+
+message GetLocationTreeResponse {
+  repeated Location locations = 1;
+}
+
+// Item messages
+message Item {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  string category_id = 4;
+  string company_id = 5;
+  string type_id = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  optional google.protobuf.Timestamp deleted_at = 9;
+  optional Category category = 10;
+  optional Company company = 11;
+  optional Type type = 12;
+  int32 variant_count = 13;
+}
+
+message CreateItemRequest {
+  string name = 1;
+  string category_id = 2;
+  string company_id = 3;
+  string type_id = 4;
+}
+
+message CreateItemResponse {
+  Item item = 1;
+}
+
+message GetItemResponse {
+  Item item = 1;
+}
+
+message GetItemWithVariantsRequest {
+  string id = 1;
+  bool include_details = 2;
+}
+
+message ListItemsRequest {
+  optional string category_id = 1;
+  optional string company_id = 2;
+  optional string type_id = 3;
+  optional string search = 4;
+  int32 page = 5;
+  int32 page_size = 6;
+  DeletedFilter deleted_filter = 7;
+}
+
+message ListItemsResponse {
+  repeated Item items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message UpdateItemRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string category_id = 3;
+  optional string company_id = 4;
+  optional string type_id = 5;
+}
+
+message UpdateItemResponse {
+  Item item = 1;
+}
+
+message SearchItemsRequest {
+  string query = 1;
+  optional string category_id = 2;
+  optional string company_id = 3;
+  int32 page = 4;
+  int32 page_size = 5;
+}
+
+message SearchItemsResponse {
+  repeated Item items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+// ItemVariant messages
+message ItemVariant {
+  string id = 1;
+  string item_id = 2;
+  string size_id = 3;
+  string variant_name = 4;
+  optional string barcode = 5;
+  int32 min_sku = 6;
+  int32 max_sku = 7;
+  bool is_normally_frozen = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+  optional google.protobuf.Timestamp deleted_at = 11;
+  optional Item item = 12;
+  optional Size size = 13;
+  int32 current_stock = 14;
+  int32 detail_count = 15;
+}
+
+message CreateItemVariantRequest {
+  string item_id = 1;
+  string size_id = 2;
+  string variant_name = 3;
+  optional string barcode = 4;
+  int32 min_sku = 5;
+  int32 max_sku = 6;
+  bool is_normally_frozen = 7;
+}
+
+message CreateItemVariantResponse {
+  ItemVariant item_variant = 1;
+}
+
+message GetItemVariantResponse {
+  ItemVariant item_variant = 1;
+}
+
+message ListItemVariantsRequest {
+  optional string item_id = 1;
+  optional string size_id = 2;
+  optional string barcode = 3;
+  optional bool is_normally_frozen = 4;
+  int32 page = 5;
+  int32 page_size = 6;
+  DeletedFilter deleted_filter = 7;
+}
+
+message ListItemVariantsResponse {
+  repeated ItemVariant item_variants = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message UpdateItemVariantRequest {
+  string id = 1;
+  optional string variant_name = 2;
+  optional string barcode = 3;
+  optional int32 min_sku = 4;
+  optional int32 max_sku = 5;
+  optional bool is_normally_frozen = 6;
+}
+
+message UpdateItemVariantResponse {
+  ItemVariant item_variant = 1;
+}
+
+message GetCurrentStockRequest {
+  string id = 1;
+}
+
+message GetCurrentStockResponse {
+  string item_variant_id = 1;
+  int32 current_stock = 2;
+  int32 min_sku = 3;
+  int32 max_sku = 4;
+  bool needs_restock = 5;
+  bool is_overstocked = 6;
+}
+
+message GetLowStockVariantsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message GetLowStockVariantsResponse {
+  repeated ItemVariant item_variants = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message GetOverstockedVariantsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message GetOverstockedVariantsResponse {
+  repeated ItemVariant item_variants = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message GetItemWithVariantsResponse {
+  Item item = 1;
+  repeated ItemVariant variants = 2;
+}
+
+message ScanBarcodeRequest {
+  string barcode = 1;
+}
+
+message ScanBarcodeResponse {
+  optional ItemVariant item_variant = 1;
+  bool found = 2;
+}
+
+// ItemDetail messages
+message ItemDetail {
+  string id = 1;
+  string item_variant_id = 2;
+  string warehouse_id = 3;
+  string location_id = 4;
+  optional string article_number = 5;
+  double purchase_price = 6;
+  google.protobuf.Timestamp purchase_date = 7;
+  optional google.protobuf.Timestamp expiry_date = 8;
+  optional google.protobuf.Timestamp opened_date = 9;
+  bool is_opened = 10;
+  bool has_deposit = 11;
+  bool is_frozen = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+  optional google.protobuf.Timestamp deleted_at = 15;
+  optional ItemVariant item_variant = 16;
+  optional Warehouse warehouse = 17;
+  optional Location location = 18;
+  bool is_expired = 19;
+  bool is_expiring_soon = 20;
+  bool is_consumed = 21;
+}
+
+message CreateItemDetailRequest {
+  string item_variant_id = 1;
+  string warehouse_id = 2;
+  string location_id = 3;
+  optional string article_number = 4;
+  double purchase_price = 5;
+  google.protobuf.Timestamp purchase_date = 6;
+  optional google.protobuf.Timestamp expiry_date = 7;
+  bool has_deposit = 8;
+  bool is_frozen = 9;
+}
+
+message CreateItemDetailResponse {
+  ItemDetail item_detail = 1;
+}
+
+message BatchCreateItemDetailsRequest {
+  string item_variant_id = 1;
+  string warehouse_id = 2;
+  string location_id = 3;
+  optional string article_number = 4;
+  double purchase_price = 5;
+  google.protobuf.Timestamp purchase_date = 6;
+  optional google.protobuf.Timestamp expiry_date = 7;
+  bool has_deposit = 8;
+  bool is_frozen = 9;
+  int32 quantity = 10;
+}
+
+message BatchCreateItemDetailsResponse {
+  repeated ItemDetail item_details = 1;
+  int32 created_count = 2;
+}
+
+message GetItemDetailResponse {
+  ItemDetail item_detail = 1;
+}
+
+message ListItemDetailsRequest {
+  optional string item_variant_id = 1;
+  optional string warehouse_id = 2;
+  optional string location_id = 3;
+  optional bool is_opened = 4;
+  optional bool has_deposit = 5;
+  optional bool is_frozen = 6;
+  int32 page = 7;
+  int32 page_size = 8;
+  DeletedFilter deleted_filter = 9;
+}
+
+message ListItemDetailsResponse {
+  repeated ItemDetail item_details = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message UpdateItemDetailRequest {
+  string id = 1;
+  optional string location_id = 2;
+  optional string article_number = 3;
+  optional double purchase_price = 4;
+  optional google.protobuf.Timestamp expiry_date = 5;
+  optional bool has_deposit = 6;
+  optional bool is_frozen = 7;
+}
+
+message UpdateItemDetailResponse {
+  ItemDetail item_detail = 1;
+}
+
+message OpenItemRequest {
+  string id = 1;
+}
+
+message OpenItemResponse {
+  ItemDetail item_detail = 1;
+  google.protobuf.Timestamp opened_date = 2;
+}
+
+message MoveItemsRequest {
+  repeated string item_detail_ids = 1;
+  string new_location_id = 2;
+}
+
+message MoveItemsResponse {
+  repeated ItemDetail item_details = 1;
+  int32 moved_count = 2;
+}
+
+message GetExpiringItemsRequest {
+  int32 days = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message GetExpiringItemsResponse {
+  repeated ItemDetail item_details = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+  int32 total_expiring = 6;
+}
+
+message GetExpiredItemsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message GetExpiredItemsResponse {
+  repeated ItemDetail item_details = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+  int32 total_expired = 6;
+}
+
+message GetItemsWithDepositRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message GetItemsWithDepositResponse {
+  repeated ItemDetail item_details = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+  double total_deposit_value = 6;
+}
+
+message GetItemsByLocationRequest {
+  string location_id = 1;
+  bool include_children = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message GetItemsByLocationResponse {
+  repeated ItemDetail item_details = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+// Shoppinglist messages
+message ShoppinglistItem {
+  string id = 1;
+  string shoppinglist_id = 2;
+  string item_variant_id = 3;
+  int32 quantity = 4;
+  bool is_purchased = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+  optional google.protobuf.Timestamp deleted_at = 8;
+  optional ItemVariant item_variant = 9;
+}
+
+message Shoppinglist {
+  string id = 1;
+  string name = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  optional google.protobuf.Timestamp deleted_at = 5;
+  repeated ShoppinglistItem items = 6;
+  int32 total_items = 7;
+  int32 purchased_items = 8;
+  int32 pending_items = 9;
+}
+
+message CreateShoppinglistRequest {
+  string name = 1;
+}
+
+message CreateShoppinglistResponse {
+  Shoppinglist shoppinglist = 1;
+}
+
+message GetShoppinglistResponse {
+  Shoppinglist shoppinglist = 1;
+}
+
+message ListShoppinglistsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  DeletedFilter deleted_filter = 3;
+}
+
+message ListShoppinglistsResponse {
+  repeated Shoppinglist shoppinglists = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+message UpdateShoppinglistRequest {
+  string id = 1;
+  string name = 2;
+}
+
+message UpdateShoppinglistResponse {
+  Shoppinglist shoppinglist = 1;
+}
+
+message AddItemToShoppinglistRequest {
+  string shoppinglist_id = 1;
+  string item_variant_id = 2;
+  int32 quantity = 3;
+}
+
+message AddItemToShoppinglistResponse {
+  ShoppinglistItem item = 1;
+}
+
+message RemoveItemFromShoppinglistRequest {
+  string shoppinglist_id = 1;
+  string item_id = 2;
+}
+
+message UpdateShoppinglistItemRequest {
+  string id = 1;
+  optional int32 quantity = 2;
+  optional bool is_purchased = 3;
+}
+
+message UpdateShoppinglistItemResponse {
+  ShoppinglistItem item = 1;
+}
+
+message MarkItemPurchasedRequest {
+  string id = 1;
+}
+
+message MarkItemPurchasedResponse {
+  ShoppinglistItem item = 1;
+}
+
+message MarkAllItemsPurchasedRequest {
+  string shoppinglist_id = 1;
+}
+
+message MarkAllItemsPurchasedResponse {
+  int32 updated_count = 1;
+}
+
+message GenerateFromLowStockRequest {
+  string name = 1;
+}
+
+message GenerateFromLowStockResponse {
+  Shoppinglist shoppinglist = 1;
+  int32 items_added = 2;
+}
+
+message ClearPurchasedItemsRequest {
+  string shoppinglist_id = 1;
+}
+
+message ClearPurchasedItemsResponse {
+  int32 removed_count = 1;
+}
+
+// Receipt messages
+message ReceiptItem {
+  string id = 1;
+  string receipt_id = 2;
+  optional string item_variant_id = 3;
+  string item_name = 4;
+  int32 quantity = 5;
+  double unit_price = 6;
+  double total_price = 7;
+  optional string article_number = 8;
+  bool is_matched = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  optional google.protobuf.Timestamp deleted_at = 12;
+  optional ItemVariant item_variant = 13;
+}
+
+message Receipt {
+  string id = 1;
+  string warehouse_id = 2;
+  google.protobuf.Timestamp scan_date = 3;
+  double total_price = 4;
+  optional string image_path = 5;
+  optional string ocr_text = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  optional google.protobuf.Timestamp deleted_at = 9;
+  optional Warehouse warehouse = 10;
+  repeated ReceiptItem items = 11;
+  int32 total_items = 12;
+  int32 matched_items = 13;
+  int32 unmatched_items = 14;
+}
+
+message UploadReceiptRequest {
+  string warehouse_id = 1;
+  bytes image_data = 2;
+  string content_type = 3;
+}
+
+message UploadReceiptResponse {
+  Receipt receipt = 1;
+  string upload_id = 2;
+}
+
+message ProcessReceiptRequest {
+  string receipt_id = 1;
+  bool auto_match = 2;
+}
+
+message ProcessReceiptResponse {
+  Receipt receipt = 1;
+  string ocr_text = 2;
+  repeated ReceiptItem items = 3;
+  int32 matched_count = 4;
+  int32 unmatched_count = 5;
+}
+
+message CreateReceiptRequest {
+  string warehouse_id = 1;
+  google.protobuf.Timestamp scan_date = 2;
+  double total_price = 3;
+}
+
+message CreateReceiptResponse {
+  Receipt receipt = 1;
+}
+
+message GetReceiptResponse {
+  Receipt receipt = 1;
+}
+
+message ListReceiptsRequest {
+  optional string warehouse_id = 1;
+  optional google.protobuf.Timestamp start_date = 2;
+  optional google.protobuf.Timestamp end_date = 3;
+  int32 page = 4;
+  int32 page_size = 5;
+  DeletedFilter deleted_filter = 6;
+}
+
+message ListReceiptsResponse {
+  repeated Receipt receipts = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+  double total_amount = 6;
+}
+
+message UpdateReceiptRequest {
+  string id = 1;
+  optional string warehouse_id = 2;
+  optional google.protobuf.Timestamp scan_date = 3;
+  optional double total_price = 4;
+}
+
+message UpdateReceiptResponse {
+  Receipt receipt = 1;
+}
+
+message AddItemToReceiptRequest {
+  string receipt_id = 1;
+  string item_name = 2;
+  int32 quantity = 3;
+  double unit_price = 4;
+  optional string article_number = 5;
+  optional string item_variant_id = 6;
+}
+
+message AddItemToReceiptResponse {
+  ReceiptItem item = 1;
+}
+
+message UpdateReceiptItemRequest {
+  string id = 1;
+  optional string item_name = 2;
+  optional int32 quantity = 3;
+  optional double unit_price = 4;
+  optional string article_number = 5;
+}
+
+message UpdateReceiptItemResponse {
+  ReceiptItem item = 1;
+}
+
+message MatchReceiptItemRequest {
+  string receipt_item_id = 1;
+  string item_variant_id = 2;
+}
+
+message MatchReceiptItemResponse {
+  ReceiptItem item = 1;
+}
+
+message AutoMatchReceiptItemsRequest {
+  string receipt_id = 1;
+  double similarity_threshold = 2;
+}
+
+message AutoMatchReceiptItemsResponse {
+  int32 matched_count = 1;
+  int32 unmatched_count = 2;
+  repeated ReceiptItem matched_items = 3;
+  repeated ReceiptItem unmatched_items = 4;
+}
+
+message CreateInventoryFromReceiptRequest {
+  string receipt_id = 1;
+  string location_id = 2;
+  optional google.protobuf.Timestamp expiry_date = 3;
+  bool only_matched = 4;
+}
+
+message CreateInventoryFromReceiptResponse {
+  int32 created_count = 1;
+  repeated string item_detail_ids = 2;
+}
+
+message GetReceiptStatisticsRequest {
+  optional string warehouse_id = 1;
+  optional google.protobuf.Timestamp start_date = 2;
+  optional google.protobuf.Timestamp end_date = 3;
+}
+
+message GetReceiptStatisticsResponse {
+  int32 total_receipts = 1;
+  double total_amount = 2;
+  double average_amount = 3;
+  int32 total_items = 4;
+  double average_items_per_receipt = 5;
+  map<string, int32> items_by_warehouse = 6;
+}

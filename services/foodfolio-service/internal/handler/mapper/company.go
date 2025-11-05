@@ -1,8 +1,10 @@
 package mapper
 
 import (
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"toxictoast/services/foodfolio-service/internal/domain"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 )
 
 // CompanyToProto converts domain Company to protobuf
@@ -12,11 +14,13 @@ func CompanyToProto(company *domain.Company) *pb.Company {
 	}
 
 	return &pb.Company{
-		Id:         company.ID,
-		Name:       company.Name,
-		Slug:       company.Slug,
-		Timestamps: ToTimestamps(company.CreatedAt, company.UpdatedAt, nil),
-		ItemCount:  0, // TODO: Calculate if needed
+		Id:        company.ID,
+		Name:      company.Name,
+		Slug:      company.Slug,
+		CreatedAt: timestamppb.New(company.CreatedAt),
+		UpdatedAt: timestamppb.New(company.UpdatedAt),
+		DeletedAt: timestampOrNil(nil),
+		ItemCount: 0, // TODO: Calculate if needed
 	}
 }
 

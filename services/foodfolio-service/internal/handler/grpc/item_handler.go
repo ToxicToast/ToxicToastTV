@@ -8,7 +8,7 @@ import (
 
 	"toxictoast/services/foodfolio-service/internal/handler/mapper"
 	"toxictoast/services/foodfolio-service/internal/usecase"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
 )
 
 type ItemHandler struct {
@@ -48,15 +48,7 @@ func (h *ItemHandler) GetItem(ctx context.Context, req *pb.IdRequest) (*pb.GetIt
 }
 
 func (h *ItemHandler) ListItems(ctx context.Context, req *pb.ListItemsRequest) (*pb.ListItemsResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
-
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
 	var categoryID, companyID, typeID, search *string
 	if req.CategoryId != nil {
@@ -77,14 +69,19 @@ func (h *ItemHandler) ListItems(ctx context.Context, req *pb.ListItemsRequest) (
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	items, total, err := h.itemUC.ListItems(ctx, page, pageSize, categoryID, companyID, typeID, search, includeDeleted)
+	items, total, err := h.itemUC.ListItems(ctx, int(page), int(pageSize), categoryID, companyID, typeID, search, includeDeleted)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.ListItemsResponse{
 		Items:      mapper.ItemsToProto(items),
-		Pagination: mapper.ToPaginationResponse(page, pageSize, total),
+		Total:      int32(total),
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int32(totalPages),
 	}, nil
 }
 
@@ -137,7 +134,7 @@ func (h *ItemHandler) UpdateItem(ctx context.Context, req *pb.UpdateItemRequest)
 	}, nil
 }
 
-func (h *ItemHandler) DeleteItem(ctx context.Context, req *pb.IdRequest) (*pb.SuccessResponse, error) {
+func (h *ItemHandler) DeleteItem(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
 	err := h.itemUC.DeleteItem(ctx, req.Id)
 	if err != nil {
 		if err == usecase.ErrItemNotFound {
@@ -146,22 +143,14 @@ func (h *ItemHandler) DeleteItem(ctx context.Context, req *pb.IdRequest) (*pb.Su
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &pb.SuccessResponse{
+	return &pb.DeleteResponse{
 		Success: true,
 		Message: "Item deleted successfully",
 	}, nil
 }
 
 func (h *ItemHandler) SearchItems(ctx context.Context, req *pb.SearchItemsRequest) (*pb.SearchItemsResponse, error) {
-	page := int(req.Pagination.Page)
-	if page < 1 {
-		page = 1
-	}
-
-	pageSize := int(req.Pagination.PageSize)
-	if pageSize < 1 {
-		pageSize = 20
-	}
+	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
 	var categoryID, companyID *string
 	if req.CategoryId != nil {
@@ -171,13 +160,18 @@ func (h *ItemHandler) SearchItems(ctx context.Context, req *pb.SearchItemsReques
 		companyID = req.CompanyId
 	}
 
-	items, total, err := h.itemUC.SearchItems(ctx, req.Query, page, pageSize, categoryID, companyID)
+	items, total, err := h.itemUC.SearchItems(ctx, req.Query, int(page), int(pageSize), categoryID, companyID)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+
 	return &pb.SearchItemsResponse{
 		Items:      mapper.ItemsToProto(items),
-		Pagination: mapper.ToPaginationResponse(page, pageSize, total),
+		Total:      int32(total),
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int32(totalPages),
 	}, nil
 }
