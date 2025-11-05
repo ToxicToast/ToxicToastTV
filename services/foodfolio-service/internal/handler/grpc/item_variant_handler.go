@@ -180,7 +180,7 @@ func (h *ItemVariantHandler) DeleteItemVariant(ctx context.Context, req *pb.IdRe
 	}, nil
 }
 
-func (h *ItemVariantHandler) GetCurrentStock(ctx context.Context, req *pb.IdRequest) (*pb.GetCurrentStockResponse, error) {
+func (h *ItemVariantHandler) GetCurrentStock(ctx context.Context, req *pb.GetCurrentStockRequest) (*pb.GetCurrentStockResponse, error) {
 	stock, needsRestock, isOverstocked, err := h.variantUC.GetCurrentStock(ctx, req.Id)
 	if err != nil {
 		if err == usecase.ErrItemVariantNotFound {

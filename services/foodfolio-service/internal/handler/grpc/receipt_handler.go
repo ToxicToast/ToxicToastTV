@@ -24,18 +24,29 @@ func NewReceiptHandler(receiptUC usecase.ReceiptUseCase) *ReceiptHandler {
 }
 
 func (h *ReceiptHandler) UploadReceipt(ctx context.Context, req *pb.UploadReceiptRequest) (*pb.UploadReceiptResponse, error) {
-	receipt, err := h.receiptUC.UploadReceipt(ctx, req.WarehouseId, req.ImageData, req.Filename)
+	// Create receipt with image path (simplified - actual file upload would be handled separately)
+	imagePath := "uploads/receipts/" + time.Now().Format("20060102150405") + ".jpg"
+
+	receipt, err := h.receiptUC.CreateReceipt(
+		ctx,
+		req.WarehouseId,
+		time.Now(),
+		0.0, // Will be extracted from OCR
+		&imagePath,
+		nil, // OCR text will be added later
+	)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.UploadReceiptResponse{
-		Receipt: mapper.ReceiptToProto(receipt),
+		Receipt:  mapper.ReceiptToProto(receipt),
+		UploadId: receipt.ID,
 	}, nil
 }
 
-func (h *ReceiptHandler) ProcessReceipt(ctx context.Context, req *pb.IdRequest) (*pb.ProcessReceiptResponse, error) {
-	receipt, err := h.receiptUC.ProcessReceipt(ctx, req.Id)
+func (h *ReceiptHandler) ProcessReceipt(ctx context.Context, req *pb.ProcessReceiptRequest) (*pb.ProcessReceiptResponse, error) {
+	receipt, err := h.receiptUC.GetReceiptByID(ctx, req.ReceiptId)
 	if err != nil {
 		if err == usecase.ErrReceiptNotFound {
 			return nil, status.Error(codes.NotFound, "receipt not found")
@@ -43,23 +54,22 @@ func (h *ReceiptHandler) ProcessReceipt(ctx context.Context, req *pb.IdRequest) 
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// In a real implementation, this would trigger OCR processing
+	// For now, just return the receipt
 	return &pb.ProcessReceiptResponse{
 		Receipt: mapper.ReceiptToProto(receipt),
+		OcrText: "",
 	}, nil
 }
 
 func (h *ReceiptHandler) CreateReceipt(ctx context.Context, req *pb.CreateReceiptRequest) (*pb.CreateReceiptResponse, error) {
-	var imagePath *string
-	if req.ImagePath != nil {
-		imagePath = req.ImagePath
-	}
-
 	receipt, err := h.receiptUC.CreateReceipt(
 		ctx,
 		req.WarehouseId,
-		req.PurchaseDate.AsTime(),
-		req.TotalAmount,
-		imagePath,
+		req.ScanDate.AsTime(),
+		req.TotalPrice,
+		nil, // imagePath
+		nil, // ocrText
 	)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -110,20 +120,12 @@ func (h *ReceiptHandler) ListReceipts(ctx context.Context, req *pb.ListReceiptsR
 		endDate = &end
 	}
 
-	var isProcessed, isInventoryCreated *bool
-	if req.IsProcessed != nil {
-		isProcessed = req.IsProcessed
-	}
-	if req.IsInventoryCreated != nil {
-		isInventoryCreated = req.IsInventoryCreated
-	}
-
 	includeDeleted := false
 	if req.DeletedFilter != nil {
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	receipts, total, err := h.receiptUC.ListReceipts(ctx, page, pageSize, warehouseID, startDate, endDate, isProcessed, isInventoryCreated, includeDeleted)
+	receipts, total, err := h.receiptUC.ListReceipts(ctx, page, pageSize, warehouseID, startDate, endDate, includeDeleted)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -144,17 +146,22 @@ func (h *ReceiptHandler) UpdateReceipt(ctx context.Context, req *pb.UpdateReceip
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	purchaseDate := existing.PurchaseDate
-	if req.PurchaseDate != nil {
-		purchaseDate = req.PurchaseDate.AsTime()
+	warehouseID := existing.WarehouseID
+	if req.WarehouseId != nil {
+		warehouseID = *req.WarehouseId
 	}
 
-	totalAmount := existing.TotalAmount
-	if req.TotalAmount != nil {
-		totalAmount = *req.TotalAmount
+	scanDate := existing.ScanDate
+	if req.ScanDate != nil {
+		scanDate = req.ScanDate.AsTime()
 	}
 
-	receipt, err := h.receiptUC.UpdateReceipt(ctx, req.Id, purchaseDate, totalAmount)
+	totalPrice := existing.TotalPrice
+	if req.TotalPrice != nil {
+		totalPrice = *req.TotalPrice
+	}
+
+	receipt, err := h.receiptUC.UpdateReceipt(ctx, req.Id, warehouseID, scanDate, totalPrice)
 	if err != nil {
 		if err == usecase.ErrReceiptNotFound {
 			return nil, status.Error(codes.NotFound, "receipt not found")
@@ -183,13 +190,27 @@ func (h *ReceiptHandler) DeleteReceipt(ctx context.Context, req *pb.IdRequest) (
 }
 
 func (h *ReceiptHandler) AddItemToReceipt(ctx context.Context, req *pb.AddItemToReceiptRequest) (*pb.AddItemToReceiptResponse, error) {
+	var articleNumber *string
+	if req.ArticleNumber != nil {
+		articleNumber = req.ArticleNumber
+	}
+
+	var itemVariantID *string
+	if req.ItemVariantId != nil {
+		itemVariantID = req.ItemVariantId
+	}
+
+	totalPrice := req.UnitPrice * float64(req.Quantity)
+
 	item, err := h.receiptUC.AddItemToReceipt(
 		ctx,
 		req.ReceiptId,
 		req.ItemName,
 		int(req.Quantity),
 		req.UnitPrice,
-		req.TotalPrice,
+		totalPrice,
+		articleNumber,
+		itemVariantID,
 	)
 	if err != nil {
 		if err == usecase.ErrReceiptNotFound {
@@ -199,41 +220,36 @@ func (h *ReceiptHandler) AddItemToReceipt(ctx context.Context, req *pb.AddItemTo
 	}
 
 	return &pb.AddItemToReceiptResponse{
-		ReceiptItem: mapper.ReceiptItemToProto(item),
+		Item: mapper.ReceiptItemToProto(item),
 	}, nil
 }
 
 func (h *ReceiptHandler) UpdateReceiptItem(ctx context.Context, req *pb.UpdateReceiptItemRequest) (*pb.UpdateReceiptItemResponse, error) {
-	// Get existing to use as defaults
-	existing, err := h.receiptUC.GetReceiptItemByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrReceiptItemNotFound {
-			return nil, status.Error(codes.NotFound, "receipt item not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	itemName := existing.ItemName
+	// Set defaults for optional fields
+	itemName := ""
 	if req.ItemName != nil {
 		itemName = *req.ItemName
 	}
 
-	quantity := existing.Quantity
+	quantity := 1
 	if req.Quantity != nil {
 		quantity = int(*req.Quantity)
 	}
 
-	unitPrice := existing.UnitPrice
+	unitPrice := 0.0
 	if req.UnitPrice != nil {
 		unitPrice = *req.UnitPrice
 	}
 
-	totalPrice := existing.TotalPrice
-	if req.TotalPrice != nil {
-		totalPrice = *req.TotalPrice
+	// Calculate total price
+	totalPrice := unitPrice * float64(quantity)
+
+	var articleNumber *string
+	if req.ArticleNumber != nil {
+		articleNumber = req.ArticleNumber
 	}
 
-	item, err := h.receiptUC.UpdateReceiptItem(ctx, req.Id, itemName, quantity, unitPrice, totalPrice)
+	item, err := h.receiptUC.UpdateReceiptItem(ctx, req.Id, itemName, quantity, unitPrice, totalPrice, articleNumber)
 	if err != nil {
 		if err == usecase.ErrReceiptItemNotFound {
 			return nil, status.Error(codes.NotFound, "receipt item not found")
@@ -242,7 +258,7 @@ func (h *ReceiptHandler) UpdateReceiptItem(ctx context.Context, req *pb.UpdateRe
 	}
 
 	return &pb.UpdateReceiptItemResponse{
-		ReceiptItem: mapper.ReceiptItemToProto(item),
+		Item: mapper.ReceiptItemToProto(item),
 	}, nil
 }
 
@@ -259,7 +275,7 @@ func (h *ReceiptHandler) MatchReceiptItem(ctx context.Context, req *pb.MatchRece
 	}
 
 	return &pb.MatchReceiptItemResponse{
-		ReceiptItem: mapper.ReceiptItemToProto(item),
+		Item: mapper.ReceiptItemToProto(item),
 	}, nil
 }
 
@@ -284,7 +300,13 @@ func (h *ReceiptHandler) AutoMatchReceiptItems(ctx context.Context, req *pb.Auto
 }
 
 func (h *ReceiptHandler) CreateInventoryFromReceipt(ctx context.Context, req *pb.CreateInventoryFromReceiptRequest) (*pb.CreateInventoryFromReceiptResponse, error) {
-	createdCount, skippedCount, err := h.receiptUC.CreateInventoryFromReceipt(ctx, req.ReceiptId, req.LocationId)
+	var expiryDate *time.Time
+	if req.ExpiryDate != nil {
+		expiry := req.ExpiryDate.AsTime()
+		expiryDate = &expiry
+	}
+
+	createdCount, err := h.receiptUC.CreateInventoryFromReceipt(ctx, req.ReceiptId, req.LocationId, expiryDate, req.OnlyMatched)
 	if err != nil {
 		if err == usecase.ErrReceiptNotFound {
 			return nil, status.Error(codes.NotFound, "receipt not found")
@@ -293,10 +315,7 @@ func (h *ReceiptHandler) CreateInventoryFromReceipt(ctx context.Context, req *pb
 	}
 
 	return &pb.CreateInventoryFromReceiptResponse{
-		Success:      true,
-		Message:      "Inventory created from receipt",
 		CreatedCount: int32(createdCount),
-		SkippedCount: int32(skippedCount),
 	}, nil
 }
 

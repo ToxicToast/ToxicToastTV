@@ -7,10 +7,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"toxictoast/services/foodfolio-service/internal/domain"
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
 	"toxictoast/services/foodfolio-service/internal/handler/mapper"
 	"toxictoast/services/foodfolio-service/internal/usecase"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
 )
 
 type ItemDetailHandler struct {
@@ -41,10 +40,10 @@ func (h *ItemDetailHandler) CreateItemDetail(ctx context.Context, req *pb.Create
 		req.ItemVariantId,
 		req.WarehouseId,
 		req.LocationId,
+		articleNumber,
 		req.PurchasePrice,
 		req.PurchaseDate.AsTime(),
 		expiryDate,
-		articleNumber,
 		req.HasDeposit,
 		req.IsFrozen,
 	)
@@ -58,40 +57,37 @@ func (h *ItemDetailHandler) CreateItemDetail(ctx context.Context, req *pb.Create
 }
 
 func (h *ItemDetailHandler) BatchCreateItemDetails(ctx context.Context, req *pb.BatchCreateItemDetailsRequest) (*pb.BatchCreateItemDetailsResponse, error) {
-	details := make([]*domain.ItemDetail, len(req.Details))
-	for i, d := range req.Details {
-		var expiryDate *time.Time
-		if d.ExpiryDate != nil {
-			expiry := d.ExpiryDate.AsTime()
-			expiryDate = &expiry
-		}
-
-		var articleNumber *string
-		if d.ArticleNumber != nil {
-			articleNumber = d.ArticleNumber
-		}
-
-		details[i] = &domain.ItemDetail{
-			ItemVariantID: d.ItemVariantId,
-			WarehouseID:   d.WarehouseId,
-			LocationID:    d.LocationId,
-			PurchasePrice: d.PurchasePrice,
-			PurchaseDate:  d.PurchaseDate.AsTime(),
-			ExpiryDate:    expiryDate,
-			ArticleNumber: articleNumber,
-			HasDeposit:    d.HasDeposit,
-			IsFrozen:      d.IsFrozen,
-		}
+	var expiryDate *time.Time
+	if req.ExpiryDate != nil {
+		expiry := req.ExpiryDate.AsTime()
+		expiryDate = &expiry
 	}
 
-	createdDetails, err := h.detailUC.BatchCreateItemDetails(ctx, details)
+	var articleNumber *string
+	if req.ArticleNumber != nil {
+		articleNumber = req.ArticleNumber
+	}
+
+	createdDetails, err := h.detailUC.BatchCreateItemDetails(
+		ctx,
+		req.ItemVariantId,
+		req.WarehouseId,
+		req.LocationId,
+		articleNumber,
+		req.PurchasePrice,
+		req.PurchaseDate.AsTime(),
+		expiryDate,
+		req.HasDeposit,
+		req.IsFrozen,
+		int(req.Quantity),
+	)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.BatchCreateItemDetailsResponse{
-		ItemDetails: mapper.ItemDetailsToProto(createdDetails),
-		Count:       int32(len(createdDetails)),
+		ItemDetails:  mapper.ItemDetailsToProto(createdDetails),
+		CreatedCount: int32(len(createdDetails)),
 	}, nil
 }
 
@@ -173,19 +169,24 @@ func (h *ItemDetailHandler) UpdateItemDetail(ctx context.Context, req *pb.Update
 		locationID = *req.LocationId
 	}
 
+	var articleNumber *string
+	if req.ArticleNumber != nil {
+		articleNumber = req.ArticleNumber
+	} else {
+		articleNumber = existing.ArticleNumber
+	}
+
+	purchasePrice := existing.PurchasePrice
+	if req.PurchasePrice != nil {
+		purchasePrice = *req.PurchasePrice
+	}
+
 	var expiryDate *time.Time
 	if req.ExpiryDate != nil {
 		expiry := req.ExpiryDate.AsTime()
 		expiryDate = &expiry
 	} else {
 		expiryDate = existing.ExpiryDate
-	}
-
-	var articleNumber *string
-	if req.ArticleNumber != nil {
-		articleNumber = req.ArticleNumber
-	} else {
-		articleNumber = existing.ArticleNumber
 	}
 
 	hasDeposit := existing.HasDeposit
@@ -198,7 +199,7 @@ func (h *ItemDetailHandler) UpdateItemDetail(ctx context.Context, req *pb.Update
 		isFrozen = *req.IsFrozen
 	}
 
-	detail, err := h.detailUC.UpdateItemDetail(ctx, req.Id, locationID, expiryDate, articleNumber, hasDeposit, isFrozen)
+	detail, err := h.detailUC.UpdateItemDetail(ctx, req.Id, locationID, articleNumber, purchasePrice, expiryDate, hasDeposit, isFrozen)
 	if err != nil {
 		if err == usecase.ErrItemDetailNotFound {
 			return nil, status.Error(codes.NotFound, "item detail not found")
@@ -226,7 +227,7 @@ func (h *ItemDetailHandler) DeleteItemDetail(ctx context.Context, req *pb.IdRequ
 	}, nil
 }
 
-func (h *ItemDetailHandler) OpenItem(ctx context.Context, req *pb.IdRequest) (*pb.OpenItemResponse, error) {
+func (h *ItemDetailHandler) OpenItem(ctx context.Context, req *pb.OpenItemRequest) (*pb.OpenItemResponse, error) {
 	detail, err := h.detailUC.OpenItem(ctx, req.Id)
 	if err != nil {
 		if err == usecase.ErrItemDetailNotFound {
@@ -244,15 +245,14 @@ func (h *ItemDetailHandler) OpenItem(ctx context.Context, req *pb.IdRequest) (*p
 }
 
 func (h *ItemDetailHandler) MoveItems(ctx context.Context, req *pb.MoveItemsRequest) (*pb.MoveItemsResponse, error) {
-	count, err := h.detailUC.MoveItems(ctx, req.ItemIds, req.NewLocationId)
+	movedItems, err := h.detailUC.MoveItems(ctx, req.ItemDetailIds, req.NewLocationId)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.MoveItemsResponse{
-		Success:    true,
-		Message:    "Items moved successfully",
-		ItemsCount: int32(count),
+		ItemDetails: mapper.ItemDetailsToProto(movedItems),
+		MovedCount:  int32(len(movedItems)),
 	}, nil
 }
 
@@ -338,13 +338,28 @@ func (h *ItemDetailHandler) GetItemsByLocation(ctx context.Context, req *pb.GetI
 		pageSize = 20
 	}
 
-	details, total, err := h.detailUC.GetItemsByLocation(ctx, req.LocationId, page, pageSize)
+	// Get all items for location
+	allDetails, err := h.detailUC.GetByLocation(ctx, req.LocationId, req.IncludeChildren)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// Manual pagination
+	total := int64(len(allDetails))
+	offset := (page - 1) * pageSize
+	end := offset + pageSize
+
+	if offset > len(allDetails) {
+		offset = len(allDetails)
+	}
+	if end > len(allDetails) {
+		end = len(allDetails)
+	}
+
+	paginatedDetails := allDetails[offset:end]
+
 	return &pb.GetItemsByLocationResponse{
-		ItemDetails: mapper.ItemDetailsToProto(details),
+		ItemDetails: mapper.ItemDetailsToProto(paginatedDetails),
 		Pagination:  mapper.ToPaginationResponse(page, pageSize, total),
 	}, nil
 }

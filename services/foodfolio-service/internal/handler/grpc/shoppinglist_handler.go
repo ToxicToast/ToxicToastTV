@@ -116,12 +116,12 @@ func (h *ShoppinglistHandler) AddItemToShoppinglist(ctx context.Context, req *pb
 	}
 
 	return &pb.AddItemToShoppinglistResponse{
-		ShoppinglistItem: mapper.ShoppinglistItemToProto(item),
+		Item: mapper.ShoppinglistItemToProto(item),
 	}, nil
 }
 
-func (h *ShoppinglistHandler) RemoveItemFromShoppinglist(ctx context.Context, req *pb.IdRequest) (*pb.SuccessResponse, error) {
-	err := h.shoppinglistUC.RemoveItemFromShoppinglist(ctx, req.Id)
+func (h *ShoppinglistHandler) RemoveItemFromShoppinglist(ctx context.Context, req *pb.RemoveItemFromShoppinglistRequest) (*pb.SuccessResponse, error) {
+	err := h.shoppinglistUC.RemoveItemFromShoppinglist(ctx, req.ShoppinglistId, req.ItemId)
 	if err != nil {
 		if err == usecase.ErrShoppinglistItemNotFound {
 			return nil, status.Error(codes.NotFound, "shoppinglist item not found")
@@ -136,7 +136,17 @@ func (h *ShoppinglistHandler) RemoveItemFromShoppinglist(ctx context.Context, re
 }
 
 func (h *ShoppinglistHandler) UpdateShoppinglistItem(ctx context.Context, req *pb.UpdateShoppinglistItemRequest) (*pb.UpdateShoppinglistItemResponse, error) {
-	item, err := h.shoppinglistUC.UpdateShoppinglistItem(ctx, req.Id, int(req.Quantity))
+	quantity := 1
+	if req.Quantity != nil {
+		quantity = int(*req.Quantity)
+	}
+
+	isPurchased := false
+	if req.IsPurchased != nil {
+		isPurchased = *req.IsPurchased
+	}
+
+	item, err := h.shoppinglistUC.UpdateShoppinglistItem(ctx, req.Id, quantity, isPurchased)
 	if err != nil {
 		if err == usecase.ErrShoppinglistItemNotFound {
 			return nil, status.Error(codes.NotFound, "shoppinglist item not found")
@@ -145,11 +155,11 @@ func (h *ShoppinglistHandler) UpdateShoppinglistItem(ctx context.Context, req *p
 	}
 
 	return &pb.UpdateShoppinglistItemResponse{
-		ShoppinglistItem: mapper.ShoppinglistItemToProto(item),
+		Item: mapper.ShoppinglistItemToProto(item),
 	}, nil
 }
 
-func (h *ShoppinglistHandler) MarkItemPurchased(ctx context.Context, req *pb.IdRequest) (*pb.MarkItemPurchasedResponse, error) {
+func (h *ShoppinglistHandler) MarkItemPurchased(ctx context.Context, req *pb.MarkItemPurchasedRequest) (*pb.MarkItemPurchasedResponse, error) {
 	item, err := h.shoppinglistUC.MarkItemPurchased(ctx, req.Id)
 	if err != nil {
 		if err == usecase.ErrShoppinglistItemNotFound {
@@ -159,12 +169,12 @@ func (h *ShoppinglistHandler) MarkItemPurchased(ctx context.Context, req *pb.IdR
 	}
 
 	return &pb.MarkItemPurchasedResponse{
-		ShoppinglistItem: mapper.ShoppinglistItemToProto(item),
+		Item: mapper.ShoppinglistItemToProto(item),
 	}, nil
 }
 
-func (h *ShoppinglistHandler) MarkAllItemsPurchased(ctx context.Context, req *pb.IdRequest) (*pb.MarkAllItemsPurchasedResponse, error) {
-	count, err := h.shoppinglistUC.MarkAllItemsPurchased(ctx, req.Id)
+func (h *ShoppinglistHandler) MarkAllItemsPurchased(ctx context.Context, req *pb.MarkAllItemsPurchasedRequest) (*pb.MarkAllItemsPurchasedResponse, error) {
+	count, err := h.shoppinglistUC.MarkAllItemsPurchased(ctx, req.ShoppinglistId)
 	if err != nil {
 		if err == usecase.ErrShoppinglistNotFound {
 			return nil, status.Error(codes.NotFound, "shoppinglist not found")
@@ -173,14 +183,12 @@ func (h *ShoppinglistHandler) MarkAllItemsPurchased(ctx context.Context, req *pb
 	}
 
 	return &pb.MarkAllItemsPurchasedResponse{
-		Success:    true,
-		Message:    "All items marked as purchased",
-		ItemsCount: int32(count),
+		UpdatedCount: int32(count),
 	}, nil
 }
 
-func (h *ShoppinglistHandler) ClearPurchasedItems(ctx context.Context, req *pb.IdRequest) (*pb.ClearPurchasedItemsResponse, error) {
-	count, err := h.shoppinglistUC.ClearPurchasedItems(ctx, req.Id)
+func (h *ShoppinglistHandler) ClearPurchasedItems(ctx context.Context, req *pb.ClearPurchasedItemsRequest) (*pb.ClearPurchasedItemsResponse, error) {
+	count, err := h.shoppinglistUC.ClearPurchasedItems(ctx, req.ShoppinglistId)
 	if err != nil {
 		if err == usecase.ErrShoppinglistNotFound {
 			return nil, status.Error(codes.NotFound, "shoppinglist not found")
@@ -189,9 +197,7 @@ func (h *ShoppinglistHandler) ClearPurchasedItems(ctx context.Context, req *pb.I
 	}
 
 	return &pb.ClearPurchasedItemsResponse{
-		Success:    true,
-		Message:    "Purchased items cleared",
-		ItemsCount: int32(count),
+		RemovedCount: int32(count),
 	}, nil
 }
 

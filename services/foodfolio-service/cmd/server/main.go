@@ -134,7 +134,7 @@ func main() {
 	itemVariantUC := usecase.NewItemVariantUseCase(itemVariantRepo, itemRepo, sizeRepo)
 	itemDetailUC := usecase.NewItemDetailUseCase(itemDetailRepo, itemVariantRepo, warehouseRepo, locationRepo)
 	shoppinglistUC := usecase.NewShoppinglistUseCase(shoppinglistRepo, itemVariantRepo)
-	receiptUC := usecase.NewReceiptUseCase(receiptRepo, warehouseRepo, itemVariantRepo, itemDetailRepo)
+	receiptUC := usecase.NewReceiptUseCase(receiptRepo, warehouseRepo, itemVariantRepo, itemDetailRepo, locationRepo)
 	log.Println("Use cases initialized")
 
 	// Initialize gRPC handlers
