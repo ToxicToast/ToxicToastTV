@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
@@ -10,7 +8,7 @@ services:
       POSTGRES_PASSWORD: azkaban_foodfolio
       POSTGRES_DB: foodfolio
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,7 +22,7 @@ services:
 
   # Redpanda (Kafka-compatible)
   redpanda:
-    image: docker.redpanda.com/vectorized/redpanda:v23.3.3
+    image: docker.redpanda.com/redpandadata/redpanda:latest
     container_name: foodfolio-redpanda
     command:
       - redpanda
@@ -57,7 +55,7 @@ services:
 
   # Redpanda Console (Web UI for Kafka)
   redpanda-console:
-    image: docker.redpanda.com/vectorized/console:v2.4.3
+    image: docker.redpanda.com/redpandadata/console:latest
     container_name: foodfolio-redpanda-console
     environment:
       KAFKA_BROKERS: redpanda:9092
