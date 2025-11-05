@@ -1,75 +1,81 @@
 # ToxicToastGo
 
-A modern, scalable blog CMS backend built with Go, gRPC, and Clean Architecture.
+A collection of microservices built with Go, gRPC, and Clean Architecture for the ToxicToast ecosystem.
 
-## 🚀 Features
+## 🏗️ Architecture
 
-### Core Functionality
-- **Posts Management** - Full-featured blog posts with Markdown support, SEO metadata, and reading time calculation
-- **Categories & Tags** - Hierarchical categories and simple tagging system with slug-based URLs
-- **Comments System** - Nested comments with moderation (pending, approved, spam, trash)
-- **Media Management** - File upload with streaming, automatic thumbnail generation, and image resizing
-- **Authentication** - Optional Keycloak JWT authentication with role-based access control
-- **Event Publishing** - Kafka/Redpanda integration for event-driven architecture
+This is a **Go monorepo** using Go workspaces, containing multiple microservices that communicate via gRPC and Kafka/Redpanda.
 
-### Technical Highlights
-- **gRPC API** - High-performance RPC with Protocol Buffers
+### Design Principles
+- **Microservices Architecture** - Independent, scalable services
 - **Clean Architecture** - Domain-driven design with clear separation of concerns
-- **Go Workspace** - Monorepo structure with shared modules
-- **PostgreSQL** - Robust data persistence with GORM
-- **Image Processing** - Automatic thumbnail generation (150x150, 300x300, 600x600) and smart resizing
-- **Streaming Upload** - Efficient file upload via gRPC streaming
+- **Event-Driven** - Kafka/Redpanda for asynchronous communication
+- **API-First** - gRPC with Protocol Buffers for high-performance RPC
+- **Shared Modules** - Common functionality extracted into reusable packages
 
 ## 📁 Project Structure
 
 ```
 ToxicToastGo/
-├── services/
-│   └── blog-service/          # Blog CMS microservice
-│       ├── api/proto/          # gRPC Protocol Buffers
-│       ├── cmd/server/         # Application entry point
-│       ├── internal/
-│       │   ├── domain/         # Business entities
-│       │   ├── repository/     # Data access layer
-│       │   ├── usecase/        # Business logic
-│       │   └── handler/grpc/   # gRPC handlers
-│       ├── pkg/
-│       │   ├── config/         # Configuration
-│       │   ├── image/          # Image processing
-│       │   ├── storage/        # File storage
-│       │   └── utils/          # Utilities (markdown, slug, etc.)
-│       └── migrations/         # Database migrations
-└── shared/                     # Shared modules
-    ├── auth/                   # Keycloak authentication
-    ├── kafka/                  # Event producer
-    ├── database/               # PostgreSQL connection
-    ├── logger/                 # Structured logging
-    └── config/                 # Shared configuration
-
+├── services/                   # Microservices
+│   ├── blog-service/          # Blog CMS backend
+│   ├── [future-service]/      # Additional services coming soon
+│   └── ...
+├── shared/                     # Shared modules
+│   ├── auth/                  # Authentication (Keycloak JWT)
+│   ├── kafka/                 # Event producer/consumer
+│   ├── database/              # PostgreSQL connection
+│   ├── logger/                # Structured logging
+│   └── config/                # Configuration utilities
+├── go.work                     # Go workspace configuration
+└── LICENSE                     # Proprietary license
 ```
+
+## 🚀 Services
+
+### Blog Service
+**Status:** ✅ Production Ready
+
+A full-featured blog CMS backend with support for posts, categories, tags, comments, and media management.
+
+**Features:**
+- Markdown posts with SEO metadata
+- Hierarchical categories & tags
+- Nested comments with moderation
+- Media upload with automatic thumbnails
+- gRPC API with streaming support
+- Optional Keycloak authentication
+
+👉 [View Blog Service Documentation](./services/blog-service/README.md)
+
+### [Future Services]
+Additional microservices will be added here as the ecosystem grows.
 
 ## 🛠️ Tech Stack
 
-- **Language:** Go 1.24
+### Core Technologies
+- **Language:** Go 1.24+
 - **API:** gRPC with Protocol Buffers
-- **Database:** PostgreSQL with GORM ORM
+- **Database:** PostgreSQL with GORM
 - **Messaging:** Kafka/Redpanda
-- **Authentication:** Keycloak (optional)
-- **Image Processing:** disintegration/imaging
-- **HTTP Router:** Gorilla Mux
-- **Markdown:** Blackfriday v2 with Bluemonday sanitization
+- **Authentication:** Keycloak (JWT)
 
-## 🚦 Getting Started
+### Shared Infrastructure
+- **Monorepo:** Go Workspaces
+- **Containerization:** Docker & Docker Compose
+- **CI/CD:** GitHub Actions (planned)
+- **Observability:** Structured logging (planned: Prometheus, Grafana)
+
+## 🏃 Getting Started
 
 ### Prerequisites
 
 - Go 1.24 or higher
 - PostgreSQL 14+
 - Kafka/Redpanda (optional)
-- Keycloak (optional)
-- Protocol Buffers compiler (for development)
+- Docker & Docker Compose (optional)
 
-### Installation
+### Quick Start
 
 1. **Clone the repository**
    ```bash
@@ -77,213 +83,137 @@ ToxicToastGo/
    cd ToxicToastGo
    ```
 
-2. **Set up environment variables**
+2. **Install dependencies**
    ```bash
+   # Download all workspace dependencies
+   go work sync
+   ```
+
+3. **Set up services**
+   ```bash
+   # Navigate to a service directory
    cd services/blog-service
+
+   # Copy and configure environment
    cp .env.example .env
-   # Edit .env with your configuration
-   ```
 
-3. **Install dependencies**
-   ```bash
-   go mod download
-   ```
-
-4. **Run database migrations**
-   ```bash
-   # Create database first
-   createdb blog
-
-   # Migrations run automatically on startup
-   ```
-
-5. **Build and run**
-   ```bash
-   # Development
+   # Run the service
    go run cmd/server/main.go
-
-   # Production
-   make build
-   ./bin/blog-service
    ```
 
-## ⚙️ Configuration
+## 📦 Shared Modules
 
-Create a `.env` file in `services/blog-service/`:
-
-```bash
-# Server
-PORT=8080
-GRPC_PORT=9090
-ENVIRONMENT=development
-LOG_LEVEL=info
-
-# Authentication (optional)
-AUTH_ENABLED=false
-
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=blog
-DB_PASSWORD=your_password
-DB_NAME=blog
-DB_SSL_MODE=disable
-
-# Kafka (optional)
-KAFKA_BROKERS=localhost:9092
-KAFKA_GROUP_ID=blog-service
-KAFKA_TOPIC_POST_EVENTS=blog.events.post
-KAFKA_TOPIC_COMMENT_EVENTS=blog.events.comment
-KAFKA_TOPIC_MEDIA_EVENTS=blog.events.media
-
-# Media Storage
-MEDIA_STORAGE_PATH=./uploads
-MEDIA_MAX_SIZE=10485760                                    # 10MB
-MEDIA_ALLOWED_TYPES=image/jpeg,image/png,image/gif,image/webp
-MEDIA_GENERATE_THUMBNAILS=true
-MEDIA_THUMBNAIL_SIZES=small,medium,large
-MEDIA_AUTO_RESIZE_LARGE=true
-MEDIA_MAX_IMAGE_WIDTH=3840                                 # 4K
-MEDIA_MAX_IMAGE_HEIGHT=2160
-
-# Keycloak (if AUTH_ENABLED=true)
-KEYCLOAK_URL=http://localhost:8080
-KEYCLOAK_REALM=your-realm
-KEYCLOAK_CLIENT_ID=blog-service
-KEYCLOAK_CLIENT_SECRET=your-secret
-```
-
-## 🔌 API Endpoints
-
-### Posts
-- `CreatePost` - Create new blog post (auth required)
-- `GetPost` - Get post by ID or slug (public)
-- `UpdatePost` - Update existing post (auth required)
-- `DeletePost` - Delete post (auth required)
-- `ListPosts` - List posts with filters (public)
-- `PublishPost` - Publish draft post (auth required)
-
-### Categories
-- `CreateCategory` - Create category (auth required)
-- `GetCategory` - Get category by ID or slug (public)
-- `UpdateCategory` - Update category (auth required)
-- `DeleteCategory` - Delete category (auth required)
-- `ListCategories` - List categories (public)
-
-### Tags
-- `CreateTag` - Create tag (auth required)
-- `GetTag` - Get tag by ID or slug (public)
-- `UpdateTag` - Update tag (auth required)
-- `DeleteTag` - Delete tag (auth required)
-- `ListTags` - List tags with search (public)
-
-### Comments
-- `CreateComment` - Create comment (public)
-- `GetComment` - Get comment (public)
-- `UpdateComment` - Update comment (public)
-- `DeleteComment` - Delete comment (auth required)
-- `ListComments` - List comments (public)
-- `ModerateComment` - Change comment status (auth required)
-
-### Media
-- `UploadMedia` - Upload file via streaming (auth required)
-- `GetMedia` - Get media metadata (public)
-- `DeleteMedia` - Delete media (auth required)
-- `ListMedia` - List media files (public)
-
-## 📸 Image Processing
-
-### Automatic Thumbnails
-When uploading images, thumbnails are automatically generated:
-- **Small:** 150x150 (square, center-cropped)
-- **Medium:** 300x300 (square, center-cropped)
-- **Large:** 600x600 (square, center-cropped)
-
-### Smart Resizing
-Large images can be automatically resized to save storage and bandwidth:
-- Max dimensions: 3840x2160 (4K)
-- Maintains aspect ratio
-- JPEG quality: 85
-- Configurable via `MEDIA_AUTO_RESIZE_LARGE`
-
-## 🏗️ Architecture
-
-### Clean Architecture Layers
-
-1. **Domain** - Business entities and rules
-2. **Repository** - Data access interfaces and implementations
-3. **Use Case** - Application business logic
-4. **Handler** - Delivery mechanism (gRPC)
-
-### Design Patterns
-- Repository Pattern
-- Dependency Injection
-- Interface Segregation
-- Single Responsibility Principle
-
-## 🔐 Security Features
-
-- JWT authentication with Keycloak
+### Authentication (`shared/auth`)
+Keycloak JWT authentication with gRPC interceptors.
+- Token validation via JWKS
 - Role-based access control
-- MIME type validation
-- File size limits
-- SQL injection prevention (GORM)
-- XSS prevention (Bluemonday sanitization)
-- Optional authentication mode for development
+- User context extraction
+
+### Kafka (`shared/kafka`)
+Event producer/consumer for asynchronous messaging.
+- Type-safe event definitions
+- Automatic serialization
+- Error handling and retries
+
+### Database (`shared/database`)
+PostgreSQL connection management.
+- Connection pooling
+- Automatic retry logic
+- GORM integration
+- Migration support
+
+### Logger (`shared/logger`)
+Structured logging utilities.
+- JSON formatting
+- Log levels
+- Context propagation
+
+### Config (`shared/config`)
+Environment-based configuration.
+- .env file support
+- Type-safe config structs
+- Validation helpers
+
+## 🔐 Security
+
+- **Authentication:** JWT-based auth with Keycloak
+- **Authorization:** Role-based access control (RBAC)
+- **Data Validation:** Input sanitization and validation
+- **Secure Defaults:** All services start with security best practices
 
 ## 🐳 Docker Support
 
-```bash
-# Build image
-docker build -t toxictoast/blog-service .
+Each service includes Docker support:
 
-# Run with docker-compose
+```bash
+# Build and run a service
+cd services/blog-service
 docker-compose up -d
 ```
 
-## 📝 Development
+Or run the entire stack:
 
-### Generate Protocol Buffers
 ```bash
-cd services/blog-service
-make proto-gen
+# From root directory
+docker-compose up -d
 ```
 
-### Run Tests
+## 🏗️ Development
+
+### Go Workspace Commands
+
 ```bash
+# Sync all workspace dependencies
+go work sync
+
+# Build all services
+go build ./...
+
+# Test all services
 go test ./...
+
+# Update all dependencies
+go get -u ./...
 ```
 
-### Build Binary
-```bash
-make build
-```
+### Adding a New Service
 
-## 📊 Database Schema
+1. Create service directory in `services/`
+2. Initialize Go module
+3. Add to `go.work`:
+   ```bash
+   go work use ./services/your-service
+   ```
+4. Import shared modules as needed
 
-The service uses PostgreSQL with the following main tables:
-- `posts` - Blog posts
-- `categories` - Hierarchical categories
-- `tags` - Simple tags
-- `comments` - Nested comments
-- `media` - Uploaded files
+## 📊 Monitoring & Observability
 
-Auto-migrations run on startup using GORM.
+**Planned:**
+- Prometheus metrics
+- Grafana dashboards
+- Distributed tracing (OpenTelemetry)
+- Centralized logging (ELK/Loki)
 
-## 🎯 Roadmap
+## 🗺️ Roadmap
 
-- [ ] GraphQL API support
-- [ ] Full-text search (Elasticsearch)
-- [ ] CDN integration
-- [ ] MinIO object storage
-- [ ] Admin UI (React)
-- [ ] Multi-language support
-- [ ] Post scheduling
-- [ ] Analytics integration
+### Planned Services
+- [ ] User Service - User management and authentication
+- [ ] Notification Service - Email, SMS, push notifications
+- [ ] Analytics Service - Usage analytics and reporting
+- [ ] Search Service - Full-text search with Elasticsearch
+- [ ] Gateway Service - API Gateway with rate limiting
+
+### Infrastructure
+- [ ] Service mesh (Istio/Linkerd)
+- [ ] CI/CD pipelines
+- [ ] Kubernetes deployment
+- [ ] Infrastructure as Code (Terraform)
 
 ## 📄 License
 
 This project is proprietary software. See [LICENSE](LICENSE) for details.
+
+**IMPORTANT:** This software is for PRIVATE USE ONLY by the author (ToxicToast). Any unauthorized use, reproduction, or distribution is strictly prohibited.
 
 ## 👤 Author
 
@@ -297,5 +227,9 @@ This project is proprietary software. See [LICENSE](LICENSE) for details.
 This is a private project and not open for external contributions.
 
 ---
+
+**Current Services:** 1 (Blog Service)
+**In Development:** 0
+**Planned:** 5+
 
 Built with ❤️ using Go and gRPC
