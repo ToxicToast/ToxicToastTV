@@ -18,15 +18,20 @@ This is a **Go monorepo** using Go workspaces, containing multiple microservices
 ```
 ToxicToastGo/
 ├── services/                   # Microservices
-│   ├── blog-service/          # Blog CMS backend
-│   ├── [future-service]/      # Additional services coming soon
-│   └── ...
+│   ├── blog-service/          # ✅ Blog CMS backend
+│   ├── warcraft-service/      # 📋 WoW character & guild tracking
+│   ├── foodfolio-service/     # 📋 Food inventory management
+│   ├── twitchbot-service/     # 📋 Twitch stream analytics
+│   ├── notification-service/  # 📋 Multi-channel notifications
+│   ├── sse-service/           # 📋 Real-time events for frontends
+│   └── gateway-service/       # 📋 API Gateway (last priority)
 ├── shared/                     # Shared modules
 │   ├── auth/                  # Authentication (Keycloak JWT)
 │   ├── kafka/                 # Event producer/consumer
 │   ├── database/              # PostgreSQL connection
 │   ├── logger/                # Structured logging
-│   └── config/                # Configuration utilities
+│   ├── config/                # Configuration utilities
+│   └── [telemetry]/           # 📋 Metrics & tracing (planned)
 ├── go.work                     # Go workspace configuration
 └── LICENSE                     # Proprietary license
 ```
@@ -48,8 +53,88 @@ A full-featured blog CMS backend with support for posts, categories, tags, comme
 
 👉 [View Blog Service Documentation](./services/blog-service/README.md)
 
-### [Future Services]
-Additional microservices will be added here as the ecosystem grows.
+### Warcraft Service
+**Status:** 📋 Planned
+
+Integration with Blizzard API for World of Warcraft data tracking.
+
+**Planned Features:**
+- Character management and tracking
+- Guild information and roster
+- Blizzard API integration
+- Character progression tracking
+- Achievement tracking
+- Item and gear tracking
+
+### Foodfolio Service
+**Status:** 📋 Planned
+
+A custom food inventory management system inspired by Grocy, focused on food items.
+
+**Planned Features:**
+- Food inventory tracking
+- Expiration date management
+- Purchase location tracking
+- Receipt scanning and OCR
+- Shopping list generation
+- Nutritional information
+- Barcode scanning
+
+### Twitchbot Service
+**Status:** 📋 Planned
+
+A Twitch bot for tracking and managing stream data (personal channel only).
+
+**Planned Features:**
+- Viewer tracking and analytics
+- Message logging and analysis
+- Stream session tracking
+- Clip archival and management
+- Chat command system
+- Stream notifications
+- Custom alerts
+
+### Notification Service
+**Status:** 📋 Planned
+
+Centralized notification system for all services.
+
+**Planned Features:**
+- Multi-channel notifications (Email, Discord, Telegram)
+- Event-driven notifications via Kafka
+- Template-based messages
+- Notification history
+- User preferences
+- Rate limiting
+- Delivery tracking
+
+### SSE Service
+**Status:** 📋 Planned
+
+Server-Sent Events service for real-time frontend updates.
+
+**Planned Features:**
+- Real-time event streaming to frontends
+- Connection management
+- Event filtering per client
+- Reconnection handling
+- Message queueing
+- Multi-tenant support
+- WebSocket fallback
+
+### Gateway Service
+**Status:** 📋 Planned (Last Priority)
+
+API Gateway for unified access to all microservices.
+
+**Planned Features:**
+- Request routing to services
+- Authentication/Authorization
+- Rate limiting
+- Request/Response transformation
+- Load balancing
+- API versioning
+- Monitoring and logging
 
 ## 🛠️ Tech Stack
 
@@ -188,26 +273,47 @@ go get -u ./...
 
 ## 📊 Monitoring & Observability
 
-**Planned:**
-- Prometheus metrics
-- Grafana dashboards
+**Telemetry** is integrated directly into each service for:
+- Metrics collection (Prometheus-compatible)
 - Distributed tracing (OpenTelemetry)
+- Structured logging
+- Health checks
+
+**Planned Infrastructure:**
+- Grafana dashboards for visualization
 - Centralized logging (ELK/Loki)
+- Alerting (Alertmanager)
+- Service health monitoring
 
 ## 🗺️ Roadmap
 
-### Planned Services
-- [ ] User Service - User management and authentication
-- [ ] Notification Service - Email, SMS, push notifications
-- [ ] Analytics Service - Usage analytics and reporting
-- [ ] Search Service - Full-text search with Elasticsearch
-- [ ] Gateway Service - API Gateway with rate limiting
+### Service Implementation Priority
 
-### Infrastructure
-- [ ] Service mesh (Istio/Linkerd)
-- [ ] CI/CD pipelines
-- [ ] Kubernetes deployment
+**High Priority:**
+1. [ ] Warcraft Service - Blizzard API integration
+2. [ ] Foodfolio Service - Food inventory management
+3. [ ] Twitchbot Service - Stream tracking and analytics
+4. [ ] Notification Service - Multi-channel notifications
+5. [ ] SSE Service - Real-time frontend updates
+
+**Low Priority:**
+6. [ ] Gateway Service - API Gateway (implement last)
+
+### Infrastructure Improvements
+- [ ] Telemetry integration in all services (Prometheus, OpenTelemetry)
+- [ ] CI/CD pipelines (GitHub Actions)
+- [ ] Kubernetes deployment manifests
+- [ ] Docker Compose orchestration for local development
 - [ ] Infrastructure as Code (Terraform)
+- [ ] Centralized logging (ELK/Loki)
+- [ ] Grafana dashboards
+
+### Shared Module Enhancements
+- [ ] Telemetry module (metrics, tracing)
+- [ ] SSE client module
+- [ ] Notification client module
+- [ ] Common gRPC interceptors
+- [ ] Error handling utilities
 
 ## 📄 License
 
@@ -229,7 +335,7 @@ This is a private project and not open for external contributions.
 ---
 
 **Current Services:** 1 (Blog Service)
-**In Development:** 0
-**Planned:** 5+
+**Planned Services:** 6 (Warcraft, Foodfolio, Twitchbot, Notification, SSE, Gateway)
+**Total Ecosystem:** 7 Microservices
 
 Built with ❤️ using Go and gRPC
