@@ -3,26 +3,27 @@ module toxictoast/services/blog-service
 go 1.24.4
 
 require (
+	github.com/disintegration/imaging v1.6.2
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.0
+	golang.org/x/image v0.32.0
 	gorm.io/gorm v1.31.1
 )
 
 require (
-	github.com/disintegration/imaging v1.6.2 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	golang.org/x/image v0.32.0 // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	gorm.io/driver/postgres v1.6.0 // indirect
 )
 
 require (
-	github.com/IBM/sarama v1.46.3
+	github.com/IBM/sarama v1.46.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/eapache/go-resiliency v1.7.0 // indirect
 	github.com/eapache/go-xerial-snappy v0.0.0-20230731223053-c322873962e3 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package foodfolio.v1;
+
+option go_package = "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1;foodfoliov1";
+
+import "common.proto";
+
+// Company (Brand/Manufacturer) message
+message Company {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  Timestamps timestamps = 4;
+
+  int32 item_count = 5; // Number of items from this company
+}
+
+// Create company request
+message CreateCompanyRequest {
+  string name = 1;
+}
+
+// Create company response
+message CreateCompanyResponse {
+  Company company = 1;
+}
+
+// Get company response
+message GetCompanyResponse {
+  Company company = 1;
+}
+
+// List companies request
+message ListCompaniesRequest {
+  optional string search = 1;   // Search by name
+  PaginationRequest pagination = 2;
+  DeletedFilter deleted_filter = 3;
+}
+
+// List companies response
+message ListCompaniesResponse {
+  repeated Company companies = 1;
+  PaginationResponse pagination = 2;
+}
+
+// Update company request
+message UpdateCompanyRequest {
+  string id = 1;
+  string name = 2;
+}
+
+// Update company response
+message UpdateCompanyResponse {
+  Company company = 1;
+}
+
+// Company service
+service CompanyService {
+  rpc CreateCompany(CreateCompanyRequest) returns (CreateCompanyResponse);
+  rpc GetCompany(IdRequest) returns (GetCompanyResponse);
+  rpc ListCompanies(ListCompaniesRequest) returns (ListCompaniesResponse);
+  rpc UpdateCompany(UpdateCompanyRequest) returns (UpdateCompanyResponse);
+  rpc DeleteCompany(IdRequest) returns (SuccessResponse);
+}

@@ -1,0 +1,165 @@
+syntax = "proto3";
+
+package foodfolio.v1;
+
+option go_package = "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1;foodfoliov1";
+
+import "common.proto";
+import "item_variant.proto";
+
+// ShoppinglistItem message
+message ShoppinglistItem {
+  string id = 1;
+  string shoppinglist_id = 2;
+  string item_variant_id = 3;
+  int32 quantity = 4;
+  bool is_purchased = 5;
+  Timestamps timestamps = 6;
+
+  // Optional relations
+  optional ItemVariant item_variant = 7;
+}
+
+// Shoppinglist message
+message Shoppinglist {
+  string id = 1;
+  string name = 2; // "Weekly Shopping", "Party Supplies"
+  Timestamps timestamps = 3;
+
+  // Optional relations
+  repeated ShoppinglistItem items = 4;
+  int32 total_items = 5;
+  int32 purchased_items = 6;
+  int32 pending_items = 7;
+}
+
+// Create shoppinglist request
+message CreateShoppinglistRequest {
+  string name = 1;
+}
+
+// Create shoppinglist response
+message CreateShoppinglistResponse {
+  Shoppinglist shoppinglist = 1;
+}
+
+// Get shoppinglist response
+message GetShoppinglistResponse {
+  Shoppinglist shoppinglist = 1;
+}
+
+// List shoppinglists request
+message ListShoppinglistsRequest {
+  PaginationRequest pagination = 1;
+  DeletedFilter deleted_filter = 2;
+}
+
+// List shoppinglists response
+message ListShoppinglistsResponse {
+  repeated Shoppinglist shoppinglists = 1;
+  PaginationResponse pagination = 2;
+}
+
+// Update shoppinglist request
+message UpdateShoppinglistRequest {
+  string id = 1;
+  string name = 2;
+}
+
+// Update shoppinglist response
+message UpdateShoppinglistResponse {
+  Shoppinglist shoppinglist = 1;
+}
+
+// Add item to shoppinglist request
+message AddItemToShoppinglistRequest {
+  string shoppinglist_id = 1;
+  string item_variant_id = 2;
+  int32 quantity = 3;
+}
+
+// Add item to shoppinglist response
+message AddItemToShoppinglistResponse {
+  ShoppinglistItem item = 1;
+}
+
+// Remove item from shoppinglist request
+message RemoveItemFromShoppinglistRequest {
+  string shoppinglist_id = 1;
+  string item_id = 2; // ShoppinglistItem ID
+}
+
+// Update shoppinglist item request
+message UpdateShoppinglistItemRequest {
+  string id = 1; // ShoppinglistItem ID
+  optional int32 quantity = 2;
+  optional bool is_purchased = 3;
+}
+
+// Update shoppinglist item response
+message UpdateShoppinglistItemResponse {
+  ShoppinglistItem item = 1;
+}
+
+// Mark item as purchased request
+message MarkItemPurchasedRequest {
+  string id = 1; // ShoppinglistItem ID
+}
+
+// Mark item as purchased response
+message MarkItemPurchasedResponse {
+  ShoppinglistItem item = 1;
+}
+
+// Mark all items as purchased request
+message MarkAllItemsPurchasedRequest {
+  string shoppinglist_id = 1;
+}
+
+// Mark all items as purchased response
+message MarkAllItemsPurchasedResponse {
+  int32 updated_count = 1;
+}
+
+// Generate from low stock request
+message GenerateFromLowStockRequest {
+  string name = 1; // Name for new shoppinglist
+}
+
+// Generate from low stock response
+message GenerateFromLowStockResponse {
+  Shoppinglist shoppinglist = 1;
+  int32 items_added = 2;
+}
+
+// Clear purchased items request
+message ClearPurchasedItemsRequest {
+  string shoppinglist_id = 1;
+}
+
+// Clear purchased items response
+message ClearPurchasedItemsResponse {
+  int32 removed_count = 1;
+}
+
+// Shoppinglist service
+service ShoppinglistService {
+  rpc CreateShoppinglist(CreateShoppinglistRequest) returns (CreateShoppinglistResponse);
+  rpc GetShoppinglist(IdRequest) returns (GetShoppinglistResponse);
+  rpc ListShoppinglists(ListShoppinglistsRequest) returns (ListShoppinglistsResponse);
+  rpc UpdateShoppinglist(UpdateShoppinglistRequest) returns (UpdateShoppinglistResponse);
+  rpc DeleteShoppinglist(IdRequest) returns (SuccessResponse);
+
+  // Item management
+  rpc AddItemToShoppinglist(AddItemToShoppinglistRequest) returns (AddItemToShoppinglistResponse);
+  rpc RemoveItemFromShoppinglist(RemoveItemFromShoppinglistRequest) returns (SuccessResponse);
+  rpc UpdateShoppinglistItem(UpdateShoppinglistItemRequest) returns (UpdateShoppinglistItemResponse);
+
+  // Actions
+  rpc MarkItemPurchased(MarkItemPurchasedRequest) returns (MarkItemPurchasedResponse);
+  rpc MarkAllItemsPurchased(MarkAllItemsPurchasedRequest) returns (MarkAllItemsPurchasedResponse);
+  rpc ClearPurchasedItems(ClearPurchasedItemsRequest) returns (ClearPurchasedItemsResponse);
+
+  // Generate
+  rpc GenerateFromLowStock(GenerateFromLowStockRequest) returns (GenerateFromLowStockResponse);
+}

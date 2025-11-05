@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package foodfolio.v1;
+
+option go_package = "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1;foodfoliov1";
+
+import "common.proto";
+
+// Warehouse (Purchase Location) message
+message Warehouse {
+  string id = 1;
+  string name = 2; // "Rewe", "Lidl", "Aldi", "Amazon"
+  string slug = 3;
+  Timestamps timestamps = 4;
+
+  int32 purchase_count = 5; // Number of purchases from this warehouse
+}
+
+// Create warehouse request
+message CreateWarehouseRequest {
+  string name = 1;
+}
+
+// Create warehouse response
+message CreateWarehouseResponse {
+  Warehouse warehouse = 1;
+}
+
+// Get warehouse response
+message GetWarehouseResponse {
+  Warehouse warehouse = 1;
+}
+
+// List warehouses request
+message ListWarehousesRequest {
+  optional string search = 1;
+  PaginationRequest pagination = 2;
+  DeletedFilter deleted_filter = 3;
+}
+
+// List warehouses response
+message ListWarehousesResponse {
+  repeated Warehouse warehouses = 1;
+  PaginationResponse pagination = 2;
+}
+
+// Update warehouse request
+message UpdateWarehouseRequest {
+  string id = 1;
+  string name = 2;
+}
+
+// Update warehouse response
+message UpdateWarehouseResponse {
+  Warehouse warehouse = 1;
+}
+
+// Warehouse service
+service WarehouseService {
+  rpc CreateWarehouse(CreateWarehouseRequest) returns (CreateWarehouseResponse);
+  rpc GetWarehouse(IdRequest) returns (GetWarehouseResponse);
+  rpc ListWarehouses(ListWarehousesRequest) returns (ListWarehousesResponse);
+  rpc UpdateWarehouse(UpdateWarehouseRequest) returns (UpdateWarehouseResponse);
+  rpc DeleteWarehouse(IdRequest) returns (SuccessResponse);
+}

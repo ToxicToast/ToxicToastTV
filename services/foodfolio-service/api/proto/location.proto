@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package foodfolio.v1;
+
+option go_package = "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1;foodfoliov1";
+
+import "common.proto";
+
+// Location (Storage Location) message
+message Location {
+  string id = 1;
+  string name = 2; // "Kühlschrank", "Vorratsschrank", "Gefrierschrank"
+  string slug = 3;
+  optional string parent_id = 4; // e.g., "Fridge" -> "Top Shelf"
+  Timestamps timestamps = 5;
+
+  // Optional relations
+  optional Location parent = 6;
+  repeated Location children = 7;
+  int32 item_count = 8; // Number of items stored here
+}
+
+// Create location request
+message CreateLocationRequest {
+  string name = 1;
+  optional string parent_id = 2;
+}
+
+// Create location response
+message CreateLocationResponse {
+  Location location = 1;
+}
+
+// Get location response
+message GetLocationResponse {
+  Location location = 1;
+}
+
+// List locations request
+message ListLocationsRequest {
+  optional string parent_id = 1; // Filter by parent (null = root locations)
+  bool include_children = 2;     // Include children in response
+  PaginationRequest pagination = 3;
+  DeletedFilter deleted_filter = 4;
+}
+
+// List locations response
+message ListLocationsResponse {
+  repeated Location locations = 1;
+  PaginationResponse pagination = 2;
+}
+
+// Update location request
+message UpdateLocationRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string parent_id = 3; // Set to empty string to remove parent
+}
+
+// Update location response
+message UpdateLocationResponse {
+  Location location = 1;
+}
+
+// Get location tree request
+message GetLocationTreeRequest {
+  optional string root_id = 1; // Start from specific location, or null for full tree
+  int32 max_depth = 2;         // Maximum depth to fetch (0 = unlimited)
+}
+
+// Get location tree response
+message GetLocationTreeResponse {
+  repeated Location locations = 1; // Root locations with nested children
+}
+
+// Location service
+service LocationService {
+  rpc CreateLocation(CreateLocationRequest) returns (CreateLocationResponse);
+  rpc GetLocation(IdRequest) returns (GetLocationResponse);
+  rpc ListLocations(ListLocationsRequest) returns (ListLocationsResponse);
+  rpc UpdateLocation(UpdateLocationRequest) returns (UpdateLocationResponse);
+  rpc DeleteLocation(IdRequest) returns (SuccessResponse);
+  rpc GetLocationTree(GetLocationTreeRequest) returns (GetLocationTreeResponse);
+}

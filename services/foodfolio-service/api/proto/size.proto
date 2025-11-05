@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package foodfolio.v1;
+
+option go_package = "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1;foodfoliov1";
+
+import "common.proto";
+
+// Size message
+message Size {
+  string id = 1;
+  string name = 2;   // "500ml", "1L", "250g"
+  double value = 3;  // Numeric value: 500, 1, 250
+  string unit = 4;   // Unit: "ml", "L", "g", "kg"
+  Timestamps timestamps = 5;
+
+  int32 variant_count = 6; // Number of variants with this size
+}
+
+// Create size request
+message CreateSizeRequest {
+  string name = 1;
+  double value = 2;
+  string unit = 3;
+}
+
+// Create size response
+message CreateSizeResponse {
+  Size size = 1;
+}
+
+// Get size response
+message GetSizeResponse {
+  Size size = 1;
+}
+
+// List sizes request
+message ListSizesRequest {
+  optional string unit = 1;    // Filter by unit
+  optional double min_value = 2; // Minimum value
+  optional double max_value = 3; // Maximum value
+  PaginationRequest pagination = 4;
+  DeletedFilter deleted_filter = 5;
+}
+
+// List sizes response
+message ListSizesResponse {
+  repeated Size sizes = 1;
+  PaginationResponse pagination = 2;
+}
+
+// Update size request
+message UpdateSizeRequest {
+  string id = 1;
+  optional string name = 2;
+  optional double value = 3;
+  optional string unit = 4;
+}
+
+// Update size response
+message UpdateSizeResponse {
+  Size size = 1;
+}
+
+// Size service
+service SizeService {
+  rpc CreateSize(CreateSizeRequest) returns (CreateSizeResponse);
+  rpc GetSize(IdRequest) returns (GetSizeResponse);
+  rpc ListSizes(ListSizesRequest) returns (ListSizesResponse);
+  rpc UpdateSize(UpdateSizeRequest) returns (UpdateSizeResponse);
+  rpc DeleteSize(IdRequest) returns (SuccessResponse);
+}

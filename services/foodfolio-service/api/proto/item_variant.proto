@@ -1,0 +1,152 @@
+syntax = "proto3";
+
+package foodfolio.v1;
+
+option go_package = "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1;foodfoliov1";
+
+import "common.proto";
+import "item.proto";
+import "size.proto";
+
+// ItemVariant (Flavor + Size Combination) message
+message ItemVariant {
+  string id = 1;
+  string item_id = 2;
+  string size_id = 3;
+  string variant_name = 4;       // "Original", "Ultra White", "Zero Sugar"
+  optional string barcode = 5;   // EAN/UPC code
+  int32 min_sku = 6;             // Alert when stock below this
+  int32 max_sku = 7;             // Alert when stock above this
+  bool is_normally_frozen = 8;   // Typically stored frozen
+  Timestamps timestamps = 9;
+
+  // Optional relations
+  optional Item item = 10;
+  optional Size size = 11;
+  int32 current_stock = 12;      // Calculated from ItemDetails
+  int32 detail_count = 13;       // Total ItemDetails count
+}
+
+// Create item variant request
+message CreateItemVariantRequest {
+  string item_id = 1;
+  string size_id = 2;
+  string variant_name = 3;
+  optional string barcode = 4;
+  int32 min_sku = 5;
+  int32 max_sku = 6;
+  bool is_normally_frozen = 7;
+}
+
+// Create item variant response
+message CreateItemVariantResponse {
+  ItemVariant item_variant = 1;
+}
+
+// Get item variant response
+message GetItemVariantResponse {
+  ItemVariant item_variant = 1;
+}
+
+// List item variants request
+message ListItemVariantsRequest {
+  optional string item_id = 1;        // Filter by item
+  optional string size_id = 2;        // Filter by size
+  optional string barcode = 3;        // Search by barcode
+  optional bool is_normally_frozen = 4; // Filter frozen items
+  PaginationRequest pagination = 5;
+  DeletedFilter deleted_filter = 6;
+}
+
+// List item variants response
+message ListItemVariantsResponse {
+  repeated ItemVariant item_variants = 1;
+  PaginationResponse pagination = 2;
+}
+
+// Update item variant request
+message UpdateItemVariantRequest {
+  string id = 1;
+  optional string variant_name = 2;
+  optional string barcode = 3;
+  optional int32 min_sku = 4;
+  optional int32 max_sku = 5;
+  optional bool is_normally_frozen = 6;
+}
+
+// Update item variant response
+message UpdateItemVariantResponse {
+  ItemVariant item_variant = 1;
+}
+
+// Get current stock request
+message GetCurrentStockRequest {
+  string id = 1; // ItemVariant ID
+}
+
+// Get current stock response
+message GetCurrentStockResponse {
+  string item_variant_id = 1;
+  int32 current_stock = 2;
+  int32 min_sku = 3;
+  int32 max_sku = 4;
+  bool needs_restock = 5;     // Stock < MinSKU
+  bool is_overstocked = 6;    // Stock > MaxSKU
+}
+
+// Get low stock variants request
+message GetLowStockVariantsRequest {
+  PaginationRequest pagination = 1;
+}
+
+// Get low stock variants response
+message GetLowStockVariantsResponse {
+  repeated ItemVariant item_variants = 1; // Variants with stock < MinSKU
+  PaginationResponse pagination = 2;
+}
+
+// Get overstocked variants request
+message GetOverstockedVariantsRequest {
+  PaginationRequest pagination = 1;
+}
+
+// Get overstocked variants response
+message GetOverstockedVariantsResponse {
+  repeated ItemVariant item_variants = 1; // Variants with stock > MaxSKU
+  PaginationResponse pagination = 2;
+}
+
+// Get item with variants response (from item.proto)
+message GetItemWithVariantsResponse {
+  Item item = 1;
+  repeated ItemVariant variants = 2;
+}
+
+// Scan barcode request
+message ScanBarcodeRequest {
+  string barcode = 1;
+}
+
+// Scan barcode response
+message ScanBarcodeResponse {
+  optional ItemVariant item_variant = 1;
+  bool found = 2;
+}
+
+// ItemVariant service
+service ItemVariantService {
+  rpc CreateItemVariant(CreateItemVariantRequest) returns (CreateItemVariantResponse);
+  rpc GetItemVariant(IdRequest) returns (GetItemVariantResponse);
+  rpc ListItemVariants(ListItemVariantsRequest) returns (ListItemVariantsResponse);
+  rpc UpdateItemVariant(UpdateItemVariantRequest) returns (UpdateItemVariantResponse);
+  rpc DeleteItemVariant(IdRequest) returns (SuccessResponse);
+
+  // Stock management
+  rpc GetCurrentStock(GetCurrentStockRequest) returns (GetCurrentStockResponse);
+  rpc GetLowStockVariants(GetLowStockVariantsRequest) returns (GetLowStockVariantsResponse);
+  rpc GetOverstockedVariants(GetOverstockedVariantsRequest) returns (GetOverstockedVariantsResponse);
+  rpc GetItemWithVariants(GetItemWithVariantsRequest) returns (GetItemWithVariantsResponse);
+
+  // Barcode
+  rpc ScanBarcode(ScanBarcodeRequest) returns (ScanBarcodeResponse);
+}
