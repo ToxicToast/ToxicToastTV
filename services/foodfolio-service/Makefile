@@ -72,7 +72,34 @@ docker-build:
 
 docker-run:
 	@echo "Running Docker container..."
-	@docker run -p 8081:8081 -p 9091:9091 foodfolio-service:latest
+	@docker run -p 8889:8889 -p 9091:9091 foodfolio-service:latest
+
+# Docker Compose
+docker-up:
+	@echo "Starting all services with Docker Compose..."
+	@docker-compose up -d
+
+docker-down:
+	@echo "Stopping all services..."
+	@docker-compose down
+
+docker-logs:
+	@echo "Showing logs..."
+	@docker-compose logs -f
+
+docker-restart:
+	@echo "Restarting services..."
+	@docker-compose restart
+
+docker-clean:
+	@echo "Cleaning up Docker resources..."
+	@docker-compose down -v
+	@docker system prune -f
+
+# Development with Docker
+docker-dev:
+	@echo "Starting dependencies only (PostgreSQL + Kafka)..."
+	@docker-compose up -d postgres redpanda redpanda-console
 
 # Database
 db-migrate:
@@ -82,17 +109,37 @@ db-migrate:
 # Help
 help:
 	@echo "Available targets:"
+	@echo ""
+	@echo "Proto:"
 	@echo "  proto-gen         - Generate protobuf files"
 	@echo "  proto-clean       - Clean generated protobuf files"
 	@echo "  proto             - Clean and regenerate protobuf files"
+	@echo ""
+	@echo "Build & Run:"
 	@echo "  build             - Build the service binary"
-	@echo "  run               - Run the service"
+	@echo "  run               - Run the service locally"
+	@echo "  dev               - Run in development mode (requires air)"
+	@echo ""
+	@echo "Testing:"
 	@echo "  test              - Run tests"
 	@echo "  test-coverage     - Run tests with coverage report"
-	@echo "  dev               - Run in development mode (requires air)"
+	@echo ""
+	@echo "Dependencies:"
 	@echo "  deps              - Install and tidy dependencies"
-	@echo "  clean             - Clean all build artifacts"
+	@echo ""
+	@echo "Docker:"
 	@echo "  docker-build      - Build Docker image"
 	@echo "  docker-run        - Run Docker container"
+	@echo "  docker-up         - Start all services (including dependencies)"
+	@echo "  docker-down       - Stop all services"
+	@echo "  docker-logs       - Show logs"
+	@echo "  docker-restart    - Restart all services"
+	@echo "  docker-clean      - Clean up Docker resources"
+	@echo "  docker-dev        - Start dependencies only (DB + Kafka)"
+	@echo ""
+	@echo "Database:"
 	@echo "  db-migrate        - Run database migrations"
+	@echo ""
+	@echo "Utilities:"
+	@echo "  clean             - Clean all build artifacts"
 	@echo "  help              - Show this help message"
