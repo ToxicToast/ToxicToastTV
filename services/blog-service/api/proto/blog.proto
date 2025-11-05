@@ -1,0 +1,361 @@
+syntax = "proto3";
+
+package blog;
+
+option go_package = "toxictoast/services/blog-service/api/proto/blog";
+
+import "google/protobuf/timestamp.proto";
+
+// Blog Service - Main gRPC Service
+service BlogService {
+  // Post operations
+  rpc CreatePost(CreatePostRequest) returns (PostResponse);
+  rpc GetPost(GetPostRequest) returns (PostResponse);
+  rpc UpdatePost(UpdatePostRequest) returns (PostResponse);
+  rpc DeletePost(DeletePostRequest) returns (DeleteResponse);
+  rpc ListPosts(ListPostsRequest) returns (ListPostsResponse);
+  rpc PublishPost(PublishPostRequest) returns (PostResponse);
+
+  // Category operations
+  rpc CreateCategory(CreateCategoryRequest) returns (CategoryResponse);
+  rpc GetCategory(GetCategoryRequest) returns (CategoryResponse);
+  rpc UpdateCategory(UpdateCategoryRequest) returns (CategoryResponse);
+  rpc DeleteCategory(DeleteCategoryRequest) returns (DeleteResponse);
+  rpc ListCategories(ListCategoriesRequest) returns (ListCategoriesResponse);
+
+  // Tag operations
+  rpc CreateTag(CreateTagRequest) returns (TagResponse);
+  rpc GetTag(GetTagRequest) returns (TagResponse);
+  rpc UpdateTag(UpdateTagRequest) returns (TagResponse);
+  rpc DeleteTag(DeleteTagRequest) returns (DeleteResponse);
+  rpc ListTags(ListTagsRequest) returns (ListTagsResponse);
+
+  // Media operations
+  rpc UploadMedia(stream UploadMediaRequest) returns (MediaResponse);
+  rpc GetMedia(GetMediaRequest) returns (MediaResponse);
+  rpc DeleteMedia(DeleteMediaRequest) returns (DeleteResponse);
+  rpc ListMedia(ListMediaRequest) returns (ListMediaResponse);
+
+  // Comment operations
+  rpc CreateComment(CreateCommentRequest) returns (CommentResponse);
+  rpc GetComment(GetCommentRequest) returns (CommentResponse);
+  rpc UpdateComment(UpdateCommentRequest) returns (CommentResponse);
+  rpc DeleteComment(DeleteCommentRequest) returns (DeleteResponse);
+  rpc ListComments(ListCommentsRequest) returns (ListCommentsResponse);
+  rpc ModerateComment(ModerateCommentRequest) returns (CommentResponse);
+}
+
+// Post messages
+message Post {
+  string id = 1;
+  string title = 2;
+  string slug = 3;
+  string content = 4;
+  string excerpt = 5;
+  string markdown = 6;
+  string html = 7;
+  PostStatus status = 8;
+  bool featured = 9;
+  string author_id = 10;
+  repeated string category_ids = 11;
+  repeated string tag_ids = 12;
+  string featured_image_id = 13;
+  SEOMetadata seo = 14;
+  int32 reading_time = 15;
+  int32 view_count = 16;
+  google.protobuf.Timestamp published_at = 17;
+  google.protobuf.Timestamp created_at = 18;
+  google.protobuf.Timestamp updated_at = 19;
+}
+
+enum PostStatus {
+  POST_STATUS_UNSPECIFIED = 0;
+  POST_STATUS_DRAFT = 1;
+  POST_STATUS_PUBLISHED = 2;
+}
+
+message SEOMetadata {
+  string meta_title = 1;
+  string meta_description = 2;
+  repeated string meta_keywords = 3;
+  string og_title = 4;
+  string og_description = 5;
+  string og_image = 6;
+  string canonical_url = 7;
+}
+
+message CreatePostRequest {
+  string title = 1;
+  string content = 2;
+  string excerpt = 3;
+  repeated string category_ids = 4;
+  repeated string tag_ids = 5;
+  string featured_image_id = 6;
+  bool featured = 7;
+  SEOMetadata seo = 8;
+}
+
+message UpdatePostRequest {
+  string id = 1;
+  optional string title = 2;
+  optional string content = 3;
+  optional string excerpt = 4;
+  repeated string category_ids = 5;
+  repeated string tag_ids = 6;
+  optional string featured_image_id = 7;
+  optional bool featured = 8;
+  optional SEOMetadata seo = 9;
+}
+
+message GetPostRequest {
+  oneof identifier {
+    string id = 1;
+    string slug = 2;
+  }
+}
+
+message PublishPostRequest {
+  string id = 1;
+}
+
+message DeletePostRequest {
+  string id = 1;
+}
+
+message ListPostsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  optional string category_id = 3;
+  optional string tag_id = 4;
+  optional string author_id = 5;
+  optional PostStatus status = 6;
+  optional bool featured = 7;
+  optional string search = 8;
+  string sort_by = 9;
+  string sort_order = 10;
+}
+
+message PostResponse {
+  Post post = 1;
+}
+
+message ListPostsResponse {
+  repeated Post posts = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+// Category messages
+message Category {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  string description = 4;
+  optional string parent_id = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message CreateCategoryRequest {
+  string name = 1;
+  string description = 2;
+  optional string parent_id = 3;
+}
+
+message UpdateCategoryRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string description = 3;
+  optional string parent_id = 4;
+}
+
+message GetCategoryRequest {
+  oneof identifier {
+    string id = 1;
+    string slug = 2;
+  }
+}
+
+message DeleteCategoryRequest {
+  string id = 1;
+}
+
+message ListCategoriesRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  optional string parent_id = 3;
+}
+
+message CategoryResponse {
+  Category category = 1;
+}
+
+message ListCategoriesResponse {
+  repeated Category categories = 1;
+  int32 total = 2;
+}
+
+// Tag messages
+message Tag {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message CreateTagRequest {
+  string name = 1;
+}
+
+message UpdateTagRequest {
+  string id = 1;
+  string name = 2;
+}
+
+message GetTagRequest {
+  oneof identifier {
+    string id = 1;
+    string slug = 2;
+  }
+}
+
+message DeleteTagRequest {
+  string id = 1;
+}
+
+message ListTagsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  optional string search = 3;
+}
+
+message TagResponse {
+  Tag tag = 1;
+}
+
+message ListTagsResponse {
+  repeated Tag tags = 1;
+  int32 total = 2;
+}
+
+// Media messages
+message Media {
+  string id = 1;
+  string filename = 2;
+  string original_filename = 3;
+  string mime_type = 4;
+  int64 size = 5;
+  string url = 6;
+  optional string thumbnail_url = 7;
+  int32 width = 8;
+  int32 height = 9;
+  string uploaded_by = 10;
+  google.protobuf.Timestamp created_at = 11;
+}
+
+message UploadMediaRequest {
+  oneof data {
+    MediaMetadata metadata = 1;
+    bytes chunk = 2;
+  }
+}
+
+message MediaMetadata {
+  string filename = 1;
+  string mime_type = 2;
+}
+
+message GetMediaRequest {
+  string id = 1;
+}
+
+message DeleteMediaRequest {
+  string id = 1;
+}
+
+message ListMediaRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  optional string mime_type = 3;
+}
+
+message MediaResponse {
+  Media media = 1;
+}
+
+message ListMediaResponse {
+  repeated Media media = 1;
+  int32 total = 2;
+}
+
+// Comment messages
+message Comment {
+  string id = 1;
+  string post_id = 2;
+  optional string parent_id = 3;
+  string author_name = 4;
+  string author_email = 5;
+  string content = 6;
+  CommentStatus status = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+enum CommentStatus {
+  COMMENT_STATUS_UNSPECIFIED = 0;
+  COMMENT_STATUS_PENDING = 1;
+  COMMENT_STATUS_APPROVED = 2;
+  COMMENT_STATUS_SPAM = 3;
+  COMMENT_STATUS_TRASH = 4;
+}
+
+message CreateCommentRequest {
+  string post_id = 1;
+  optional string parent_id = 2;
+  string author_name = 3;
+  string author_email = 4;
+  string content = 5;
+}
+
+message UpdateCommentRequest {
+  string id = 1;
+  string content = 2;
+}
+
+message GetCommentRequest {
+  string id = 1;
+}
+
+message DeleteCommentRequest {
+  string id = 1;
+}
+
+message ListCommentsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  optional string post_id = 3;
+  optional CommentStatus status = 4;
+}
+
+message ModerateCommentRequest {
+  string id = 1;
+  CommentStatus status = 2;
+}
+
+message CommentResponse {
+  Comment comment = 1;
+}
+
+message ListCommentsResponse {
+  repeated Comment comments = 1;
+  int32 total = 2;
+}
+
+// Common messages
+message DeleteResponse {
+  bool success = 1;
+  string message = 2;
+}

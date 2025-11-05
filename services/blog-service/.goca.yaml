@@ -1,0 +1,73 @@
+# Microservice Project Configuration
+# Optimized for distributed systems and event-driven architecture
+
+project:
+  name: blog-service
+  module: toxictoast/services/blog-service
+  description: Microservice built with Clean Architecture
+
+database:
+  type: postgres
+  migrations:
+    enabled: true
+    auto_generate: true
+  features:
+    soft_delete: false
+    timestamps: true
+    uuid: true
+    audit: true
+
+architecture:
+  layers:
+    domain:
+      enabled: true
+    usecase:
+      enabled: true
+    repository:
+      enabled: true
+    handler:
+      enabled: true
+  
+  patterns:
+    - repository
+    - service
+    - dto
+    - specification
+  
+  naming:
+    files: lowercase
+    entities: PascalCase
+    variables: camelCase
+    functions: PascalCase
+
+generation:
+  validation:
+    enabled: true
+    library: validator
+    sanitize: true
+  
+  business_rules:
+    enabled: true
+    patterns:
+      - validation
+      - authorization
+    events: true
+  
+  documentation:
+    swagger:
+      enabled: true
+    comments:
+      enabled: true
+      language: english
+
+testing:
+  enabled: true
+  framework: testify
+  coverage:
+    enabled: true
+    threshold: 80
+  mocks:
+    enabled: true
+    tool: testify
+  integration: true
+  benchmarks: true
