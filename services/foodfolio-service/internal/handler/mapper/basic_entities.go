@@ -93,7 +93,8 @@ func CategoryToProto(category *domain.Category) *pb.Category {
 	}
 
 	if category.ParentID != nil {
-		cat.ParentId = *category.ParentID
+		parentID := *category.ParentID
+		cat.ParentId = &parentID
 	}
 
 	// Include parent if loaded
@@ -103,7 +104,12 @@ func CategoryToProto(category *domain.Category) *pb.Category {
 
 	// Include children if loaded
 	if len(category.Children) > 0 {
-		cat.Children = CategoriesToProto(category.Children)
+		// Convert []Category to []*Category
+		childrenPtrs := make([]*domain.Category, len(category.Children))
+		for i := range category.Children {
+			childrenPtrs[i] = &category.Children[i]
+		}
+		cat.Children = CategoriesToProto(childrenPtrs)
 	}
 
 	return cat
@@ -133,7 +139,8 @@ func LocationToProto(location *domain.Location) *pb.Location {
 	}
 
 	if location.ParentID != nil {
-		loc.ParentId = *location.ParentID
+		parentID := *location.ParentID
+		loc.ParentId = &parentID
 	}
 
 	// Include parent if loaded
@@ -143,7 +150,12 @@ func LocationToProto(location *domain.Location) *pb.Location {
 
 	// Include children if loaded
 	if len(location.Children) > 0 {
-		loc.Children = LocationsToProto(location.Children)
+		// Convert []Location to []*Location
+		childrenPtrs := make([]*domain.Location, len(location.Children))
+		for i := range location.Children {
+			childrenPtrs[i] = &location.Children[i]
+		}
+		loc.Children = LocationsToProto(childrenPtrs)
 	}
 
 	return loc

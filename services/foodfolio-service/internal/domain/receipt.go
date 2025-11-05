@@ -8,19 +8,19 @@ import (
 
 // Receipt represents a scanned receipt (Kassenbon)
 type Receipt struct {
-	ID          string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	WarehouseID string         `gorm:"type:uuid;not null;index" json:"warehouse_id"`            // Where purchased
-	ScanDate    time.Time      `gorm:"not null" json:"scan_date"`                               // When scanned
-	TotalPrice  float64        `gorm:"type:decimal(10,2);not null" json:"total_price"`          // Total from receipt
-	ImagePath   *string        `gorm:"type:varchar(500)" json:"image_path"`                     // Path to scanned image
-	OCRText     *string        `gorm:"type:text" json:"ocr_text"`                               // Raw OCR output
-	CreatedAt   time.Time      `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt   time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	ID         string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
+	WarehouseID string        `gorm:"type:uuid;not null;index" json:"warehouse_id"`            // Where purchased
+	ScanDate    time.Time     `gorm:"not null" json:"scan_date"`                               // When scanned
+	TotalPrice  float64       `gorm:"type:decimal(10,2);not null" json:"total_price"`          // Total from receipt
+	ImagePath   *string       `gorm:"type:varchar(500)" json:"image_path"`                     // Path to scanned image
+	OCRText     *string       `gorm:"type:text" json:"ocr_text"`                               // Raw OCR output
+	CreatedAt   time.Time     `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt   time.Time     `gorm:"autoUpdateTime" json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 
 	// Relations
-	Warehouse    *Warehouse     `gorm:"foreignKey:WarehouseID" json:"warehouse,omitempty"`
-	ReceiptItems []ReceiptItem  `gorm:"foreignKey:ReceiptID" json:"items,omitempty"`
+	Warehouse *Warehouse     `gorm:"foreignKey:WarehouseID" json:"warehouse,omitempty"`
+	Items     []*ReceiptItem `gorm:"foreignKey:ReceiptID" json:"items,omitempty"`
 }
 
 func (Receipt) TableName() string {

@@ -15,7 +15,6 @@ func ShoppinglistToProto(list *domain.Shoppinglist) *pb.Shoppinglist {
 		Id:         list.ID,
 		Name:       list.Name,
 		Timestamps: ToTimestamps(list.CreatedAt, list.UpdatedAt, nil),
-		ItemCount:  int32(len(list.Items)),
 	}
 
 	// Include items if loaded

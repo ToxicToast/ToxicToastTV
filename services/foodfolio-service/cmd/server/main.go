@@ -22,6 +22,18 @@ import (
 
 	"toxictoast/services/foodfolio-service/internal/domain"
 	"toxictoast/services/foodfolio-service/pkg/config"
+
+	// Repository layer
+	repoImpl "toxictoast/services/foodfolio-service/internal/repository/impl"
+
+	// Use case layer
+	"toxictoast/services/foodfolio-service/internal/usecase"
+
+	// Handler layer
+	grpcHandler "toxictoast/services/foodfolio-service/internal/handler/grpc"
+
+	// Proto definitions
+	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio/v1"
 )
 
 var (
@@ -95,12 +107,67 @@ func main() {
 		log.Printf("Authentication is DISABLED (AUTH_ENABLED=false)")
 	}
 
-	// TODO: Initialize repositories
-	// TODO: Initialize use cases
-	// TODO: Initialize gRPC handlers
+	// Initialize repositories
+	log.Println("Initializing repositories...")
+	categoryRepo := repoImpl.NewCategoryRepository(db)
+	companyRepo := repoImpl.NewCompanyRepository(db)
+	typeRepo := repoImpl.NewTypeRepository(db)
+	sizeRepo := repoImpl.NewSizeRepository(db)
+	warehouseRepo := repoImpl.NewWarehouseRepository(db)
+	locationRepo := repoImpl.NewLocationRepository(db)
+	itemRepo := repoImpl.NewItemRepository(db)
+	itemVariantRepo := repoImpl.NewItemVariantRepository(db)
+	itemDetailRepo := repoImpl.NewItemDetailRepository(db)
+	shoppinglistRepo := repoImpl.NewShoppinglistRepository(db)
+	receiptRepo := repoImpl.NewReceiptRepository(db)
+	log.Println("Repositories initialized")
+
+	// Initialize use cases
+	log.Println("Initializing use cases...")
+	categoryUC := usecase.NewCategoryUseCase(categoryRepo)
+	companyUC := usecase.NewCompanyUseCase(companyRepo)
+	typeUC := usecase.NewTypeUseCase(typeRepo)
+	sizeUC := usecase.NewSizeUseCase(sizeRepo)
+	warehouseUC := usecase.NewWarehouseUseCase(warehouseRepo)
+	locationUC := usecase.NewLocationUseCase(locationRepo)
+	itemUC := usecase.NewItemUseCase(itemRepo, categoryRepo, companyRepo, typeRepo)
+	itemVariantUC := usecase.NewItemVariantUseCase(itemVariantRepo, itemRepo, sizeRepo)
+	itemDetailUC := usecase.NewItemDetailUseCase(itemDetailRepo, itemVariantRepo, warehouseRepo, locationRepo)
+	shoppinglistUC := usecase.NewShoppinglistUseCase(shoppinglistRepo, itemVariantRepo)
+	receiptUC := usecase.NewReceiptUseCase(receiptRepo, warehouseRepo, itemVariantRepo, itemDetailRepo)
+	log.Println("Use cases initialized")
+
+	// Initialize gRPC handlers
+	log.Println("Initializing gRPC handlers...")
+	categoryHandler := grpcHandler.NewCategoryHandler(categoryUC)
+	companyHandler := grpcHandler.NewCompanyHandler(companyUC)
+	typeHandler := grpcHandler.NewTypeHandler(typeUC)
+	sizeHandler := grpcHandler.NewSizeHandler(sizeUC)
+	warehouseHandler := grpcHandler.NewWarehouseHandler(warehouseUC)
+	locationHandler := grpcHandler.NewLocationHandler(locationUC)
+	itemHandler := grpcHandler.NewItemHandler(itemUC)
+	itemVariantHandler := grpcHandler.NewItemVariantHandler(itemVariantUC)
+	itemDetailHandler := grpcHandler.NewItemDetailHandler(itemDetailUC)
+	shoppinglistHandler := grpcHandler.NewShoppinglistHandler(shoppinglistUC)
+	receiptHandler := grpcHandler.NewReceiptHandler(receiptUC)
+	log.Println("gRPC handlers initialized")
 
 	// Setup gRPC server
-	grpcServer := setupGRPCServer(cfg, keycloakAuth)
+	grpcServer := setupGRPCServer(
+		cfg,
+		keycloakAuth,
+		categoryHandler,
+		companyHandler,
+		typeHandler,
+		sizeHandler,
+		warehouseHandler,
+		locationHandler,
+		itemHandler,
+		itemVariantHandler,
+		itemDetailHandler,
+		shoppinglistHandler,
+		receiptHandler,
+	)
 
 	// Start gRPC server
 	go func() {
@@ -147,7 +214,21 @@ func main() {
 	log.Println("Servers stopped")
 }
 
-func setupGRPCServer(cfg *config.Config, keycloakAuth *auth.KeycloakAuth) *grpc.Server {
+func setupGRPCServer(
+	cfg *config.Config,
+	keycloakAuth *auth.KeycloakAuth,
+	categoryHandler *grpcHandler.CategoryHandler,
+	companyHandler *grpcHandler.CompanyHandler,
+	typeHandler *grpcHandler.TypeHandler,
+	sizeHandler *grpcHandler.SizeHandler,
+	warehouseHandler *grpcHandler.WarehouseHandler,
+	locationHandler *grpcHandler.LocationHandler,
+	itemHandler *grpcHandler.ItemHandler,
+	itemVariantHandler *grpcHandler.ItemVariantHandler,
+	itemDetailHandler *grpcHandler.ItemDetailHandler,
+	shoppinglistHandler *grpcHandler.ShoppinglistHandler,
+	receiptHandler *grpcHandler.ReceiptHandler,
+) *grpc.Server {
 	// Setup interceptors
 	var opts []grpc.ServerOption
 
@@ -161,8 +242,20 @@ func setupGRPCServer(cfg *config.Config, keycloakAuth *auth.KeycloakAuth) *grpc.
 	// Create gRPC server
 	server := grpc.NewServer(opts...)
 
-	// TODO: Register services
-	// pb.RegisterFoodfolioServiceServer(server, handler)
+	// Register all services
+	log.Println("Registering gRPC services...")
+	pb.RegisterCategoryServiceServer(server, categoryHandler)
+	pb.RegisterCompanyServiceServer(server, companyHandler)
+	pb.RegisterTypeServiceServer(server, typeHandler)
+	pb.RegisterSizeServiceServer(server, sizeHandler)
+	pb.RegisterWarehouseServiceServer(server, warehouseHandler)
+	pb.RegisterLocationServiceServer(server, locationHandler)
+	pb.RegisterItemServiceServer(server, itemHandler)
+	pb.RegisterItemVariantServiceServer(server, itemVariantHandler)
+	pb.RegisterItemDetailServiceServer(server, itemDetailHandler)
+	pb.RegisterShoppinglistServiceServer(server, shoppinglistHandler)
+	pb.RegisterReceiptServiceServer(server, receiptHandler)
+	log.Println("All gRPC services registered")
 
 	// Enable reflection for tools like grpcurl
 	reflection.Register(server)

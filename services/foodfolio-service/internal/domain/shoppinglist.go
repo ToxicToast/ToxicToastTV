@@ -15,7 +15,7 @@ type Shoppinglist struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 
 	// Relations
-	Items []ShoppinglistItem `gorm:"foreignKey:ShoppinglistID" json:"items,omitempty"`
+	Items []*ShoppinglistItem `gorm:"foreignKey:ShoppinglistID" json:"items,omitempty"`
 }
 
 func (Shoppinglist) TableName() string {

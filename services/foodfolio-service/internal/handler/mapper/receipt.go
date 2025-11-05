@@ -12,22 +12,20 @@ func ReceiptToProto(receipt *domain.Receipt) *pb.Receipt {
 	}
 
 	r := &pb.Receipt{
-		Id:                  receipt.ID,
-		WarehouseId:         receipt.WarehouseID,
-		PurchaseDate:        TimeToProto(receipt.PurchaseDate),
-		TotalAmount:         receipt.TotalAmount,
-		IsProcessed:         receipt.IsProcessed,
-		IsInventoryCreated:  receipt.IsInventoryCreated,
-		Timestamps:          ToTimestamps(receipt.CreatedAt, receipt.UpdatedAt, nil),
-		ItemCount:           int32(len(receipt.Items)),
+		Id:          receipt.ID,
+		WarehouseId: receipt.WarehouseID,
+		ScanDate:    TimeToProto(receipt.ScanDate),
+		TotalPrice:  receipt.TotalPrice,
+		Timestamps:  ToTimestamps(receipt.CreatedAt, receipt.UpdatedAt, nil),
+		TotalItems:  int32(len(receipt.Items)),
 	}
 
 	if receipt.ImagePath != nil {
 		r.ImagePath = receipt.ImagePath
 	}
 
-	if receipt.OcrText != nil {
-		r.OcrText = receipt.OcrText
+	if receipt.OCRText != nil {
+		r.OcrText = receipt.OCRText
 	}
 
 	// Include relations if loaded
