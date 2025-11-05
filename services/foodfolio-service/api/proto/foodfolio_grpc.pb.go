@@ -4,7 +4,7 @@
 // - protoc             v6.31.1
 // source: foodfolio.proto
 
-package foodfolio
+package proto
 
 import (
 	context "context"

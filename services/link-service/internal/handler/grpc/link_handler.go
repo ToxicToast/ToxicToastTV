@@ -6,7 +6,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "toxictoast/services/link-service/api/proto/link"
+	pb "toxictoast/services/link-service/api/proto"
 	"toxictoast/services/link-service/internal/handler/mapper"
 	"toxictoast/services/link-service/internal/repository"
 	"toxictoast/services/link-service/internal/usecase"

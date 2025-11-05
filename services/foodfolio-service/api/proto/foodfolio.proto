@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package foodfolio;
 
-option go_package = "toxictoast/services/foodfolio-service/api/proto/foodfolio";
+option go_package = "toxictoast/services/foodfolio-service/api/proto";
 
 import "google/protobuf/timestamp.proto";
 

@@ -4,7 +4,7 @@
 // 	protoc        v6.31.1
 // source: foodfolio.proto
 
-package foodfolio
+package proto
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -10917,7 +10917,7 @@ const file_foodfolio_proto_rawDesc = "" +
 	"\x10MatchReceiptItem\x12\".foodfolio.MatchReceiptItemRequest\x1a#.foodfolio.MatchReceiptItemResponse\x12j\n" +
 	"\x15AutoMatchReceiptItems\x12'.foodfolio.AutoMatchReceiptItemsRequest\x1a(.foodfolio.AutoMatchReceiptItemsResponse\x12y\n" +
 	"\x1aCreateInventoryFromReceipt\x12,.foodfolio.CreateInventoryFromReceiptRequest\x1a-.foodfolio.CreateInventoryFromReceiptResponse\x12g\n" +
-	"\x14GetReceiptStatistics\x12&.foodfolio.GetReceiptStatisticsRequest\x1a'.foodfolio.GetReceiptStatisticsResponseB;Z9toxictoast/services/foodfolio-service/api/proto/foodfoliob\x06proto3"
+	"\x14GetReceiptStatistics\x12&.foodfolio.GetReceiptStatisticsRequest\x1a'.foodfolio.GetReceiptStatisticsResponseB1Z/toxictoast/services/foodfolio-service/api/protob\x06proto3"
 
 var (
 	file_foodfolio_proto_rawDescOnce sync.Once

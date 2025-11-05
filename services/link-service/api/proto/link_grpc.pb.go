@@ -4,7 +4,7 @@
 // - protoc             v6.31.1
 // source: link.proto
 
-package link
+package proto
 
 import (
 	context "context"

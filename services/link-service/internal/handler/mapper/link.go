@@ -1,7 +1,7 @@
 package mapper
 
 import (
-	pb "toxictoast/services/link-service/api/proto/link"
+	pb "toxictoast/services/link-service/api/proto"
 	"toxictoast/services/link-service/internal/domain"
 )
 

@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
+	pb "toxictoast/services/foodfolio-service/api/proto"
 	"toxictoast/services/foodfolio-service/internal/handler/mapper"
 	"toxictoast/services/foodfolio-service/internal/usecase"
 )

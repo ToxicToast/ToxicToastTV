@@ -21,7 +21,7 @@ import (
 	"github.com/toxictoast/toxictoastgo/shared/database"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
-	pb "toxictoast/services/link-service/api/proto/link"
+	pb "toxictoast/services/link-service/api/proto"
 	"toxictoast/services/link-service/internal/domain"
 	grpcHandler "toxictoast/services/link-service/internal/handler/grpc"
 	"toxictoast/services/link-service/internal/repository/impl"

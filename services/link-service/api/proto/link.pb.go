@@ -4,7 +4,7 @@
 // 	protoc        v6.31.1
 // source: link.proto
 
-package link
+package proto
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -1815,7 +1815,7 @@ const file_link_proto_rawDesc = "" +
 	"\fGetLinkStats\x12\x19.link.GetLinkStatsRequest\x1a\x1a.link.GetLinkStatsResponse\x12B\n" +
 	"\vRecordClick\x12\x18.link.RecordClickRequest\x1a\x19.link.RecordClickResponse\x12H\n" +
 	"\rGetLinkClicks\x12\x1a.link.GetLinkClicksRequest\x1a\x1b.link.GetLinkClicksResponse\x12N\n" +
-	"\x0fGetClicksByDate\x12\x1c.link.GetClicksByDateRequest\x1a\x1d.link.GetClicksByDateResponseB1Z/toxictoast/services/link-service/api/proto/linkb\x06proto3"
+	"\x0fGetClicksByDate\x12\x1c.link.GetClicksByDateRequest\x1a\x1d.link.GetClicksByDateResponseB,Z*toxictoast/services/link-service/api/protob\x06proto3"
 
 var (
 	file_link_proto_rawDescOnce sync.Once

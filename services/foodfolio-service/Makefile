@@ -2,17 +2,15 @@
 
 # Variables
 PROTO_DIR := api/proto
-PROTO_OUT_DIR := api/proto/foodfolio
 PROTO_FILES := $(wildcard $(PROTO_DIR)/*.proto)
 
 # Proto generation
 proto-gen:
 	@echo "Generating protobuf files..."
-	@mkdir -p $(PROTO_OUT_DIR)
 	protoc \
-		--go_out=$(PROTO_OUT_DIR) \
+		--go_out=$(PROTO_DIR) \
 		--go_opt=paths=source_relative \
-		--go-grpc_out=$(PROTO_OUT_DIR) \
+		--go-grpc_out=$(PROTO_DIR) \
 		--go-grpc_opt=paths=source_relative \
 		--proto_path=$(PROTO_DIR) \
 		$(PROTO_FILES)
@@ -20,7 +18,7 @@ proto-gen:
 
 proto-clean:
 	@echo "Cleaning generated protobuf files..."
-	@rm -rf $(PROTO_OUT_DIR)
+	@rm -f $(PROTO_DIR)/*.pb.go
 	@echo "Clean complete!"
 
 proto: proto-clean proto-gen

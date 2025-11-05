@@ -39,12 +39,17 @@ proto-install: ## Install protoc dependencies
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 proto-gen: ## Generate gRPC code from proto files
-	protoc --go_out=. --go_opt=paths=source_relative \
-		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+	@echo "Generating protobuf files..."
+	protoc --go_out=api/proto --go_opt=paths=source_relative \
+		--go-grpc_out=api/proto --go-grpc_opt=paths=source_relative \
+		--proto_path=api/proto \
 		api/proto/link.proto
+	@echo "Protobuf generation complete!"
 
 proto-clean: ## Clean generated proto files
-	rm -f api/proto/link/*.pb.go
+	@echo "Cleaning generated protobuf files..."
+	@rm -f api/proto/*.pb.go
+	@echo "Clean complete!"
 
 proto: proto-clean proto-gen ## Regenerate proto files
 

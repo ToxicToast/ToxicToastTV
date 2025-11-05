@@ -4,7 +4,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"toxictoast/services/foodfolio-service/internal/domain"
-	pb "toxictoast/services/foodfolio-service/api/proto/foodfolio"
+	pb "toxictoast/services/foodfolio-service/api/proto"
 )
 
 // ReceiptToProto converts domain Receipt to protobuf
