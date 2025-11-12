@@ -1,0 +1,162 @@
+package proxy
+
+import (
+	"encoding/json"
+	"net/http"
+	"strings"
+
+	"github.com/gorilla/mux"
+)
+
+// Router handles HTTP routing to gRPC backends
+type Router struct {
+	clients *ServiceClients
+	router  *mux.Router
+}
+
+// NewRouter creates a new HTTP to gRPC router
+func NewRouter(clients *ServiceClients) *Router {
+	r := &Router{
+		clients: clients,
+		router:  mux.NewRouter(),
+	}
+
+	r.setupRoutes()
+	return r
+}
+
+// setupRoutes configures path-based routing
+func (r *Router) setupRoutes() {
+	// Health check
+	r.router.HandleFunc("/health", r.healthCheck).Methods("GET")
+	r.router.HandleFunc("/ready", r.readinessCheck).Methods("GET")
+
+	// Blog service routes - /api/blog/*
+	if r.clients.BlogConn != nil {
+		blogRouter := r.router.PathPrefix("/api/blog").Subrouter()
+		blogRouter.PathPrefix("/").HandlerFunc(r.proxyToBlog)
+	}
+
+	// Link service routes - /api/links/*
+	if r.clients.LinkConn != nil {
+		linkRouter := r.router.PathPrefix("/api/links").Subrouter()
+		linkRouter.PathPrefix("/").HandlerFunc(r.proxyToLink)
+	}
+
+	// Foodfolio service routes - /api/foodfolio/*
+	if r.clients.FoodfolioConn != nil {
+		foodfolioRouter := r.router.PathPrefix("/api/foodfolio").Subrouter()
+		foodfolioRouter.PathPrefix("/").HandlerFunc(r.proxyToFoodfolio)
+	}
+
+	// Notification service routes - /api/notifications/*
+	if r.clients.NotificationConn != nil {
+		notificationRouter := r.router.PathPrefix("/api/notifications").Subrouter()
+		notificationRouter.PathPrefix("/").HandlerFunc(r.proxyToNotification)
+	}
+
+	// SSE service routes - /api/events/*
+	if r.clients.SSEConn != nil {
+		sseRouter := r.router.PathPrefix("/api/events").Subrouter()
+		sseRouter.PathPrefix("/").HandlerFunc(r.proxyToSSE)
+	}
+
+	// TwitchBot service routes - /api/twitch/*
+	if r.clients.TwitchBotConn != nil {
+		twitchRouter := r.router.PathPrefix("/api/twitch").Subrouter()
+		twitchRouter.PathPrefix("/").HandlerFunc(r.proxyToTwitchBot)
+	}
+
+	// Webhook service routes - /api/webhooks/*
+	if r.clients.WebhookConn != nil {
+		webhookRouter := r.router.PathPrefix("/api/webhooks").Subrouter()
+		webhookRouter.PathPrefix("/").HandlerFunc(r.proxyToWebhook)
+	}
+}
+
+// GetRouter returns the mux router
+func (r *Router) GetRouter() *mux.Router {
+	return r.router
+}
+
+// healthCheck endpoint
+func (r *Router) healthCheck(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "healthy",
+	})
+}
+
+// readinessCheck endpoint
+func (r *Router) readinessCheck(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	status := map[string]interface{}{
+		"ready": true,
+		"services": map[string]bool{
+			"blog":         r.clients.BlogConn != nil,
+			"link":         r.clients.LinkConn != nil,
+			"foodfolio":    r.clients.FoodfolioConn != nil,
+			"notification": r.clients.NotificationConn != nil,
+			"sse":          r.clients.SSEConn != nil,
+			"twitchbot":    r.clients.TwitchBotConn != nil,
+			"webhook":      r.clients.WebhookConn != nil,
+		},
+	}
+
+	json.NewEncoder(w).Encode(status)
+}
+
+// Proxy handlers - These will forward requests to gRPC services
+// For now, they return a placeholder response
+
+func (r *Router) proxyToBlog(w http.ResponseWriter, req *http.Request) {
+	path := strings.TrimPrefix(req.URL.Path, "/api/blog")
+	r.handleProxy(w, req, "blog", path)
+}
+
+func (r *Router) proxyToLink(w http.ResponseWriter, req *http.Request) {
+	path := strings.TrimPrefix(req.URL.Path, "/api/links")
+	r.handleProxy(w, req, "link", path)
+}
+
+func (r *Router) proxyToFoodfolio(w http.ResponseWriter, req *http.Request) {
+	path := strings.TrimPrefix(req.URL.Path, "/api/foodfolio")
+	r.handleProxy(w, req, "foodfolio", path)
+}
+
+func (r *Router) proxyToNotification(w http.ResponseWriter, req *http.Request) {
+	path := strings.TrimPrefix(req.URL.Path, "/api/notifications")
+	r.handleProxy(w, req, "notification", path)
+}
+
+func (r *Router) proxyToSSE(w http.ResponseWriter, req *http.Request) {
+	path := strings.TrimPrefix(req.URL.Path, "/api/events")
+	r.handleProxy(w, req, "sse", path)
+}
+
+func (r *Router) proxyToTwitchBot(w http.ResponseWriter, req *http.Request) {
+	path := strings.TrimPrefix(req.URL.Path, "/api/twitch")
+	r.handleProxy(w, req, "twitchbot", path)
+}
+
+func (r *Router) proxyToWebhook(w http.ResponseWriter, req *http.Request) {
+	path := strings.TrimPrefix(req.URL.Path, "/api/webhooks")
+	r.handleProxy(w, req, "webhook", path)
+}
+
+// handleProxy is a generic proxy handler
+// This is a placeholder - full implementation would translate HTTP to gRPC
+func (r *Router) handleProxy(w http.ResponseWriter, req *http.Request, service, path string) {
+	w.Header().Set("Content-Type", "application/json")
+
+	response := map[string]interface{}{
+		"message": "Gateway proxy",
+		"service": service,
+		"path":    path,
+		"method":  req.Method,
+		"note":    "Full HTTP-to-gRPC translation to be implemented per endpoint",
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
