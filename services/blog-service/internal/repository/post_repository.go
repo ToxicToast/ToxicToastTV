@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 	"toxictoast/services/blog-service/internal/domain"
+	"toxictoast/services/blog-service/internal/repository/entity"
+	"toxictoast/services/blog-service/internal/repository/mapper"
 )
 
 type PostRepository interface {
@@ -41,15 +43,16 @@ func NewPostRepository(db *gorm.DB) PostRepository {
 }
 
 func (r *postRepository) Create(ctx context.Context, post *domain.Post) error {
-	return r.db.WithContext(ctx).Create(post).Error
+	e := mapper.PostToEntity(post)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *postRepository) GetByID(ctx context.Context, id string) (*domain.Post, error) {
-	var post domain.Post
+	var e entity.PostEntity
 	err := r.db.WithContext(ctx).
 		Preload("Categories").
 		Preload("Tags").
-		First(&post, "id = ?", id).Error
+		First(&e, "id = ?", id).Error
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -58,15 +61,15 @@ func (r *postRepository) GetByID(ctx context.Context, id string) (*domain.Post, 
 		return nil, err
 	}
 
-	return &post, nil
+	return mapper.PostToDomain(&e), nil
 }
 
 func (r *postRepository) GetBySlug(ctx context.Context, slug string) (*domain.Post, error) {
-	var post domain.Post
+	var e entity.PostEntity
 	err := r.db.WithContext(ctx).
 		Preload("Categories").
 		Preload("Tags").
-		First(&post, "slug = ?", slug).Error
+		First(&e, "slug = ?", slug).Error
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -75,32 +78,33 @@ func (r *postRepository) GetBySlug(ctx context.Context, slug string) (*domain.Po
 		return nil, err
 	}
 
-	return &post, nil
+	return mapper.PostToDomain(&e), nil
 }
 
 func (r *postRepository) Update(ctx context.Context, post *domain.Post) error {
-	return r.db.WithContext(ctx).Save(post).Error
+	e := mapper.PostToEntity(post)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *postRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.Post{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.PostEntity{}, "id = ?", id).Error
 }
 
 func (r *postRepository) List(ctx context.Context, filters PostFilters) ([]domain.Post, int64, error) {
-	var posts []domain.Post
+	var entities []entity.PostEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Post{})
+	query := r.db.WithContext(ctx).Model(&entity.PostEntity{})
 
 	// Apply filters
 	if filters.CategoryID != nil {
-		query = query.Joins("JOIN post_categories ON post_categories.post_id = posts.id").
-			Where("post_categories.category_id = ?", *filters.CategoryID)
+		query = query.Joins("JOIN blog_post_categories ON blog_post_categories.post_entity_id = blog_posts.id").
+			Where("blog_post_categories.category_entity_id = ?", *filters.CategoryID)
 	}
 
 	if filters.TagID != nil {
-		query = query.Joins("JOIN post_tags ON post_tags.post_id = posts.id").
-			Where("post_tags.tag_id = ?", *filters.TagID)
+		query = query.Joins("JOIN blog_post_tags ON blog_post_tags.post_entity_id = blog_posts.id").
+			Where("blog_post_tags.tag_entity_id = ?", *filters.TagID)
 	}
 
 	if filters.AuthorID != nil {
@@ -149,8 +153,14 @@ func (r *postRepository) List(ctx context.Context, filters PostFilters) ([]domai
 	query = query.Preload("Categories").Preload("Tags")
 
 	// Execute query
-	if err := query.Find(&posts).Error; err != nil {
+	if err := query.Find(&entities).Error; err != nil {
 		return nil, 0, err
+	}
+
+	// Convert to domain
+	posts := make([]domain.Post, 0, len(entities))
+	for _, e := range entities {
+		posts = append(posts, *mapper.PostToDomain(&e))
 	}
 
 	return posts, total, nil
@@ -158,12 +168,12 @@ func (r *postRepository) List(ctx context.Context, filters PostFilters) ([]domai
 
 func (r *postRepository) SlugExists(ctx context.Context, slug string) (bool, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&domain.Post{}).Where("slug = ?", slug).Count(&count).Error
+	err := r.db.WithContext(ctx).Model(&entity.PostEntity{}).Where("slug = ?", slug).Count(&count).Error
 	return count > 0, err
 }
 
 func (r *postRepository) IncrementViewCount(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Model(&domain.Post{}).
+	return r.db.WithContext(ctx).Model(&entity.PostEntity{}).
 		Where("id = ?", id).
 		UpdateColumn("view_count", gorm.Expr("view_count + 1")).Error
 }

@@ -3,8 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"toxictoast/services/foodfolio-service/internal/domain"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
 )
@@ -32,10 +34,11 @@ type ItemDetailUseCase interface {
 }
 
 type itemDetailUseCase struct {
-	detailRepo   interfaces.ItemDetailRepository
-	variantRepo  interfaces.ItemVariantRepository
+	detailRepo    interfaces.ItemDetailRepository
+	variantRepo   interfaces.ItemVariantRepository
 	warehouseRepo interfaces.WarehouseRepository
-	locationRepo interfaces.LocationRepository
+	locationRepo  interfaces.LocationRepository
+	kafkaProducer *kafka.Producer
 }
 
 func NewItemDetailUseCase(
@@ -43,12 +46,14 @@ func NewItemDetailUseCase(
 	variantRepo interfaces.ItemVariantRepository,
 	warehouseRepo interfaces.WarehouseRepository,
 	locationRepo interfaces.LocationRepository,
+	kafkaProducer *kafka.Producer,
 ) ItemDetailUseCase {
 	return &itemDetailUseCase{
-		detailRepo:   detailRepo,
-		variantRepo:  variantRepo,
+		detailRepo:    detailRepo,
+		variantRepo:   variantRepo,
 		warehouseRepo: warehouseRepo,
-		locationRepo: locationRepo,
+		locationRepo:  locationRepo,
+		kafkaProducer: kafkaProducer,
 	}
 }
 
@@ -104,6 +109,26 @@ func (uc *itemDetailUseCase) CreateItemDetail(ctx context.Context, variantID, wa
 
 	if err := uc.detailRepo.Create(ctx, detail); err != nil {
 		return nil, err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioDetailCreatedEvent{
+			DetailID:      detail.ID,
+			VariantID:     detail.ItemVariantID,
+			WarehouseID:   detail.WarehouseID,
+			LocationID:    detail.LocationID,
+			ArticleNumber: detail.ArticleNumber,
+			PurchasePrice: detail.PurchasePrice,
+			PurchaseDate:  detail.PurchaseDate,
+			ExpiryDate:    detail.ExpiryDate,
+			HasDeposit:    detail.HasDeposit,
+			IsFrozen:      detail.IsFrozen,
+			CreatedAt:     time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioDetailCreated("foodfolio.detail.created", event); err != nil {
+			log.Printf("Warning: Failed to publish detail created event: %v", err)
+		}
 	}
 
 	return detail, nil
@@ -174,6 +199,28 @@ func (uc *itemDetailUseCase) BatchCreateItemDetails(ctx context.Context, variant
 
 	if err := uc.detailRepo.BatchCreate(ctx, details); err != nil {
 		return nil, err
+	}
+
+	// Publish Kafka events for batch created items
+	if uc.kafkaProducer != nil {
+		for _, detail := range details {
+			event := kafka.FoodfolioDetailCreatedEvent{
+				DetailID:      detail.ID,
+				VariantID:     detail.ItemVariantID,
+				WarehouseID:   detail.WarehouseID,
+				LocationID:    detail.LocationID,
+				ArticleNumber: detail.ArticleNumber,
+				PurchasePrice: detail.PurchasePrice,
+				PurchaseDate:  detail.PurchaseDate,
+				ExpiryDate:    detail.ExpiryDate,
+				HasDeposit:    detail.HasDeposit,
+				IsFrozen:      detail.IsFrozen,
+				CreatedAt:     time.Now(),
+			}
+			if err := uc.kafkaProducer.PublishFoodfolioDetailCreated("foodfolio.detail.created", event); err != nil {
+				log.Printf("Warning: Failed to publish detail created event for detail %s: %v", detail.ID, err)
+			}
+		}
 	}
 
 	return details, nil
@@ -278,6 +325,18 @@ func (uc *itemDetailUseCase) OpenItem(ctx context.Context, id string) (*domain.I
 		return nil, err
 	}
 
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioDetailOpenedEvent{
+			DetailID:  id,
+			VariantID: detail.ItemVariantID,
+			OpenedAt:  openedDate,
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioDetailOpened("foodfolio.detail.opened", event); err != nil {
+			log.Printf("Warning: Failed to publish detail opened event: %v", err)
+		}
+	}
+
 	// Reload to get updated data
 	return uc.GetItemDetailByID(ctx, id)
 }
@@ -296,9 +355,41 @@ func (uc *itemDetailUseCase) MoveItems(ctx context.Context, itemIDs []string, ne
 		return nil, errors.New("location not found")
 	}
 
+	// Get old location IDs before moving
+	oldLocationIDs := make(map[string]string)
+	if uc.kafkaProducer != nil {
+		for _, id := range itemIDs {
+			detail, err := uc.detailRepo.GetByID(ctx, id)
+			if err == nil && detail != nil {
+				oldLocationIDs[id] = detail.LocationID
+			}
+		}
+	}
+
 	// Move items
 	if err := uc.detailRepo.MoveItems(ctx, itemIDs, newLocationID); err != nil {
 		return nil, err
+	}
+
+	// Publish Kafka events for moved items
+	if uc.kafkaProducer != nil {
+		for _, id := range itemIDs {
+			if oldLocationID, exists := oldLocationIDs[id]; exists {
+				detail, err := uc.detailRepo.GetByID(ctx, id)
+				if err == nil && detail != nil {
+					event := kafka.FoodfolioDetailMovedEvent{
+						DetailID:      id,
+						VariantID:     detail.ItemVariantID,
+						OldLocationID: oldLocationID,
+						NewLocationID: newLocationID,
+						MovedAt:       time.Now(),
+					}
+					if err := uc.kafkaProducer.PublishFoodfolioDetailMoved("foodfolio.detail.moved", event); err != nil {
+						log.Printf("Warning: Failed to publish detail moved event for detail %s: %v", id, err)
+					}
+				}
+			}
+		}
 	}
 
 	// Reload items to get updated data
@@ -338,6 +429,9 @@ func (uc *itemDetailUseCase) UpdateItemDetail(ctx context.Context, id, locationI
 		return nil, errors.New("location not found")
 	}
 
+	// Track frozen/thawed state changes
+	oldIsFrozen := detail.IsFrozen
+
 	detail.LocationID = locationID
 	detail.ArticleNumber = articleNumber
 	detail.PurchasePrice = purchasePrice
@@ -349,14 +443,55 @@ func (uc *itemDetailUseCase) UpdateItemDetail(ctx context.Context, id, locationI
 		return nil, err
 	}
 
+	// Publish frozen/thawed events if state changed
+	if uc.kafkaProducer != nil {
+		if !oldIsFrozen && isFrozen {
+			// Item was frozen
+			event := kafka.FoodfolioDetailFrozenEvent{
+				DetailID:  detail.ID,
+				VariantID: detail.ItemVariantID,
+				FrozenAt:  time.Now(),
+			}
+			if err := uc.kafkaProducer.PublishFoodfolioDetailFrozen("foodfolio.detail.frozen", event); err != nil {
+				log.Printf("Warning: Failed to publish detail frozen event: %v", err)
+			}
+		} else if oldIsFrozen && !isFrozen {
+			// Item was thawed
+			event := kafka.FoodfolioDetailThawedEvent{
+				DetailID:  detail.ID,
+				VariantID: detail.ItemVariantID,
+				ThawedAt:  time.Now(),
+			}
+			if err := uc.kafkaProducer.PublishFoodfolioDetailThawed("foodfolio.detail.thawed", event); err != nil {
+				log.Printf("Warning: Failed to publish detail thawed event: %v", err)
+			}
+		}
+	}
+
 	return detail, nil
 }
 
 func (uc *itemDetailUseCase) DeleteItemDetail(ctx context.Context, id string) error {
-	_, err := uc.GetItemDetailByID(ctx, id)
+	detail, err := uc.GetItemDetailByID(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	return uc.detailRepo.Delete(ctx, id)
+	if err := uc.detailRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Publish consumed event (deletion implies consumption)
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioDetailConsumedEvent{
+			DetailID:   id,
+			VariantID:  detail.ItemVariantID,
+			ConsumedAt: time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioDetailConsumed("foodfolio.detail.consumed", event); err != nil {
+			log.Printf("Warning: Failed to publish detail consumed event: %v", err)
+		}
+	}
+
+	return nil
 }

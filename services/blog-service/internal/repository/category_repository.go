@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 	"toxictoast/services/blog-service/internal/domain"
+	"toxictoast/services/blog-service/internal/repository/entity"
+	"toxictoast/services/blog-service/internal/repository/mapper"
 )
 
 type CategoryRepository interface {
@@ -34,15 +36,16 @@ func NewCategoryRepository(db *gorm.DB) CategoryRepository {
 }
 
 func (r *categoryRepository) Create(ctx context.Context, category *domain.Category) error {
-	return r.db.WithContext(ctx).Create(category).Error
+	e := mapper.CategoryToEntity(category)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *categoryRepository) GetByID(ctx context.Context, id string) (*domain.Category, error) {
-	var category domain.Category
+	var e entity.CategoryEntity
 	err := r.db.WithContext(ctx).
 		Preload("Parent").
 		Preload("Children").
-		First(&category, "id = ?", id).Error
+		First(&e, "id = ?", id).Error
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -51,15 +54,15 @@ func (r *categoryRepository) GetByID(ctx context.Context, id string) (*domain.Ca
 		return nil, err
 	}
 
-	return &category, nil
+	return mapper.CategoryToDomain(&e), nil
 }
 
 func (r *categoryRepository) GetBySlug(ctx context.Context, slug string) (*domain.Category, error) {
-	var category domain.Category
+	var e entity.CategoryEntity
 	err := r.db.WithContext(ctx).
 		Preload("Parent").
 		Preload("Children").
-		First(&category, "slug = ?", slug).Error
+		First(&e, "slug = ?", slug).Error
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -68,22 +71,23 @@ func (r *categoryRepository) GetBySlug(ctx context.Context, slug string) (*domai
 		return nil, err
 	}
 
-	return &category, nil
+	return mapper.CategoryToDomain(&e), nil
 }
 
 func (r *categoryRepository) Update(ctx context.Context, category *domain.Category) error {
-	return r.db.WithContext(ctx).Save(category).Error
+	e := mapper.CategoryToEntity(category)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *categoryRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.Category{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.CategoryEntity{}, "id = ?", id).Error
 }
 
 func (r *categoryRepository) List(ctx context.Context, filters CategoryFilters) ([]domain.Category, int64, error) {
-	var categories []domain.Category
+	var entities []entity.CategoryEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Category{})
+	query := r.db.WithContext(ctx).Model(&entity.CategoryEntity{})
 
 	// Filter by parent
 	if filters.ParentID != nil {
@@ -111,8 +115,14 @@ func (r *categoryRepository) List(ctx context.Context, filters CategoryFilters) 
 	query = query.Order("name ASC")
 
 	// Execute query
-	if err := query.Find(&categories).Error; err != nil {
+	if err := query.Find(&entities).Error; err != nil {
 		return nil, 0, err
+	}
+
+	// Convert to domain
+	categories := make([]domain.Category, 0, len(entities))
+	for _, e := range entities {
+		categories = append(categories, *mapper.CategoryToDomain(&e))
 	}
 
 	return categories, total, nil
@@ -120,16 +130,26 @@ func (r *categoryRepository) List(ctx context.Context, filters CategoryFilters) 
 
 func (r *categoryRepository) SlugExists(ctx context.Context, slug string) (bool, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&domain.Category{}).Where("slug = ?", slug).Count(&count).Error
+	err := r.db.WithContext(ctx).Model(&entity.CategoryEntity{}).Where("slug = ?", slug).Count(&count).Error
 	return count > 0, err
 }
 
 func (r *categoryRepository) GetChildren(ctx context.Context, parentID string) ([]domain.Category, error) {
-	var categories []domain.Category
+	var entities []entity.CategoryEntity
 	err := r.db.WithContext(ctx).
 		Where("parent_id = ?", parentID).
 		Order("name ASC").
-		Find(&categories).Error
+		Find(&entities).Error
 
-	return categories, err
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to domain
+	categories := make([]domain.Category, 0, len(entities))
+	for _, e := range entities {
+		categories = append(categories, *mapper.CategoryToDomain(&e))
+	}
+
+	return categories, nil
 }

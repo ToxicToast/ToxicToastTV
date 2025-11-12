@@ -67,7 +67,7 @@ Integration with Blizzard API for World of Warcraft data tracking.
 - Item and gear tracking
 
 ### Foodfolio Service
-**Status:** 📋 Planned
+**Status:** ✅ Production Ready
 
 A custom food inventory management system inspired by Grocy, focused on food items.
 

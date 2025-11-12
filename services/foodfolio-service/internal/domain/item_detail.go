@@ -3,37 +3,33 @@ package domain
 import (
 	"time"
 
-	"gorm.io/gorm"
 )
 
 // ItemDetail represents one physical item/unit
 // Each can/bottle/package is tracked individually
 type ItemDetail struct {
-	ID            string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	ItemVariantID string         `gorm:"type:uuid;not null;index" json:"item_variant_id"`
-	WarehouseID   string         `gorm:"type:uuid;not null;index" json:"warehouse_id"`             // Where purchased
-	LocationID    string         `gorm:"type:uuid;not null;index" json:"location_id"`              // Where stored
-	ArticleNumber *string        `gorm:"type:varchar(255)" json:"article_number"`                  // Shop's article number
-	PurchasePrice float64        `gorm:"type:decimal(10,2);not null" json:"purchase_price"`        // Actual paid price
-	PurchaseDate  time.Time      `gorm:"not null" json:"purchase_date"`                            // When bought
+	ID            string         
+	ItemVariantID string         
+	WarehouseID   string                      // Where purchased
+	LocationID    string                       // Where stored
+	ArticleNumber *string                          // Shop's article number
+	PurchasePrice float64                // Actual paid price
+	PurchaseDate  time.Time                                  // When bought
 	ExpiryDate    *time.Time     `json:"expiry_date"`                                              // MHD (best before date)
 	OpenedDate    *time.Time     `json:"opened_date"`                                              // When opened
-	IsOpened      bool           `gorm:"not null;default:false" json:"is_opened"`                  // Currently opened
-	HasDeposit    bool           `gorm:"not null;default:false" json:"has_deposit"`                // Pfand
-	IsFrozen      bool           `gorm:"not null;default:false" json:"is_frozen"`                  // Currently frozen
-	CreatedAt     time.Time      `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt     time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
-	DeletedAt     gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	IsOpened      bool                             // Currently opened
+	HasDeposit    bool                           // Pfand
+	IsFrozen      bool                             // Currently frozen
+	CreatedAt     time.Time      
+	UpdatedAt     time.Time      
+	DeletedAt     *time.Time 
 
 	// Relations
-	ItemVariant *ItemVariant `gorm:"foreignKey:ItemVariantID" json:"item_variant,omitempty"`
-	Warehouse   *Warehouse   `gorm:"foreignKey:WarehouseID" json:"warehouse,omitempty"`
-	Location    *Location    `gorm:"foreignKey:LocationID" json:"location,omitempty"`
+	ItemVariant *ItemVariant 
+	Warehouse   *Warehouse   
+	Location    *Location    
 }
 
-func (ItemDetail) TableName() string {
-	return "item_details"
-}
 
 // IsExpired checks if the item has expired
 func (id *ItemDetail) IsExpired() bool {
@@ -55,7 +51,7 @@ func (id *ItemDetail) IsExpiringSoon(days int) bool {
 // IsConsumed checks if item is likely consumed (soft-deleted or opened long ago)
 func (id *ItemDetail) IsConsumed() bool {
 	// If soft-deleted, it's consumed
-	if id.DeletedAt.Valid {
+	if id.DeletedAt != nil {
 		return true
 	}
 	// If opened more than 30 days ago, consider consumed

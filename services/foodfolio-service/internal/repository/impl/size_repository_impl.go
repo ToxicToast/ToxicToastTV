@@ -7,7 +7,9 @@ import (
 	"gorm.io/gorm"
 
 	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/repository/entity"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
+	"toxictoast/services/foodfolio-service/internal/repository/mapper"
 )
 
 type sizeRepository struct {
@@ -20,38 +22,39 @@ func NewSizeRepository(db *gorm.DB) interfaces.SizeRepository {
 }
 
 func (r *sizeRepository) Create(ctx context.Context, size *domain.Size) error {
-	return r.db.WithContext(ctx).Create(size).Error
+	e := mapper.SizeToEntity(size)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *sizeRepository) GetByID(ctx context.Context, id string) (*domain.Size, error) {
-	var size domain.Size
-	err := r.db.WithContext(ctx).First(&size, "id = ?", id).Error
+	var e entity.SizeEntity
+	err := r.db.WithContext(ctx).First(&e, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &size, nil
+	return mapper.SizeToDomain(&e), nil
 }
 
 func (r *sizeRepository) GetByName(ctx context.Context, name string) (*domain.Size, error) {
-	var size domain.Size
-	err := r.db.WithContext(ctx).First(&size, "name = ?", name).Error
+	var e entity.SizeEntity
+	err := r.db.WithContext(ctx).First(&e, "name = ?", name).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &size, nil
+	return mapper.SizeToDomain(&e), nil
 }
 
 func (r *sizeRepository) List(ctx context.Context, offset, limit int, unit string, minValue, maxValue *float64, includeDeleted bool) ([]*domain.Size, int64, error) {
-	var sizes []*domain.Size
+	var entities []*entity.SizeEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Size{})
+	query := r.db.WithContext(ctx).Model(&entity.SizeEntity{})
 
 	if includeDeleted {
 		query = query.Unscoped()
@@ -73,21 +76,22 @@ func (r *sizeRepository) List(ctx context.Context, offset, limit int, unit strin
 		return nil, 0, err
 	}
 
-	if err := query.Offset(offset).Limit(limit).Order("value ASC").Find(&sizes).Error; err != nil {
+	if err := query.Offset(offset).Limit(limit).Order("value ASC").Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return sizes, total, nil
+	return mapper.SizesToDomain(entities), total, nil
 }
 
 func (r *sizeRepository) Update(ctx context.Context, size *domain.Size) error {
-	return r.db.WithContext(ctx).Save(size).Error
+	e := mapper.SizeToEntity(size)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *sizeRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.Size{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.SizeEntity{}, "id = ?", id).Error
 }
 
 func (r *sizeRepository) HardDelete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Unscoped().Delete(&domain.Size{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Unscoped().Delete(&entity.SizeEntity{}, "id = ?", id).Error
 }

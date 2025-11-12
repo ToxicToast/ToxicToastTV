@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"gorm.io/gorm"
@@ -23,9 +24,9 @@ import (
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
 	pb "toxictoast/services/blog-service/api/proto"
-	"toxictoast/services/blog-service/internal/domain"
 	grpcHandler "toxictoast/services/blog-service/internal/handler/grpc"
 	"toxictoast/services/blog-service/internal/repository"
+	"toxictoast/services/blog-service/internal/repository/entity"
 	"toxictoast/services/blog-service/internal/usecase"
 	"toxictoast/services/blog-service/pkg/config"
 )
@@ -45,6 +46,9 @@ var (
 )
 
 func main() {
+	// Load .env file (ignore error in production where env vars are set directly)
+	_ = godotenv.Load()
+
 	// Load configuration
 	cfg := config.Load()
 
@@ -62,18 +66,18 @@ func main() {
 	}
 	log.Printf("Database connected successfully")
 
-	// Run auto-migrations
-	entities := []interface{}{
-		&domain.Post{},
-		&domain.Category{},
-		&domain.Tag{},
-		&domain.Media{},
-		&domain.Comment{},
+	// Run auto-migrations using entities with blog_ prefix
+	dbEntities := []interface{}{
+		&entity.PostEntity{},
+		&entity.CategoryEntity{},
+		&entity.TagEntity{},
+		&entity.MediaEntity{},
+		&entity.CommentEntity{},
 	}
-	if err := database.AutoMigrate(db, entities...); err != nil {
+	if err := database.AutoMigrate(db, dbEntities...); err != nil {
 		log.Fatalf("Auto-migration failed: %v", err)
 	}
-	log.Printf("Database schema is up to date")
+	log.Printf("Database schema is up to date (using blog_ table prefix)")
 
 	// Initialize Kafka producer
 	kafkaProducer, err := kafka.NewProducer(cfg.Kafka.Brokers)

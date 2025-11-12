@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 	"toxictoast/services/blog-service/internal/domain"
+	"toxictoast/services/blog-service/internal/repository/entity"
+	"toxictoast/services/blog-service/internal/repository/mapper"
 )
 
 type TagRepository interface {
@@ -34,12 +36,13 @@ func NewTagRepository(db *gorm.DB) TagRepository {
 }
 
 func (r *tagRepository) Create(ctx context.Context, tag *domain.Tag) error {
-	return r.db.WithContext(ctx).Create(tag).Error
+	e := mapper.TagToEntity(tag)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *tagRepository) GetByID(ctx context.Context, id string) (*domain.Tag, error) {
-	var tag domain.Tag
-	err := r.db.WithContext(ctx).First(&tag, "id = ?", id).Error
+	var e entity.TagEntity
+	err := r.db.WithContext(ctx).First(&e, "id = ?", id).Error
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -48,12 +51,12 @@ func (r *tagRepository) GetByID(ctx context.Context, id string) (*domain.Tag, er
 		return nil, err
 	}
 
-	return &tag, nil
+	return mapper.TagToDomain(&e), nil
 }
 
 func (r *tagRepository) GetBySlug(ctx context.Context, slug string) (*domain.Tag, error) {
-	var tag domain.Tag
-	err := r.db.WithContext(ctx).First(&tag, "slug = ?", slug).Error
+	var e entity.TagEntity
+	err := r.db.WithContext(ctx).First(&e, "slug = ?", slug).Error
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -62,22 +65,23 @@ func (r *tagRepository) GetBySlug(ctx context.Context, slug string) (*domain.Tag
 		return nil, err
 	}
 
-	return &tag, nil
+	return mapper.TagToDomain(&e), nil
 }
 
 func (r *tagRepository) Update(ctx context.Context, tag *domain.Tag) error {
-	return r.db.WithContext(ctx).Save(tag).Error
+	e := mapper.TagToEntity(tag)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *tagRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.Tag{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.TagEntity{}, "id = ?", id).Error
 }
 
 func (r *tagRepository) List(ctx context.Context, filters TagFilters) ([]domain.Tag, int64, error) {
-	var tags []domain.Tag
+	var entities []entity.TagEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Tag{})
+	query := r.db.WithContext(ctx).Model(&entity.TagEntity{})
 
 	// Search filter
 	if filters.Search != nil && *filters.Search != "" {
@@ -100,8 +104,14 @@ func (r *tagRepository) List(ctx context.Context, filters TagFilters) ([]domain.
 	query = query.Order("name ASC")
 
 	// Execute query
-	if err := query.Find(&tags).Error; err != nil {
+	if err := query.Find(&entities).Error; err != nil {
 		return nil, 0, err
+	}
+
+	// Convert to domain
+	tags := make([]domain.Tag, 0, len(entities))
+	for _, e := range entities {
+		tags = append(tags, *mapper.TagToDomain(&e))
 	}
 
 	return tags, total, nil
@@ -109,12 +119,22 @@ func (r *tagRepository) List(ctx context.Context, filters TagFilters) ([]domain.
 
 func (r *tagRepository) SlugExists(ctx context.Context, slug string) (bool, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&domain.Tag{}).Where("slug = ?", slug).Count(&count).Error
+	err := r.db.WithContext(ctx).Model(&entity.TagEntity{}).Where("slug = ?", slug).Count(&count).Error
 	return count > 0, err
 }
 
 func (r *tagRepository) GetByIDs(ctx context.Context, ids []string) ([]domain.Tag, error) {
-	var tags []domain.Tag
-	err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&tags).Error
-	return tags, err
+	var entities []entity.TagEntity
+	err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&entities).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to domain
+	tags := make([]domain.Tag, 0, len(entities))
+	for _, e := range entities {
+		tags = append(tags, *mapper.TagToDomain(&e))
+	}
+
+	return tags, nil
 }

@@ -3,7 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
+	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"toxictoast/services/foodfolio-service/internal/domain"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
 )
@@ -24,11 +27,13 @@ type WarehouseUseCase interface {
 
 type warehouseUseCase struct {
 	warehouseRepo interfaces.WarehouseRepository
+	kafkaProducer *kafka.Producer
 }
 
-func NewWarehouseUseCase(warehouseRepo interfaces.WarehouseRepository) WarehouseUseCase {
+func NewWarehouseUseCase(warehouseRepo interfaces.WarehouseRepository, kafkaProducer *kafka.Producer) WarehouseUseCase {
 	return &warehouseUseCase{
 		warehouseRepo: warehouseRepo,
+		kafkaProducer: kafkaProducer,
 	}
 }
 
@@ -43,6 +48,19 @@ func (uc *warehouseUseCase) CreateWarehouse(ctx context.Context, name string) (*
 
 	if err := uc.warehouseRepo.Create(ctx, warehouse); err != nil {
 		return nil, err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioWarehouseCreatedEvent{
+			WarehouseID: warehouse.ID,
+			Name:        warehouse.Name,
+			Slug:        warehouse.Slug,
+			CreatedAt:   time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioWarehouseCreated("foodfolio.warehouse.created", event); err != nil {
+			log.Printf("Warning: Failed to publish warehouse created event: %v", err)
+		}
 	}
 
 	return warehouse, nil
@@ -100,6 +118,19 @@ func (uc *warehouseUseCase) UpdateWarehouse(ctx context.Context, id, name string
 		return nil, err
 	}
 
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioWarehouseUpdatedEvent{
+			WarehouseID: warehouse.ID,
+			Name:        warehouse.Name,
+			Slug:        warehouse.Slug,
+			UpdatedAt:   time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioWarehouseUpdated("foodfolio.warehouse.updated", event); err != nil {
+			log.Printf("Warning: Failed to publish warehouse updated event: %v", err)
+		}
+	}
+
 	return warehouse, nil
 }
 
@@ -109,5 +140,20 @@ func (uc *warehouseUseCase) DeleteWarehouse(ctx context.Context, id string) erro
 		return err
 	}
 
-	return uc.warehouseRepo.Delete(ctx, id)
+	if err := uc.warehouseRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioWarehouseDeletedEvent{
+			WarehouseID: id,
+			DeletedAt:   time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioWarehouseDeleted("foodfolio.warehouse.deleted", event); err != nil {
+			log.Printf("Warning: Failed to publish warehouse deleted event: %v", err)
+		}
+	}
+
+	return nil
 }

@@ -3,34 +3,30 @@ package domain
 import (
 	"time"
 
-	"gorm.io/gorm"
 )
 
 // ItemVariant represents a specific variant (flavor + size combination)
 // Example: "Monster Energy Original 500ml" vs "Monster Energy Ultra White 500ml"
 type ItemVariant struct {
-	ID                 string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	ItemID             string         `gorm:"type:uuid;not null;index" json:"item_id"`
-	SizeID             string         `gorm:"type:uuid;not null;index" json:"size_id"`
-	VariantName        string         `gorm:"type:varchar(255);not null" json:"variant_name"`        // e.g., "Original", "Ultra White", "Zero"
-	Slug               string         `gorm:"type:varchar(255);not null;uniqueIndex" json:"slug"`
-	Barcode            *string        `gorm:"type:varchar(255);uniqueIndex" json:"barcode"`          // EAN/UPC
-	MinSKU             int            `gorm:"not null;default:0" json:"min_sku"`                     // Alert when below
-	MaxSKU             int            `gorm:"not null;default:0" json:"max_sku"`                     // Alert when above
-	IsNormallyFrozen   bool           `gorm:"not null;default:false" json:"is_normally_frozen"`      // Should this be frozen
-	CreatedAt          time.Time      `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt          time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
-	DeletedAt          gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	ID                 string         
+	ItemID             string         
+	SizeID             string         
+	VariantName        string                 // e.g., "Original", "Ultra White", "Zero"
+	Slug               string         
+	Barcode            *string                  // EAN/UPC
+	MinSKU             int                                 // Alert when below
+	MaxSKU             int                                 // Alert when above
+	IsNormallyFrozen   bool                 // Should this be frozen
+	CreatedAt          time.Time      
+	UpdatedAt          time.Time      
+	DeletedAt          *time.Time 
 
 	// Relations
-	Item        *Item        `gorm:"foreignKey:ItemID" json:"item,omitempty"`
-	Size        *Size        `gorm:"foreignKey:SizeID" json:"size,omitempty"`
-	ItemDetails []ItemDetail `gorm:"foreignKey:ItemVariantID" json:"item_details,omitempty"`
+	Item        *Item        
+	Size        *Size        
+	ItemDetails []ItemDetail 
 }
 
-func (ItemVariant) TableName() string {
-	return "item_variants"
-}
 
 // CurrentStock returns the count of active (not opened/consumed) ItemDetails
 func (iv *ItemVariant) CurrentStock() int {

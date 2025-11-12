@@ -7,7 +7,9 @@ import (
 	"gorm.io/gorm"
 
 	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/repository/entity"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
+	"toxictoast/services/foodfolio-service/internal/repository/mapper"
 )
 
 type itemVariantRepository struct {
@@ -20,18 +22,19 @@ func NewItemVariantRepository(db *gorm.DB) interfaces.ItemVariantRepository {
 }
 
 func (r *itemVariantRepository) Create(ctx context.Context, variant *domain.ItemVariant) error {
-	return r.db.WithContext(ctx).Create(variant).Error
+	e := mapper.ItemVariantToEntity(variant)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *itemVariantRepository) GetByID(ctx context.Context, id string) (*domain.ItemVariant, error) {
-	var variant domain.ItemVariant
+	var e entity.ItemVariantEntity
 	err := r.db.WithContext(ctx).
 		Preload("Item").
 		Preload("Item.Category").
 		Preload("Item.Company").
 		Preload("Item.Type").
 		Preload("Size").
-		First(&variant, "id = ?", id).Error
+		First(&e, "id = ?", id).Error
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -39,18 +42,18 @@ func (r *itemVariantRepository) GetByID(ctx context.Context, id string) (*domain
 		}
 		return nil, err
 	}
-	return &variant, nil
+	return mapper.ItemVariantToDomain(&e), nil
 }
 
 func (r *itemVariantRepository) GetByBarcode(ctx context.Context, barcode string) (*domain.ItemVariant, error) {
-	var variant domain.ItemVariant
+	var e entity.ItemVariantEntity
 	err := r.db.WithContext(ctx).
 		Preload("Item").
 		Preload("Item.Category").
 		Preload("Item.Company").
 		Preload("Item.Type").
 		Preload("Size").
-		First(&variant, "barcode = ?", barcode).Error
+		First(&e, "barcode = ?", barcode).Error
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -58,14 +61,14 @@ func (r *itemVariantRepository) GetByBarcode(ctx context.Context, barcode string
 		}
 		return nil, err
 	}
-	return &variant, nil
+	return mapper.ItemVariantToDomain(&e), nil
 }
 
 func (r *itemVariantRepository) List(ctx context.Context, offset, limit int, itemID, sizeID *string, isNormallyFrozen *bool, includeDeleted bool) ([]*domain.ItemVariant, int64, error) {
-	var variants []*domain.ItemVariant
+	var entities []*entity.ItemVariantEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.ItemVariant{})
+	query := r.db.WithContext(ctx).Model(&entity.ItemVariantEntity{})
 
 	if includeDeleted {
 		query = query.Unscoped()
@@ -93,34 +96,34 @@ func (r *itemVariantRepository) List(ctx context.Context, offset, limit int, ite
 		Preload("Size").
 		Offset(offset).
 		Limit(limit).
-		Find(&variants).Error; err != nil {
+		Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return variants, total, nil
+	return mapper.ItemVariantsToDomain(entities), total, nil
 }
 
 func (r *itemVariantRepository) GetByItem(ctx context.Context, itemID string) ([]*domain.ItemVariant, error) {
-	var variants []*domain.ItemVariant
+	var entities []*entity.ItemVariantEntity
 
 	err := r.db.WithContext(ctx).
 		Preload("Size").
 		Where("item_id = ?", itemID).
-		Find(&variants).Error
+		Find(&entities).Error
 
 	if err != nil {
 		return nil, err
 	}
 
-	return variants, nil
+	return mapper.ItemVariantsToDomain(entities), nil
 }
 
 func (r *itemVariantRepository) GetLowStockVariants(ctx context.Context, offset, limit int) ([]*domain.ItemVariant, int64, error) {
-	var variants []*domain.ItemVariant
+	var entities []*entity.ItemVariantEntity
 	var total int64
 
 	// Subquery to count active item details per variant
-	subQuery := r.db.Model(&domain.ItemDetail{}).
+	subQuery := r.db.Model(&entity.ItemDetailEntity{}).
 		Select("item_variant_id, COUNT(*) as stock_count").
 		Where("is_opened = ? AND (expiry_date IS NULL OR expiry_date > NOW())", false).
 		Group("item_variant_id")
@@ -147,20 +150,20 @@ func (r *itemVariantRepository) GetLowStockVariants(ctx context.Context, offset,
 			Preload("Item.Company").
 			Preload("Size").
 			Where("id IN ?", variantIDs).
-			Find(&variants).Error; err != nil {
+			Find(&entities).Error; err != nil {
 			return nil, 0, err
 		}
 	}
 
-	return variants, total, nil
+	return mapper.ItemVariantsToDomain(entities), total, nil
 }
 
 func (r *itemVariantRepository) GetOverstockedVariants(ctx context.Context, offset, limit int) ([]*domain.ItemVariant, int64, error) {
-	var variants []*domain.ItemVariant
+	var entities []*entity.ItemVariantEntity
 	var total int64
 
 	// Subquery to count active item details per variant
-	subQuery := r.db.Model(&domain.ItemDetail{}).
+	subQuery := r.db.Model(&entity.ItemDetailEntity{}).
 		Select("item_variant_id, COUNT(*) as stock_count").
 		Where("is_opened = ? AND (expiry_date IS NULL OR expiry_date > NOW())", false).
 		Group("item_variant_id")
@@ -187,19 +190,19 @@ func (r *itemVariantRepository) GetOverstockedVariants(ctx context.Context, offs
 			Preload("Item.Company").
 			Preload("Size").
 			Where("id IN ?", variantIDs).
-			Find(&variants).Error; err != nil {
+			Find(&entities).Error; err != nil {
 			return nil, 0, err
 		}
 	}
 
-	return variants, total, nil
+	return mapper.ItemVariantsToDomain(entities), total, nil
 }
 
 func (r *itemVariantRepository) GetCurrentStock(ctx context.Context, variantID string) (int, error) {
 	var count int64
 
 	err := r.db.WithContext(ctx).
-		Model(&domain.ItemDetail{}).
+		Model(&entity.ItemDetailEntity{}).
 		Where("item_variant_id = ? AND is_opened = ? AND (expiry_date IS NULL OR expiry_date > NOW())", variantID, false).
 		Count(&count).Error
 
@@ -211,13 +214,14 @@ func (r *itemVariantRepository) GetCurrentStock(ctx context.Context, variantID s
 }
 
 func (r *itemVariantRepository) Update(ctx context.Context, variant *domain.ItemVariant) error {
-	return r.db.WithContext(ctx).Save(variant).Error
+	e := mapper.ItemVariantToEntity(variant)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *itemVariantRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.ItemVariant{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.ItemVariantEntity{}, "id = ?", id).Error
 }
 
 func (r *itemVariantRepository) HardDelete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Unscoped().Delete(&domain.ItemVariant{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Unscoped().Delete(&entity.ItemVariantEntity{}, "id = ?", id).Error
 }

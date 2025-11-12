@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package sse;
+
+option go_package = "toxictoast/services/sse-service/api/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// SSE Management Service
+service SSEManagementService {
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+  rpc GetClients(GetClientsRequest) returns (GetClientsResponse);
+  rpc DisconnectClient(DisconnectClientRequest) returns (DisconnectClientResponse);
+  rpc GetHealth(GetHealthRequest) returns (GetHealthResponse);
+}
+
+// ============================================================================
+// Messages
+// ============================================================================
+
+message GetStatsRequest {}
+
+message GetStatsResponse {
+  int32 total_clients = 1;
+  int32 max_clients = 2;
+  int64 total_events_sent = 3;
+}
+
+message GetClientsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+
+message GetClientsResponse {
+  repeated ClientInfo clients = 1;
+  int32 total = 2;
+}
+
+message ClientInfo {
+  string id = 1;
+  google.protobuf.Timestamp connected_at = 2;
+  google.protobuf.Timestamp last_event_at = 3;
+  int64 events_received = 4;
+  SubscriptionFilter filter = 5;
+  string user_agent = 6;
+  string remote_addr = 7;
+}
+
+message SubscriptionFilter {
+  repeated string event_types = 1;
+  repeated string sources = 2;
+}
+
+message DisconnectClientRequest {
+  string client_id = 1;
+}
+
+message DisconnectClientResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message GetHealthRequest {}
+
+message GetHealthResponse {
+  bool healthy = 1;
+  string message = 2;
+  int32 connected_clients = 3;
+}

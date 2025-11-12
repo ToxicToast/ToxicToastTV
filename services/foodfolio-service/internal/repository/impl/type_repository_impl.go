@@ -7,7 +7,9 @@ import (
 	"gorm.io/gorm"
 
 	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/repository/entity"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
+	"toxictoast/services/foodfolio-service/internal/repository/mapper"
 )
 
 type typeRepository struct {
@@ -21,38 +23,39 @@ func NewTypeRepository(db *gorm.DB) interfaces.TypeRepository {
 
 func (r *typeRepository) Create(ctx context.Context, typeEntity *domain.Type) error {
 	typeEntity.Slug = generateSlug(typeEntity.Name)
-	return r.db.WithContext(ctx).Create(typeEntity).Error
+	e := mapper.TypeToEntity(typeEntity)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *typeRepository) GetByID(ctx context.Context, id string) (*domain.Type, error) {
-	var typeEntity domain.Type
-	err := r.db.WithContext(ctx).First(&typeEntity, "id = ?", id).Error
+	var e entity.TypeEntity
+	err := r.db.WithContext(ctx).First(&e, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &typeEntity, nil
+	return mapper.TypeToDomain(&e), nil
 }
 
 func (r *typeRepository) GetBySlug(ctx context.Context, slug string) (*domain.Type, error) {
-	var typeEntity domain.Type
-	err := r.db.WithContext(ctx).First(&typeEntity, "slug = ?", slug).Error
+	var e entity.TypeEntity
+	err := r.db.WithContext(ctx).First(&e, "slug = ?", slug).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &typeEntity, nil
+	return mapper.TypeToDomain(&e), nil
 }
 
 func (r *typeRepository) List(ctx context.Context, offset, limit int, search string, includeDeleted bool) ([]*domain.Type, int64, error) {
-	var types []*domain.Type
+	var entities []*entity.TypeEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Type{})
+	query := r.db.WithContext(ctx).Model(&entity.TypeEntity{})
 
 	if includeDeleted {
 		query = query.Unscoped()
@@ -66,22 +69,23 @@ func (r *typeRepository) List(ctx context.Context, offset, limit int, search str
 		return nil, 0, err
 	}
 
-	if err := query.Offset(offset).Limit(limit).Find(&types).Error; err != nil {
+	if err := query.Offset(offset).Limit(limit).Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return types, total, nil
+	return mapper.TypesToDomain(entities), total, nil
 }
 
 func (r *typeRepository) Update(ctx context.Context, typeEntity *domain.Type) error {
 	typeEntity.Slug = generateSlug(typeEntity.Name)
-	return r.db.WithContext(ctx).Save(typeEntity).Error
+	e := mapper.TypeToEntity(typeEntity)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *typeRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.Type{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.TypeEntity{}, "id = ?", id).Error
 }
 
 func (r *typeRepository) HardDelete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Unscoped().Delete(&domain.Type{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Unscoped().Delete(&entity.TypeEntity{}, "id = ?", id).Error
 }

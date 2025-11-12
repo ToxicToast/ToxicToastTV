@@ -1,0 +1,136 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: twitchbot-postgres
+    environment:
+      POSTGRES_USER: twitchbot
+      POSTGRES_PASSWORD: azkaban_twitchbot
+      POSTGRES_DB: twitchbot
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U twitchbot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - twitchbot-network
+
+  # Redpanda (Kafka-compatible)
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: twitchbot-redpanda
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19095
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19095
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18085
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18085
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18084
+      - --rpc-addr redpanda:33145
+      - --advertise-rpc-addr redpanda:33145
+      - --smp 1
+      - --memory 1G
+      - --mode dev-container
+      - --default-log-level=info
+    ports:
+      - "18084:18081" # Schema Registry
+      - "18085:18082" # Pandaproxy
+      - "19095:19095" # Kafka API
+      - "19647:9644"  # Admin API
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - twitchbot-network
+
+  # Redpanda Console (Web UI for Kafka)
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    container_name: twitchbot-redpanda-console
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8081
+    ports:
+      - "8085:8080"
+    depends_on:
+      - redpanda
+    restart: unless-stopped
+    networks:
+      - twitchbot-network
+
+  # Twitchbot Service
+  twitchbot-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: twitchbot-service
+    environment:
+      # Server
+      PORT: "8083"
+      GRPC_PORT: "9093"
+      ENVIRONMENT: development
+      LOG_LEVEL: info
+
+      # Auth
+      AUTH_ENABLED: "false"
+
+      # Database
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: twitchbot
+      DB_PASSWORD: azkaban_twitchbot
+      DB_NAME: twitchbot
+      DB_SSL_MODE: disable
+      DB_MAX_OPEN_CONNS: "25"
+      DB_MAX_IDLE_CONNS: "25"
+      DB_MAX_LIFETIME: 5m
+
+      # Kafka
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_GROUP_ID: twitchbot-service-group
+      KAFKA_TOPIC_PREFIX: twitchbot
+
+      # Twitch Configuration
+      # IMPORTANT: Set these via .env file or environment variables!
+      # TWITCH_CHANNEL: your_channel_name
+      # TWITCH_CLIENT_ID: your_client_id
+      # TWITCH_CLIENT_SECRET: your_client_secret
+      # TWITCH_ACCESS_TOKEN: your_access_token
+      # TWITCH_BOT_USERNAME: your_bot_username
+      TWITCH_IRC_SERVER: irc.chat.twitch.tv
+      TWITCH_IRC_PORT: "6667"
+
+      # Timeouts
+      SERVER_READ_TIMEOUT: 10s
+      SERVER_WRITE_TIMEOUT: 10s
+      SERVER_IDLE_TIMEOUT: 60s
+    ports:
+      - "8083:8083"  # HTTP
+      - "9093:9093"  # gRPC
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - twitchbot-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  twitchbot-network:
+    driver: bridge

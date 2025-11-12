@@ -167,7 +167,7 @@ func LoadKeycloakConfig() KeycloakConfig {
 // LoadKafkaConfig loads Kafka configuration from environment
 func LoadKafkaConfig() KafkaConfig {
 	return KafkaConfig{
-		Brokers: GetEnvAsSlice("KAFKA_BROKERS", "localhost:9092"),
+		Brokers: GetEnvAsSlice("KAFKA_BROKERS", "localhost:19092"),
 		GroupID: GetEnv("KAFKA_GROUP_ID", "default-group"),
 	}
 }

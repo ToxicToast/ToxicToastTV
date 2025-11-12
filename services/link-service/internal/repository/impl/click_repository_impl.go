@@ -7,6 +7,8 @@ import (
 	"gorm.io/gorm"
 	"toxictoast/services/link-service/internal/domain"
 	"toxictoast/services/link-service/internal/repository"
+	"toxictoast/services/link-service/internal/repository/entity"
+	"toxictoast/services/link-service/internal/repository/mapper"
 )
 
 type clickRepository struct {
@@ -19,14 +21,15 @@ func NewClickRepository(db *gorm.DB) repository.ClickRepository {
 }
 
 func (r *clickRepository) Create(ctx context.Context, click *domain.Click) error {
-	return r.db.WithContext(ctx).Create(click).Error
+	e := mapper.ClickToEntity(click)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *clickRepository) GetByLinkID(ctx context.Context, linkID string, page, pageSize int) ([]domain.Click, int64, error) {
-	var clicks []domain.Click
+	var entities []*entity.ClickEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Click{}).Where("link_id = ?", linkID)
+	query := r.db.WithContext(ctx).Model(&entity.ClickEntity{}).Where("link_id = ?", linkID)
 
 	// Count total
 	if err := query.Count(&total).Error; err != nil {
@@ -43,18 +46,24 @@ func (r *clickRepository) GetByLinkID(ctx context.Context, linkID string, page, 
 	query = query.Order("clicked_at DESC")
 
 	// Execute query
-	if err := query.Find(&clicks).Error; err != nil {
+	if err := query.Find(&entities).Error; err != nil {
 		return nil, 0, err
+	}
+
+	// Convert entities to domain
+	clicks := make([]domain.Click, len(entities))
+	for i, e := range entities {
+		clicks[i] = *mapper.ClickToDomain(e)
 	}
 
 	return clicks, total, nil
 }
 
 func (r *clickRepository) GetByDateRange(ctx context.Context, linkID string, startDate, endDate time.Time, page, pageSize int) ([]domain.Click, int64, error) {
-	var clicks []domain.Click
+	var entities []*entity.ClickEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Click{}).
+	query := r.db.WithContext(ctx).Model(&entity.ClickEntity{}).
 		Where("link_id = ? AND clicked_at >= ? AND clicked_at <= ?", linkID, startDate, endDate)
 
 	// Count total
@@ -72,8 +81,14 @@ func (r *clickRepository) GetByDateRange(ctx context.Context, linkID string, sta
 	query = query.Order("clicked_at DESC")
 
 	// Execute query
-	if err := query.Find(&clicks).Error; err != nil {
+	if err := query.Find(&entities).Error; err != nil {
 		return nil, 0, err
+	}
+
+	// Convert entities to domain
+	clicks := make([]domain.Click, len(entities))
+	for i, e := range entities {
+		clicks[i] = *mapper.ClickToDomain(e)
 	}
 
 	return clicks, total, nil
@@ -90,7 +105,7 @@ func (r *clickRepository) GetStats(ctx context.Context, linkID string) (*reposit
 	// Get total clicks
 	var totalClicks int64
 	if err := r.db.WithContext(ctx).
-		Model(&domain.Click{}).
+		Model(&entity.ClickEntity{}).
 		Where("link_id = ?", linkID).
 		Count(&totalClicks).Error; err != nil {
 		return nil, err
@@ -100,7 +115,7 @@ func (r *clickRepository) GetStats(ctx context.Context, linkID string) (*reposit
 	// Get unique IPs
 	var uniqueIPs int64
 	if err := r.db.WithContext(ctx).
-		Model(&domain.Click{}).
+		Model(&entity.ClickEntity{}).
 		Where("link_id = ?", linkID).
 		Distinct("ip_address").
 		Count(&uniqueIPs).Error; err != nil {
@@ -112,7 +127,7 @@ func (r *clickRepository) GetStats(ctx context.Context, linkID string) (*reposit
 	today := time.Now().Truncate(24 * time.Hour)
 	var clicksToday int64
 	if err := r.db.WithContext(ctx).
-		Model(&domain.Click{}).
+		Model(&entity.ClickEntity{}).
 		Where("link_id = ? AND clicked_at >= ?", linkID, today).
 		Count(&clicksToday).Error; err != nil {
 		return nil, err
@@ -123,7 +138,7 @@ func (r *clickRepository) GetStats(ctx context.Context, linkID string) (*reposit
 	weekStart := time.Now().AddDate(0, 0, -7)
 	var clicksWeek int64
 	if err := r.db.WithContext(ctx).
-		Model(&domain.Click{}).
+		Model(&entity.ClickEntity{}).
 		Where("link_id = ? AND clicked_at >= ?", linkID, weekStart).
 		Count(&clicksWeek).Error; err != nil {
 		return nil, err
@@ -134,7 +149,7 @@ func (r *clickRepository) GetStats(ctx context.Context, linkID string) (*reposit
 	monthStart := time.Now().AddDate(0, -1, 0)
 	var clicksMonth int64
 	if err := r.db.WithContext(ctx).
-		Model(&domain.Click{}).
+		Model(&entity.ClickEntity{}).
 		Where("link_id = ? AND clicked_at >= ?", linkID, monthStart).
 		Count(&clicksMonth).Error; err != nil {
 		return nil, err
@@ -148,7 +163,7 @@ func (r *clickRepository) GetStats(ctx context.Context, linkID string) (*reposit
 	}
 	var countryCounts []CountryCount
 	if err := r.db.WithContext(ctx).
-		Model(&domain.Click{}).
+		Model(&entity.ClickEntity{}).
 		Select("country, COUNT(*) as count").
 		Where("link_id = ? AND country IS NOT NULL", linkID).
 		Group("country").
@@ -168,7 +183,7 @@ func (r *clickRepository) GetStats(ctx context.Context, linkID string) (*reposit
 	}
 	var deviceCounts []DeviceCount
 	if err := r.db.WithContext(ctx).
-		Model(&domain.Click{}).
+		Model(&entity.ClickEntity{}).
 		Select("device_type, COUNT(*) as count").
 		Where("link_id = ? AND device_type IS NOT NULL", linkID).
 		Group("device_type").
@@ -187,7 +202,7 @@ func (r *clickRepository) GetStats(ctx context.Context, linkID string) (*reposit
 	}
 	var refererCounts []RefererCount
 	if err := r.db.WithContext(ctx).
-		Model(&domain.Click{}).
+		Model(&entity.ClickEntity{}).
 		Select("referer, COUNT(*) as count").
 		Where("link_id = ? AND referer IS NOT NULL AND referer != ''", linkID).
 		Group("referer").
@@ -211,7 +226,7 @@ func (r *clickRepository) GetClicksByDate(ctx context.Context, linkID string, st
 
 	var dateCounts []DateCount
 	if err := r.db.WithContext(ctx).
-		Model(&domain.Click{}).
+		Model(&entity.ClickEntity{}).
 		Select("DATE(clicked_at) as date, COUNT(*) as count").
 		Where("link_id = ? AND clicked_at >= ? AND clicked_at <= ?", linkID, startDate, endDate).
 		Group("DATE(clicked_at)").

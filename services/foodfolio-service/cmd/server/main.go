@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"gorm.io/gorm"
@@ -20,10 +21,10 @@ import (
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
-	"toxictoast/services/foodfolio-service/internal/domain"
 	"toxictoast/services/foodfolio-service/pkg/config"
 
 	// Repository layer
+	"toxictoast/services/foodfolio-service/internal/repository/entity"
 	repoImpl "toxictoast/services/foodfolio-service/internal/repository/impl"
 
 	// Use case layer
@@ -43,6 +44,9 @@ var (
 )
 
 func main() {
+	// Load .env file (ignore error in production where env vars are set directly)
+	_ = godotenv.Load()
+
 	// Load configuration
 	cfg := config.Load()
 
@@ -61,25 +65,25 @@ func main() {
 	log.Printf("Database connected successfully")
 
 	// Run auto-migrations
-	entities := []interface{}{
-		&domain.Category{},
-		&domain.Company{},
-		&domain.Type{},
-		&domain.Size{},
-		&domain.Warehouse{},
-		&domain.Location{},
-		&domain.Item{},
-		&domain.ItemVariant{},
-		&domain.ItemDetail{},
-		&domain.Shoppinglist{},
-		&domain.ShoppinglistItem{},
-		&domain.Receipt{},
-		&domain.ReceiptItem{},
+	dbEntities := []interface{}{
+		&entity.CategoryEntity{},
+		&entity.CompanyEntity{},
+		&entity.TypeEntity{},
+		&entity.SizeEntity{},
+		&entity.WarehouseEntity{},
+		&entity.LocationEntity{},
+		&entity.ItemEntity{},
+		&entity.ItemVariantEntity{},
+		&entity.ItemDetailEntity{},
+		&entity.ShoppinglistEntity{},
+		&entity.ShoppinglistItemEntity{},
+		&entity.ReceiptEntity{},
+		&entity.ReceiptItemEntity{},
 	}
-	if err := database.AutoMigrate(db, entities...); err != nil {
+	if err := database.AutoMigrate(db, dbEntities...); err != nil {
 		log.Fatalf("Auto-migration failed: %v", err)
 	}
-	log.Printf("Database schema is up to date")
+	log.Printf("Database schema is up to date (using foodfolio_ table prefix)")
 
 	// Initialize Kafka producer
 	kafkaProducer, err := kafka.NewProducer(cfg.Kafka.Brokers)
@@ -124,17 +128,17 @@ func main() {
 
 	// Initialize use cases
 	log.Println("Initializing use cases...")
-	categoryUC := usecase.NewCategoryUseCase(categoryRepo)
-	companyUC := usecase.NewCompanyUseCase(companyRepo)
+	categoryUC := usecase.NewCategoryUseCase(categoryRepo, kafkaProducer)
+	companyUC := usecase.NewCompanyUseCase(companyRepo, kafkaProducer)
 	typeUC := usecase.NewTypeUseCase(typeRepo)
 	sizeUC := usecase.NewSizeUseCase(sizeRepo)
-	warehouseUC := usecase.NewWarehouseUseCase(warehouseRepo)
-	locationUC := usecase.NewLocationUseCase(locationRepo)
-	itemUC := usecase.NewItemUseCase(itemRepo, categoryRepo, companyRepo, typeRepo)
-	itemVariantUC := usecase.NewItemVariantUseCase(itemVariantRepo, itemRepo, sizeRepo)
-	itemDetailUC := usecase.NewItemDetailUseCase(itemDetailRepo, itemVariantRepo, warehouseRepo, locationRepo)
-	shoppinglistUC := usecase.NewShoppinglistUseCase(shoppinglistRepo, itemVariantRepo)
-	receiptUC := usecase.NewReceiptUseCase(receiptRepo, warehouseRepo, itemVariantRepo, itemDetailRepo, locationRepo)
+	warehouseUC := usecase.NewWarehouseUseCase(warehouseRepo, kafkaProducer)
+	locationUC := usecase.NewLocationUseCase(locationRepo, kafkaProducer)
+	itemUC := usecase.NewItemUseCase(itemRepo, categoryRepo, companyRepo, typeRepo, kafkaProducer)
+	itemVariantUC := usecase.NewItemVariantUseCase(itemVariantRepo, itemRepo, sizeRepo, kafkaProducer)
+	itemDetailUC := usecase.NewItemDetailUseCase(itemDetailRepo, itemVariantRepo, warehouseRepo, locationRepo, kafkaProducer)
+	shoppinglistUC := usecase.NewShoppinglistUseCase(shoppinglistRepo, itemVariantRepo, kafkaProducer)
+	receiptUC := usecase.NewReceiptUseCase(receiptRepo, warehouseRepo, itemVariantRepo, itemDetailRepo, locationRepo, kafkaProducer)
 	log.Println("Use cases initialized")
 
 	// Initialize gRPC handlers

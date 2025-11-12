@@ -130,7 +130,7 @@ DB_NAME=blog
 DB_SSL_MODE=disable
 
 # Kafka (optional)
-KAFKA_BROKERS=localhost:9092
+KAFKA_BROKERS=localhost:19092
 KAFKA_GROUP_ID=blog-service
 KAFKA_TOPIC_POST_EVENTS=blog.events.post
 KAFKA_TOPIC_COMMENT_EVENTS=blog.events.comment

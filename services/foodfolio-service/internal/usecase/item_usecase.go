@@ -3,7 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
+	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"toxictoast/services/foodfolio-service/internal/domain"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
 )
@@ -25,10 +28,11 @@ type ItemUseCase interface {
 }
 
 type itemUseCase struct {
-	itemRepo     interfaces.ItemRepository
-	categoryRepo interfaces.CategoryRepository
-	companyRepo  interfaces.CompanyRepository
-	typeRepo     interfaces.TypeRepository
+	itemRepo      interfaces.ItemRepository
+	categoryRepo  interfaces.CategoryRepository
+	companyRepo   interfaces.CompanyRepository
+	typeRepo      interfaces.TypeRepository
+	kafkaProducer *kafka.Producer
 }
 
 func NewItemUseCase(
@@ -36,12 +40,14 @@ func NewItemUseCase(
 	categoryRepo interfaces.CategoryRepository,
 	companyRepo interfaces.CompanyRepository,
 	typeRepo interfaces.TypeRepository,
+	kafkaProducer *kafka.Producer,
 ) ItemUseCase {
 	return &itemUseCase{
-		itemRepo:     itemRepo,
-		categoryRepo: categoryRepo,
-		companyRepo:  companyRepo,
-		typeRepo:     typeRepo,
+		itemRepo:      itemRepo,
+		categoryRepo:  categoryRepo,
+		companyRepo:   companyRepo,
+		typeRepo:      typeRepo,
+		kafkaProducer: kafkaProducer,
 	}
 }
 
@@ -87,6 +93,22 @@ func (uc *itemUseCase) CreateItem(ctx context.Context, name, categoryID, company
 
 	if err := uc.itemRepo.Create(ctx, item); err != nil {
 		return nil, err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioItemCreatedEvent{
+			ItemID:     item.ID,
+			Name:       item.Name,
+			Slug:       item.Slug,
+			CategoryID: item.CategoryID,
+			CompanyID:  item.CompanyID,
+			TypeID:     item.TypeID,
+			CreatedAt:  time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioItemCreated("foodfolio.item.created", event); err != nil {
+			log.Printf("Warning: Failed to publish item created event: %v", err)
+		}
 	}
 
 	return item, nil
@@ -202,6 +224,22 @@ func (uc *itemUseCase) UpdateItem(ctx context.Context, id, name, categoryID, com
 		return nil, err
 	}
 
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioItemUpdatedEvent{
+			ItemID:     item.ID,
+			Name:       item.Name,
+			Slug:       item.Slug,
+			CategoryID: item.CategoryID,
+			CompanyID:  item.CompanyID,
+			TypeID:     item.TypeID,
+			UpdatedAt:  time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioItemUpdated("foodfolio.item.updated", event); err != nil {
+			log.Printf("Warning: Failed to publish item updated event: %v", err)
+		}
+	}
+
 	return item, nil
 }
 
@@ -211,5 +249,20 @@ func (uc *itemUseCase) DeleteItem(ctx context.Context, id string) error {
 		return err
 	}
 
-	return uc.itemRepo.Delete(ctx, id)
+	if err := uc.itemRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioItemDeletedEvent{
+			ItemID:    id,
+			DeletedAt: time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioItemDeleted("foodfolio.item.deleted", event); err != nil {
+			log.Printf("Warning: Failed to publish item deleted event: %v", err)
+		}
+	}
+
+	return nil
 }

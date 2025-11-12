@@ -4,7 +4,7 @@
 
 - Go 1.21+
 - PostgreSQL 15+
-- Redpanda/Kafka (läuft auf localhost:9092)
+- Redpanda/Kafka (läuft auf localhost:19092)
 - (Optional) Keycloak für Authentication
 
 ## 1. Datenbank Setup
@@ -58,7 +58,7 @@ DB_PASSWORD=password
 DB_NAME=blog-service
 
 # Kafka (Redpanda)
-KAFKA_BROKERS=localhost:9092
+KAFKA_BROKERS=localhost:19092
 
 # Keycloak (optional - wenn nicht konfiguriert, läuft Service ohne Auth)
 KEYCLOAK_URL=http://localhost:8080
@@ -173,7 +173,7 @@ rpk topic consume blog.events.post.created --brokers localhost:9092
 
 Oder mit kcat/kafkacat:
 ```bash
-kcat -b localhost:9092 -t blog.events.post.created -C
+kcat -b localhost:19092 -t blog.events.post.created -C
 ```
 
 ## Mit Keycloak Authentication

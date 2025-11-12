@@ -128,7 +128,7 @@ DB_PASSWORD=password
 DB_NAME=service_db
 
 # Kafka
-KAFKA_BROKERS=localhost:9092
+KAFKA_BROKERS=localhost:19092
 
 # Keycloak
 KEYCLOAK_URL=http://localhost:8080

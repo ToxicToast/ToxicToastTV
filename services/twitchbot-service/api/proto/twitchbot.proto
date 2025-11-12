@@ -1,0 +1,579 @@
+syntax = "proto3";
+
+package twitchbot;
+
+option go_package = "toxictoast/services/twitchbot-service/api/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// Common messages
+message DeleteResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message IdRequest {
+  string id = 1;
+}
+
+message IdsRequest {
+  repeated string ids = 1;
+}
+
+message DeletedFilter {
+  bool include_deleted = 1;
+  bool only_deleted = 2;
+}
+
+// ============================================================================
+// Stream Service
+// ============================================================================
+service StreamService {
+  rpc CreateStream(CreateStreamRequest) returns (CreateStreamResponse);
+  rpc GetStream(IdRequest) returns (GetStreamResponse);
+  rpc ListStreams(ListStreamsRequest) returns (ListStreamsResponse);
+  rpc UpdateStream(UpdateStreamRequest) returns (UpdateStreamResponse);
+  rpc DeleteStream(IdRequest) returns (DeleteResponse);
+  rpc EndStream(EndStreamRequest) returns (EndStreamResponse);
+  rpc GetActiveStream(GetActiveStreamRequest) returns (GetActiveStreamResponse);
+  rpc GetStreamStats(IdRequest) returns (GetStreamStatsResponse);
+}
+
+message Stream {
+  string id = 1;
+  string title = 2;
+  string game_name = 3;
+  string game_id = 4;
+  google.protobuf.Timestamp started_at = 5;
+  google.protobuf.Timestamp ended_at = 6;
+  int32 peak_viewers = 7;
+  int32 average_viewers = 8;
+  int32 total_messages = 9;
+  bool is_active = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+  google.protobuf.Timestamp deleted_at = 13;
+}
+
+message CreateStreamRequest {
+  string title = 1;
+  string game_name = 2;
+  string game_id = 3;
+}
+
+message CreateStreamResponse {
+  Stream stream = 1;
+}
+
+message GetStreamResponse {
+  Stream stream = 1;
+}
+
+message ListStreamsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  DeletedFilter deleted_filter = 3;
+  bool only_active = 4;
+  string game_name = 5;
+}
+
+message ListStreamsResponse {
+  repeated Stream streams = 1;
+  int32 total = 2;
+}
+
+message UpdateStreamRequest {
+  string id = 1;
+  optional string title = 2;
+  optional string game_name = 3;
+  optional string game_id = 4;
+  optional int32 peak_viewers = 5;
+  optional int32 average_viewers = 6;
+}
+
+message UpdateStreamResponse {
+  Stream stream = 1;
+}
+
+message EndStreamRequest {
+  string id = 1;
+}
+
+message EndStreamResponse {
+  Stream stream = 1;
+}
+
+message GetActiveStreamRequest {}
+
+message GetActiveStreamResponse {
+  Stream stream = 1;
+}
+
+message GetStreamStatsResponse {
+  int32 peak_viewers = 1;
+  int32 average_viewers = 2;
+  int32 total_messages = 3;
+  int32 unique_viewers = 4;
+  int64 duration_seconds = 5;
+}
+
+// ============================================================================
+// Message Service
+// ============================================================================
+service MessageService {
+  rpc CreateMessage(CreateMessageRequest) returns (CreateMessageResponse);
+  rpc GetMessage(IdRequest) returns (GetMessageResponse);
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
+  rpc DeleteMessage(IdRequest) returns (DeleteResponse);
+  rpc SearchMessages(SearchMessagesRequest) returns (SearchMessagesResponse);
+  rpc GetMessageStats(GetMessageStatsRequest) returns (GetMessageStatsResponse);
+}
+
+message Message {
+  string id = 1;
+  string stream_id = 2;
+  string user_id = 3;
+  string username = 4;
+  string display_name = 5;
+  string message = 6;
+  bool is_moderator = 7;
+  bool is_subscriber = 8;
+  bool is_vip = 9;
+  bool is_broadcaster = 10;
+  google.protobuf.Timestamp sent_at = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp deleted_at = 13;
+}
+
+message CreateMessageRequest {
+  string stream_id = 1;
+  string user_id = 2;
+  string username = 3;
+  string display_name = 4;
+  string message = 5;
+  bool is_moderator = 6;
+  bool is_subscriber = 7;
+  bool is_vip = 8;
+  bool is_broadcaster = 9;
+}
+
+message CreateMessageResponse {
+  Message message = 1;
+}
+
+message GetMessageResponse {
+  Message message = 1;
+}
+
+message ListMessagesRequest {
+  string stream_id = 1;
+  string user_id = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+  DeletedFilter deleted_filter = 5;
+}
+
+message ListMessagesResponse {
+  repeated Message messages = 1;
+  int32 total = 2;
+}
+
+message SearchMessagesRequest {
+  string query = 1;
+  string stream_id = 2;
+  string user_id = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message SearchMessagesResponse {
+  repeated Message messages = 1;
+  int32 total = 2;
+}
+
+message GetMessageStatsRequest {
+  string stream_id = 1;
+}
+
+message GetMessageStatsResponse {
+  int32 total_messages = 1;
+  int32 unique_users = 2;
+  string most_active_user = 3;
+  int32 most_active_user_count = 4;
+}
+
+// ============================================================================
+// Viewer Service
+// ============================================================================
+service ViewerService {
+  rpc CreateViewer(CreateViewerRequest) returns (CreateViewerResponse);
+  rpc GetViewer(IdRequest) returns (GetViewerResponse);
+  rpc ListViewers(ListViewersRequest) returns (ListViewersResponse);
+  rpc UpdateViewer(UpdateViewerRequest) returns (UpdateViewerResponse);
+  rpc DeleteViewer(IdRequest) returns (DeleteResponse);
+  rpc GetViewerByTwitchId(GetViewerByTwitchIdRequest) returns (GetViewerResponse);
+  rpc GetViewerStats(IdRequest) returns (GetViewerStatsResponse);
+}
+
+message Viewer {
+  string id = 1;
+  string twitch_id = 2;
+  string username = 3;
+  string display_name = 4;
+  int32 total_messages = 5;
+  int32 total_streams_watched = 6;
+  google.protobuf.Timestamp first_seen = 7;
+  google.protobuf.Timestamp last_seen = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+  google.protobuf.Timestamp deleted_at = 11;
+}
+
+message CreateViewerRequest {
+  string twitch_id = 1;
+  string username = 2;
+  string display_name = 3;
+}
+
+message CreateViewerResponse {
+  Viewer viewer = 1;
+}
+
+message GetViewerResponse {
+  Viewer viewer = 1;
+}
+
+message ListViewersRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  DeletedFilter deleted_filter = 3;
+  string order_by = 4; // total_messages, total_streams_watched, first_seen, last_seen
+}
+
+message ListViewersResponse {
+  repeated Viewer viewers = 1;
+  int32 total = 2;
+}
+
+message UpdateViewerRequest {
+  string id = 1;
+  optional string username = 2;
+  optional string display_name = 3;
+  optional int32 total_messages = 4;
+  optional int32 total_streams_watched = 5;
+}
+
+message UpdateViewerResponse {
+  Viewer viewer = 1;
+}
+
+message GetViewerByTwitchIdRequest {
+  string twitch_id = 1;
+}
+
+message GetViewerStatsResponse {
+  int32 total_messages = 1;
+  int32 total_streams_watched = 2;
+  int32 days_since_first_seen = 3;
+  int32 days_since_last_seen = 4;
+}
+
+// ============================================================================
+// Clip Service
+// ============================================================================
+service ClipService {
+  rpc CreateClip(CreateClipRequest) returns (CreateClipResponse);
+  rpc GetClip(IdRequest) returns (GetClipResponse);
+  rpc ListClips(ListClipsRequest) returns (ListClipsResponse);
+  rpc UpdateClip(UpdateClipRequest) returns (UpdateClipResponse);
+  rpc DeleteClip(IdRequest) returns (DeleteResponse);
+  rpc GetClipByTwitchId(GetClipByTwitchIdRequest) returns (GetClipResponse);
+}
+
+message Clip {
+  string id = 1;
+  string stream_id = 2;
+  string twitch_clip_id = 3;
+  string title = 4;
+  string url = 5;
+  string embed_url = 6;
+  string thumbnail_url = 7;
+  string creator_name = 8;
+  string creator_id = 9;
+  int32 view_count = 10;
+  int32 duration_seconds = 11;
+  google.protobuf.Timestamp created_at_twitch = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+  google.protobuf.Timestamp deleted_at = 15;
+}
+
+message CreateClipRequest {
+  string stream_id = 1;
+  string twitch_clip_id = 2;
+  string title = 3;
+  string url = 4;
+  string embed_url = 5;
+  string thumbnail_url = 6;
+  string creator_name = 7;
+  string creator_id = 8;
+  int32 view_count = 9;
+  int32 duration_seconds = 10;
+  google.protobuf.Timestamp created_at_twitch = 11;
+}
+
+message CreateClipResponse {
+  Clip clip = 1;
+}
+
+message GetClipResponse {
+  Clip clip = 1;
+}
+
+message ListClipsRequest {
+  string stream_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  DeletedFilter deleted_filter = 4;
+  string order_by = 5; // view_count, created_at_twitch, duration_seconds
+}
+
+message ListClipsResponse {
+  repeated Clip clips = 1;
+  int32 total = 2;
+}
+
+message UpdateClipRequest {
+  string id = 1;
+  optional string title = 2;
+  optional int32 view_count = 3;
+}
+
+message UpdateClipResponse {
+  Clip clip = 1;
+}
+
+message GetClipByTwitchIdRequest {
+  string twitch_clip_id = 1;
+}
+
+// ============================================================================
+// Command Service
+// ============================================================================
+service CommandService {
+  rpc CreateCommand(CreateCommandRequest) returns (CreateCommandResponse);
+  rpc GetCommand(IdRequest) returns (GetCommandResponse);
+  rpc ListCommands(ListCommandsRequest) returns (ListCommandsResponse);
+  rpc UpdateCommand(UpdateCommandRequest) returns (UpdateCommandResponse);
+  rpc DeleteCommand(IdRequest) returns (DeleteResponse);
+  rpc GetCommandByName(GetCommandByNameRequest) returns (GetCommandResponse);
+  rpc ExecuteCommand(ExecuteCommandRequest) returns (ExecuteCommandResponse);
+}
+
+message Command {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string response = 4;
+  bool is_active = 5;
+  bool moderator_only = 6;
+  bool subscriber_only = 7;
+  int32 cooldown_seconds = 8;
+  int32 usage_count = 9;
+  google.protobuf.Timestamp last_used = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+  google.protobuf.Timestamp deleted_at = 13;
+}
+
+message CreateCommandRequest {
+  string name = 1;
+  string description = 2;
+  string response = 3;
+  bool is_active = 4;
+  bool moderator_only = 5;
+  bool subscriber_only = 6;
+  int32 cooldown_seconds = 7;
+}
+
+message CreateCommandResponse {
+  Command command = 1;
+}
+
+message GetCommandResponse {
+  Command command = 1;
+}
+
+message ListCommandsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  DeletedFilter deleted_filter = 3;
+  bool only_active = 4;
+}
+
+message ListCommandsResponse {
+  repeated Command commands = 1;
+  int32 total = 2;
+}
+
+message UpdateCommandRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string description = 3;
+  optional string response = 4;
+  optional bool is_active = 5;
+  optional bool moderator_only = 6;
+  optional bool subscriber_only = 7;
+  optional int32 cooldown_seconds = 8;
+}
+
+message UpdateCommandResponse {
+  Command command = 1;
+}
+
+message GetCommandByNameRequest {
+  string name = 1;
+}
+
+message ExecuteCommandRequest {
+  string command_name = 1;
+  string user_id = 2;
+  string username = 3;
+  bool is_moderator = 4;
+  bool is_subscriber = 5;
+}
+
+message ExecuteCommandResponse {
+  bool success = 1;
+  string response = 2;
+  string error = 3;
+  int32 cooldown_remaining = 4;
+}
+
+// ============================================================================
+// Bot Service - Bot Management and Control
+// ============================================================================
+
+service BotService {
+  // Join a channel
+  rpc JoinChannel(JoinChannelRequest) returns (JoinChannelResponse);
+
+  // Leave a channel
+  rpc LeaveChannel(LeaveChannelRequest) returns (LeaveChannelResponse);
+
+  // List all joined channels
+  rpc ListChannels(ListChannelsRequest) returns (ListChannelsResponse);
+
+  // Get bot status
+  rpc GetBotStatus(GetBotStatusRequest) returns (GetBotStatusResponse);
+
+  // Send a message to a channel
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+}
+
+message JoinChannelRequest {
+  string channel = 1; // Channel name (without #)
+}
+
+message JoinChannelResponse {
+  bool success = 1;
+  string message = 2;
+  string channel = 3;
+}
+
+message LeaveChannelRequest {
+  string channel = 1; // Channel name (without #)
+}
+
+message LeaveChannelResponse {
+  bool success = 1;
+  string message = 2;
+  string channel = 3;
+}
+
+message ListChannelsRequest {
+}
+
+message ListChannelsResponse {
+  repeated string channels = 1;
+  string primary_channel = 2; // The main channel from config
+}
+
+message GetBotStatusRequest {
+}
+
+message GetBotStatusResponse {
+  bool connected = 1;
+  bool authenticated = 2;
+  int32 channels_joined = 3;
+  repeated string active_channels = 4;
+  string bot_username = 5;
+  google.protobuf.Timestamp connected_since = 6;
+}
+
+message SendMessageRequest {
+  string channel = 1; // Channel to send to (optional, uses primary if not set)
+  string message = 2;
+}
+
+message SendMessageResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// ============================================================================
+// Channel Viewer Service - Track viewers per channel
+// ============================================================================
+service ChannelViewerService {
+  rpc GetChannelViewer(GetChannelViewerRequest) returns (GetChannelViewerResponse);
+  rpc ListChannelViewers(ListChannelViewersRequest) returns (ListChannelViewersResponse);
+  rpc CountChannelViewers(CountChannelViewersRequest) returns (CountChannelViewersResponse);
+  rpc RemoveChannelViewer(RemoveChannelViewerRequest) returns (DeleteResponse);
+}
+
+message ChannelViewer {
+  string id = 1;
+  string channel = 2;
+  string twitch_id = 3;
+  string username = 4;
+  string display_name = 5;
+  google.protobuf.Timestamp first_seen = 6;
+  google.protobuf.Timestamp last_seen = 7;
+  bool is_moderator = 8;
+  bool is_vip = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message GetChannelViewerRequest {
+  string channel = 1;
+  string twitch_id = 2;
+}
+
+message GetChannelViewerResponse {
+  ChannelViewer viewer = 1;
+}
+
+message ListChannelViewersRequest {
+  string channel = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListChannelViewersResponse {
+  repeated ChannelViewer viewers = 1;
+  int32 total = 2;
+}
+
+message CountChannelViewersRequest {
+  string channel = 1;
+}
+
+message CountChannelViewersResponse {
+  int32 count = 1;
+}
+
+message RemoveChannelViewerRequest {
+  string channel = 1;
+  string twitch_id = 2;
+}

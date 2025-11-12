@@ -7,7 +7,9 @@ import (
 	"gorm.io/gorm"
 
 	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/repository/entity"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
+	"toxictoast/services/foodfolio-service/internal/repository/mapper"
 )
 
 type itemRepository struct {
@@ -21,16 +23,17 @@ func NewItemRepository(db *gorm.DB) interfaces.ItemRepository {
 
 func (r *itemRepository) Create(ctx context.Context, item *domain.Item) error {
 	item.Slug = generateSlug(item.Name)
-	return r.db.WithContext(ctx).Create(item).Error
+	e := mapper.ItemToEntity(item)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *itemRepository) GetByID(ctx context.Context, id string) (*domain.Item, error) {
-	var item domain.Item
+	var e entity.ItemEntity
 	err := r.db.WithContext(ctx).
 		Preload("Category").
 		Preload("Company").
 		Preload("Type").
-		First(&item, "id = ?", id).Error
+		First(&e, "id = ?", id).Error
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -38,16 +41,16 @@ func (r *itemRepository) GetByID(ctx context.Context, id string) (*domain.Item, 
 		}
 		return nil, err
 	}
-	return &item, nil
+	return mapper.ItemToDomain(&e), nil
 }
 
 func (r *itemRepository) GetBySlug(ctx context.Context, slug string) (*domain.Item, error) {
-	var item domain.Item
+	var e entity.ItemEntity
 	err := r.db.WithContext(ctx).
 		Preload("Category").
 		Preload("Company").
 		Preload("Type").
-		First(&item, "slug = ?", slug).Error
+		First(&e, "slug = ?", slug).Error
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -55,11 +58,11 @@ func (r *itemRepository) GetBySlug(ctx context.Context, slug string) (*domain.It
 		}
 		return nil, err
 	}
-	return &item, nil
+	return mapper.ItemToDomain(&e), nil
 }
 
 func (r *itemRepository) GetWithVariants(ctx context.Context, id string, includeDetails bool) (*domain.Item, error) {
-	var item domain.Item
+	var e entity.ItemEntity
 
 	query := r.db.WithContext(ctx).
 		Preload("Category").
@@ -74,7 +77,7 @@ func (r *itemRepository) GetWithVariants(ctx context.Context, id string, include
 			Preload("ItemVariants.ItemDetails.Location")
 	}
 
-	err := query.First(&item, "id = ?", id).Error
+	err := query.First(&e, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -82,14 +85,14 @@ func (r *itemRepository) GetWithVariants(ctx context.Context, id string, include
 		return nil, err
 	}
 
-	return &item, nil
+	return mapper.ItemToDomain(&e), nil
 }
 
 func (r *itemRepository) List(ctx context.Context, offset, limit int, categoryID, companyID, typeID, search *string, includeDeleted bool) ([]*domain.Item, int64, error) {
-	var items []*domain.Item
+	var entities []*entity.ItemEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Item{})
+	query := r.db.WithContext(ctx).Model(&entity.ItemEntity{})
 
 	if includeDeleted {
 		query = query.Unscoped()
@@ -122,18 +125,18 @@ func (r *itemRepository) List(ctx context.Context, offset, limit int, categoryID
 		Preload("Type").
 		Offset(offset).
 		Limit(limit).
-		Find(&items).Error; err != nil {
+		Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return items, total, nil
+	return mapper.ItemsToDomain(entities), total, nil
 }
 
 func (r *itemRepository) Search(ctx context.Context, query string, offset, limit int, categoryID, companyID *string) ([]*domain.Item, int64, error) {
-	var items []*domain.Item
+	var entities []*entity.ItemEntity
 	var total int64
 
-	dbQuery := r.db.WithContext(ctx).Model(&domain.Item{})
+	dbQuery := r.db.WithContext(ctx).Model(&entity.ItemEntity{})
 
 	// Search in name
 	dbQuery = dbQuery.Where("name ILIKE ?", "%"+query+"%")
@@ -157,22 +160,23 @@ func (r *itemRepository) Search(ctx context.Context, query string, offset, limit
 		Preload("Type").
 		Offset(offset).
 		Limit(limit).
-		Find(&items).Error; err != nil {
+		Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return items, total, nil
+	return mapper.ItemsToDomain(entities), total, nil
 }
 
 func (r *itemRepository) Update(ctx context.Context, item *domain.Item) error {
 	item.Slug = generateSlug(item.Name)
-	return r.db.WithContext(ctx).Save(item).Error
+	e := mapper.ItemToEntity(item)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *itemRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.Item{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.ItemEntity{}, "id = ?", id).Error
 }
 
 func (r *itemRepository) HardDelete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Unscoped().Delete(&domain.Item{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Unscoped().Delete(&entity.ItemEntity{}, "id = ?", id).Error
 }

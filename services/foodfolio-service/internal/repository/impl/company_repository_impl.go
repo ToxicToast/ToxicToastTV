@@ -8,7 +8,9 @@ import (
 	"gorm.io/gorm"
 
 	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/repository/entity"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
+	"toxictoast/services/foodfolio-service/internal/repository/mapper"
 )
 
 type companyRepository struct {
@@ -23,39 +25,39 @@ func NewCompanyRepository(db *gorm.DB) interfaces.CompanyRepository {
 func (r *companyRepository) Create(ctx context.Context, company *domain.Company) error {
 	// Generate slug from name
 	company.Slug = generateSlug(company.Name)
-
-	return r.db.WithContext(ctx).Create(company).Error
+	e := mapper.CompanyToEntity(company)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *companyRepository) GetByID(ctx context.Context, id string) (*domain.Company, error) {
-	var company domain.Company
-	err := r.db.WithContext(ctx).First(&company, "id = ?", id).Error
+	var e entity.CompanyEntity
+	err := r.db.WithContext(ctx).First(&e, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &company, nil
+	return mapper.CompanyToDomain(&e), nil
 }
 
 func (r *companyRepository) GetBySlug(ctx context.Context, slug string) (*domain.Company, error) {
-	var company domain.Company
-	err := r.db.WithContext(ctx).First(&company, "slug = ?", slug).Error
+	var e entity.CompanyEntity
+	err := r.db.WithContext(ctx).First(&e, "slug = ?", slug).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &company, nil
+	return mapper.CompanyToDomain(&e), nil
 }
 
 func (r *companyRepository) List(ctx context.Context, offset, limit int, search string, includeDeleted bool) ([]*domain.Company, int64, error) {
-	var companies []*domain.Company
+	var entities []*entity.CompanyEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Company{})
+	query := r.db.WithContext(ctx).Model(&entity.CompanyEntity{})
 
 	// Include deleted if requested
 	if includeDeleted {
@@ -73,26 +75,26 @@ func (r *companyRepository) List(ctx context.Context, offset, limit int, search 
 	}
 
 	// Fetch with pagination
-	if err := query.Offset(offset).Limit(limit).Find(&companies).Error; err != nil {
+	if err := query.Offset(offset).Limit(limit).Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return companies, total, nil
+	return mapper.CompaniesToDomain(entities), total, nil
 }
 
 func (r *companyRepository) Update(ctx context.Context, company *domain.Company) error {
 	// Regenerate slug if name changed
 	company.Slug = generateSlug(company.Name)
-
-	return r.db.WithContext(ctx).Save(company).Error
+	e := mapper.CompanyToEntity(company)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *companyRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.Company{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.CompanyEntity{}, "id = ?", id).Error
 }
 
 func (r *companyRepository) HardDelete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Unscoped().Delete(&domain.Company{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Unscoped().Delete(&entity.CompanyEntity{}, "id = ?", id).Error
 }
 
 // generateSlug creates a URL-friendly slug from a string

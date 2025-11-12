@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
 
 	"toxictoast/services/blog-service/internal/domain"
@@ -81,8 +83,12 @@ func (uc *mediaUseCase) UploadMedia(ctx context.Context, input UploadMediaInput)
 		return nil, fmt.Errorf("failed to save file: %w", err)
 	}
 
+	// Generate UUID for media
+	mediaID := uuid.New().String()
+
 	// Create media entity
 	media := &domain.Media{
+		ID:               mediaID,
 		Filename:         filepath.Base(filename),
 		OriginalFilename: input.OriginalFilename,
 		MimeType:         input.MimeType,
@@ -105,6 +111,18 @@ func (uc *mediaUseCase) UploadMedia(ctx context.Context, input UploadMediaInput)
 				if err == nil && thumbnailPath != "" {
 					thumbnailURL := uc.constructURL(thumbnailPath)
 					media.ThumbnailURL = &thumbnailURL
+
+					// Publish thumbnail generated event
+					if uc.kafkaProducer != nil {
+						event := kafka.MediaThumbnailGeneratedEvent{
+							MediaID:      media.ID,
+							ThumbnailURL: thumbnailURL,
+							GeneratedAt:  time.Now(),
+						}
+						if err := uc.kafkaProducer.PublishMediaThumbnailGenerated("blog.media.thumbnail.generated", event); err != nil {
+							fmt.Printf("Warning: Failed to publish media thumbnail generated event: %v\n", err)
+						}
+					}
 				}
 			}
 		}
@@ -117,8 +135,22 @@ func (uc *mediaUseCase) UploadMedia(ctx context.Context, input UploadMediaInput)
 		return nil, fmt.Errorf("failed to create media record: %w", err)
 	}
 
-	// TODO: Publish Kafka event for media upload
-	// if uc.kafkaProducer != nil { ... }
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.MediaUploadedEvent{
+			MediaID:          media.ID,
+			Filename:         media.Filename,
+			OriginalFilename: media.OriginalFilename,
+			MimeType:         media.MimeType,
+			Size:             media.Size,
+			URL:              media.URL,
+			UploadedBy:       media.UploadedBy,
+			UploadedAt:       media.CreatedAt,
+		}
+		if err := uc.kafkaProducer.PublishMediaUploaded("blog.media.uploaded", event); err != nil {
+			fmt.Printf("Warning: Failed to publish media uploaded event: %v\n", err)
+		}
+	}
 
 	return media, nil
 }
@@ -150,6 +182,18 @@ func (uc *mediaUseCase) DeleteMedia(ctx context.Context, id string) error {
 	// Delete from database
 	if err := uc.repo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete media record: %w", err)
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.MediaDeletedEvent{
+			MediaID:   media.ID,
+			Filename:  media.Filename,
+			DeletedAt: time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishMediaDeleted("blog.media.deleted", event); err != nil {
+			fmt.Printf("Warning: Failed to publish media deleted event: %v\n", err)
+		}
 	}
 
 	return nil
