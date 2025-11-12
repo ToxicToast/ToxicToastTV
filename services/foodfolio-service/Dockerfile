@@ -4,20 +4,23 @@ FROM golang:1.24-alpine AS builder
 # Install build dependencies
 RUN apk add --no-cache git make
 
-# Set working directory
-WORKDIR /app
+WORKDIR /build
 
-# Copy go mod files
-COPY go.mod go.sum ./
+# Copy go workspace files
+COPY go.work go.work.sum ./
+
+# Copy shared module
+COPY shared/ ./shared/
+
+# Copy service files
+COPY services/foodfolio-service/ ./services/foodfolio-service/
 
 # Download dependencies
+WORKDIR /build/services/foodfolio-service
 RUN go mod download
 
-# Copy source code
-COPY . .
-
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o foodfolio-service ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /build/bin/foodfolio-service ./cmd/server
 
 # Final stage
 FROM alpine:latest
@@ -32,7 +35,7 @@ WORKDIR /app
 RUN mkdir -p /app/receipts && chmod 777 /app/receipts
 
 # Copy binary from builder
-COPY --from=builder /app/foodfolio-service .
+COPY --from=builder /build/bin/foodfolio-service .
 
 # Expose ports
 EXPOSE 8889 9091
