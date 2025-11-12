@@ -16,6 +16,7 @@ type Config struct {
 	EnableCORS     bool
 	RateLimitRPS   int
 	RateLimitBurst int
+	DevMode        bool
 
 	// Service endpoints
 	BlogServiceURL         string
@@ -46,6 +47,7 @@ func Load() (*Config, error) {
 		EnableCORS:     config.GetEnvAsBool("ENABLE_CORS", true),
 		RateLimitRPS:   config.GetEnvAsInt("RATE_LIMIT_RPS", 100),
 		RateLimitBurst: config.GetEnvAsInt("RATE_LIMIT_BURST", 200),
+		DevMode:        config.GetEnvAsBool("DEV_MODE", false),
 
 		// Service URLs
 		BlogServiceURL:         config.GetEnv("BLOG_SERVICE_URL", "localhost:9090"),

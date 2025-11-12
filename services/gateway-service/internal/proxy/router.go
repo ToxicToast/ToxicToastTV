@@ -6,19 +6,22 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
 // Router handles HTTP routing to gRPC backends
 type Router struct {
 	clients *ServiceClients
 	router  *mux.Router
+	devMode bool
 }
 
 // NewRouter creates a new HTTP to gRPC router
-func NewRouter(clients *ServiceClients) *Router {
+func NewRouter(clients *ServiceClients, devMode bool) *Router {
 	r := &Router{
 		clients: clients,
 		router:  mux.NewRouter(),
+		devMode: devMode,
 	}
 
 	r.setupRoutes()
@@ -30,6 +33,15 @@ func (r *Router) setupRoutes() {
 	// Health check
 	r.router.HandleFunc("/health", r.healthCheck).Methods("GET")
 	r.router.HandleFunc("/ready", r.readinessCheck).Methods("GET")
+
+	// Swagger UI (only in DEV mode)
+	if r.devMode {
+		r.router.PathPrefix("/swagger/").Handler(httpSwagger.Handler(
+			httpSwagger.URL("/swagger/doc.yaml"),
+		))
+		// Serve the swagger.yaml file
+		r.router.HandleFunc("/swagger/doc.yaml", r.serveSwaggerSpec).Methods("GET")
+	}
 
 	// Blog service routes - /api/blog/*
 	if r.clients.BlogConn != nil {
@@ -159,4 +171,10 @@ func (r *Router) handleProxy(w http.ResponseWriter, req *http.Request, service, 
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+// serveSwaggerSpec serves the OpenAPI specification file
+func (r *Router) serveSwaggerSpec(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/x-yaml")
+	http.ServeFile(w, req, "docs/swagger.yaml")
 }
