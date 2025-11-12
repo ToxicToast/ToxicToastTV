@@ -13,6 +13,7 @@ import (
 	"github.com/toxictoast/toxictoastgo/shared/config"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
+	"toxictoast/services/gateway-service/internal/metrics"
 	"toxictoast/services/gateway-service/internal/middleware"
 	"toxictoast/services/gateway-service/internal/proxy"
 	gwconfig "toxictoast/services/gateway-service/pkg/config"
@@ -28,6 +29,10 @@ func main() {
 	// Initialize logger
 	logger.Init()
 	logger.Info("Starting Gateway Service")
+
+	// Initialize metrics
+	m := metrics.NewMetrics()
+	logger.Info("Prometheus metrics initialized")
 
 	// Initialize Keycloak auth (optional - only if configured)
 	if cfg.KeycloakURL != "" && cfg.KeycloakRealm != "" {
@@ -69,6 +74,15 @@ func main() {
 
 	logger.Info("Connected to backend services")
 
+	// Update backend health metrics
+	m.SetBackendHealthStatus("blog", clients.BlogConn != nil)
+	m.SetBackendHealthStatus("link", clients.LinkConn != nil)
+	m.SetBackendHealthStatus("foodfolio", clients.FoodfolioConn != nil)
+	m.SetBackendHealthStatus("notification", clients.NotificationConn != nil)
+	m.SetBackendHealthStatus("sse", clients.SSEConn != nil)
+	m.SetBackendHealthStatus("twitchbot", clients.TwitchBotConn != nil)
+	m.SetBackendHealthStatus("webhook", clients.WebhookConn != nil)
+
 	// Create router
 	router := proxy.NewRouter(clients, cfg.DevMode)
 	handler := router.GetRouter()
@@ -77,19 +91,24 @@ func main() {
 		logger.Info("DEV mode enabled - Swagger UI available at /swagger")
 	}
 
-	// Apply middleware in order
+	// Apply middleware in order (innermost to outermost)
 	var finalHandler http.Handler = handler
+
+	// Metrics middleware (should be innermost to capture all metrics)
+	finalHandler = middleware.Metrics(m)(finalHandler)
+	logger.Info("Metrics middleware enabled")
+
 	if cfg.EnableCORS {
 		finalHandler = middleware.CORS(finalHandler)
 		logger.Info("CORS middleware enabled")
 	}
 
-	// Rate limiting
-	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst)
+	// Rate limiting (with metrics)
+	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst, m)
 	finalHandler = rateLimiter.Middleware(finalHandler)
 	logger.Info(fmt.Sprintf("Rate limiting enabled - RPS: %d, Burst: %d", cfg.RateLimitRPS, cfg.RateLimitBurst))
 
-	// Logging middleware
+	// Logging middleware (should be outermost)
 	finalHandler = middleware.Logging(finalHandler)
 
 	// Optional: Add authentication middleware for protected routes

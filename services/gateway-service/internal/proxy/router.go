@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 	"toxictoast/services/gateway-service/internal/handler"
 )
@@ -34,6 +35,9 @@ func (r *Router) setupRoutes() {
 	// Health check
 	r.router.HandleFunc("/health", r.healthCheck).Methods("GET")
 	r.router.HandleFunc("/ready", r.readinessCheck).Methods("GET")
+
+	// Prometheus metrics endpoint
+	r.router.Handle("/metrics", promhttp.Handler()).Methods("GET")
 
 	// Swagger UI (only in DEV mode)
 	if r.devMode {
