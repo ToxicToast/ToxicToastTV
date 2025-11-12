@@ -1,17 +1,23 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
-WORKDIR /app
+WORKDIR /build
 
-# Install dependencies
-COPY go.mod go.sum ./
+# Copy go workspace files
+COPY go.work go.work.sum ./
+
+# Copy shared module
+COPY shared/ ./shared/
+
+# Copy service files
+COPY services/blog-service/ ./services/blog-service/
+
+# Download dependencies
+WORKDIR /build/services/blog-service
 RUN go mod download
 
-# Copy source code
-COPY . .
-
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o bin/blog-service cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o /build/bin/blog-service ./cmd/server
 
 # Final stage
 FROM alpine:latest
@@ -19,16 +25,13 @@ FROM alpine:latest
 # Install ca-certificates for HTTPS
 RUN apk --no-cache add ca-certificates
 
-WORKDIR /root/
+WORKDIR /app
 
 # Copy the binary from builder stage
-COPY --from=builder /app/bin/blog-service .
+COPY --from=builder /build/bin/blog-service .
 
-# Copy migrations if they exist
-COPY --from=builder /app/migrations ./migrations
-
-# Expose port
-EXPOSE 8080
+# Expose ports (HTTP and gRPC)
+EXPOSE 8080 9090
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

@@ -10,14 +10,14 @@ COPY go.work go.work.sum ./
 COPY shared/ ./shared/
 
 # Copy service files
-COPY services/link-service/ ./services/link-service/
+COPY services/sse-service/ ./services/sse-service/
 
 # Download dependencies
-WORKDIR /build/services/link-service
+WORKDIR /build/services/sse-service
 RUN go mod download
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o /build/bin/link-service ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o /build/bin/sse-service ./cmd/server
 
 # Final stage
 FROM alpine:latest
@@ -28,9 +28,9 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /app
 
 # Copy the binary from builder stage
-COPY --from=builder /build/bin/link-service .
+COPY --from=builder /build/bin/sse-service .
 
-# Expose ports
+# Expose ports (HTTP for SSE, gRPC for management)
 EXPOSE 8080 9090
 
 # Health check
@@ -38,4 +38,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 # Run the application
-CMD ["./link-service"]
+CMD ["./sse-service"]
