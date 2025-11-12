@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/mux"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
+	"toxictoast/services/gateway-service/internal/handler"
 )
 
 // Router handles HTTP routing to gRPC backends
@@ -45,8 +46,9 @@ func (r *Router) setupRoutes() {
 
 	// Blog service routes - /api/blog/*
 	if r.clients.BlogConn != nil {
+		blogHandler := handler.NewBlogHandler(r.clients.BlogConn)
 		blogRouter := r.router.PathPrefix("/api/blog").Subrouter()
-		blogRouter.PathPrefix("/").HandlerFunc(r.proxyToBlog)
+		blogHandler.RegisterRoutes(blogRouter)
 	}
 
 	// Link service routes - /api/links/*

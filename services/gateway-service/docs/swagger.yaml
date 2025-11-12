@@ -33,7 +33,7 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:8081
     description: Local development server
   - url: https://api.toxictoast.de
     description: Production server
