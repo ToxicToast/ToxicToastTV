@@ -1,0 +1,445 @@
+openapi: 3.0.3
+info:
+  title: ToxicToast Gateway API
+  description: |
+    API Gateway for ToxicToast microservices platform.
+
+    This gateway provides unified HTTP access to all backend gRPC services including:
+    - Blog Service - Ghost-like blog and CMS
+    - Link Service - URL shortener with analytics
+    - FoodFolio Service - Food inventory management
+    - Notification Service - Multi-channel notifications
+    - SSE Service - Server-Sent Events for real-time updates
+    - TwitchBot Service - Twitch bot integration
+    - Webhook Service - Webhook management
+
+    ## Authentication
+    Most endpoints require JWT authentication via Keycloak.
+    Include the JWT token in the Authorization header:
+    ```
+    Authorization: Bearer <your-jwt-token>
+    ```
+
+    ## Rate Limiting
+    The gateway enforces rate limiting per IP address:
+    - Default: 100 requests per second
+    - Burst: 200 requests
+  version: 1.0.0
+  contact:
+    name: ToxicToast Development
+    url: https://github.com/ToxicToast/ToxicToastGo
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: https://api.toxictoast.de
+    description: Production server
+
+tags:
+  - name: health
+    description: Health check and monitoring endpoints
+  - name: blog
+    description: Blog and CMS operations (posts, categories, tags, comments)
+  - name: link
+    description: URL shortening and link analytics
+  - name: foodfolio
+    description: Food inventory and shopping management
+  - name: notification
+    description: Multi-channel notification management
+  - name: sse
+    description: Server-Sent Events for real-time updates
+  - name: twitchbot
+    description: Twitch bot commands and configuration
+  - name: webhook
+    description: Webhook registration and management
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Returns the health status of the gateway and all connected backend services
+      operationId: healthCheck
+      tags:
+        - health
+      responses:
+        '200':
+          description: Gateway is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  timestamp:
+                    type: string
+                    format: date-time
+                  services:
+                    type: object
+                    properties:
+                      blog:
+                        type: string
+                        example: connected
+                      link:
+                        type: string
+                        example: connected
+                      foodfolio:
+                        type: string
+                        example: connected
+        '503':
+          description: One or more services are unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ready:
+    get:
+      summary: Readiness check
+      description: Returns whether the gateway is ready to accept traffic
+      operationId: readinessCheck
+      tags:
+        - health
+      responses:
+        '200':
+          description: Gateway is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                    example: true
+        '503':
+          description: Gateway is not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                    example: false
+
+  /api/blog/{proxy+}:
+    x-summary: Blog Service Proxy
+    get:
+      summary: Proxy GET requests to Blog Service
+      description: Forwards HTTP GET requests to the Blog gRPC service
+      operationId: proxyBlogGet
+      tags:
+        - blog
+      parameters:
+        - name: proxy+
+          in: path
+          required: true
+          description: Blog service endpoint path
+          schema:
+            type: string
+          examples:
+            posts:
+              value: posts
+              summary: List all posts
+            categories:
+              value: categories
+              summary: List all categories
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response from blog service
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+    post:
+      summary: Proxy POST requests to Blog Service
+      tags:
+        - blog
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Resource created
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+    put:
+      summary: Proxy PUT requests to Blog Service
+      tags:
+        - blog
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Resource updated
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+    delete:
+      summary: Proxy DELETE requests to Blog Service
+      tags:
+        - blog
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Resource deleted
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+
+  /api/links/{proxy+}:
+    x-summary: Link Service Proxy
+    get:
+      summary: Proxy GET requests to Link Service
+      description: Forwards HTTP GET requests to the Link gRPC service
+      operationId: proxyLinkGet
+      tags:
+        - link
+      parameters:
+        - name: proxy+
+          in: path
+          required: true
+          description: Link service endpoint path
+          schema:
+            type: string
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response from link service
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+    post:
+      summary: Proxy POST requests to Link Service
+      tags:
+        - link
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Short link created
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+
+  /api/foodfolio/{proxy+}:
+    x-summary: FoodFolio Service Proxy
+    get:
+      summary: Proxy GET requests to FoodFolio Service
+      description: Forwards HTTP GET requests to the FoodFolio gRPC service
+      operationId: proxyFoodFolioGet
+      tags:
+        - foodfolio
+      parameters:
+        - name: proxy+
+          in: path
+          required: true
+          description: FoodFolio service endpoint path
+          schema:
+            type: string
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response from foodfolio service
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+
+  /api/notifications/{proxy+}:
+    x-summary: Notification Service Proxy
+    get:
+      summary: Proxy GET requests to Notification Service
+      description: Forwards HTTP GET requests to the Notification gRPC service
+      operationId: proxyNotificationGet
+      tags:
+        - notification
+      parameters:
+        - name: proxy+
+          in: path
+          required: true
+          description: Notification service endpoint path
+          schema:
+            type: string
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response from notification service
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+
+  /api/sse/{proxy+}:
+    x-summary: SSE Service Proxy
+    get:
+      summary: Proxy GET requests to SSE Service
+      description: Forwards HTTP GET requests to the SSE gRPC service for real-time updates
+      operationId: proxySSEGet
+      tags:
+        - sse
+      parameters:
+        - name: proxy+
+          in: path
+          required: true
+          description: SSE service endpoint path
+          schema:
+            type: string
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: SSE stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+
+  /api/twitchbot/{proxy+}:
+    x-summary: TwitchBot Service Proxy
+    get:
+      summary: Proxy GET requests to TwitchBot Service
+      description: Forwards HTTP GET requests to the TwitchBot gRPC service
+      operationId: proxyTwitchBotGet
+      tags:
+        - twitchbot
+      parameters:
+        - name: proxy+
+          in: path
+          required: true
+          description: TwitchBot service endpoint path
+          schema:
+            type: string
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response from twitchbot service
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+
+  /api/webhooks/{proxy+}:
+    x-summary: Webhook Service Proxy
+    get:
+      summary: Proxy GET requests to Webhook Service
+      description: Forwards HTTP GET requests to the Webhook gRPC service
+      operationId: proxyWebhookGet
+      tags:
+        - webhook
+      parameters:
+        - name: proxy+
+          in: path
+          required: true
+          description: Webhook service endpoint path
+          schema:
+            type: string
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response from webhook service
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+    post:
+      summary: Proxy POST requests to Webhook Service
+      tags:
+        - webhook
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Webhook created
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token from Keycloak authentication
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: Service unavailable
+        code:
+          type: integer
+          description: HTTP status code
+          example: 503
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required or token invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Invalid or expired token
+            code: 401
+            timestamp: '2025-01-12T10:30:00Z'
+
+    RateLimitError:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Rate limit exceeded
+            code: 429
+            timestamp: '2025-01-12T10:30:00Z'
+      headers:
+        X-RateLimit-Limit:
+          description: Request limit per time window
+          schema:
+            type: integer
+            example: 100
+        X-RateLimit-Remaining:
+          description: Remaining requests in current window
+          schema:
+            type: integer
+            example: 0
+        X-RateLimit-Reset:
+          description: Time when rate limit resets (Unix timestamp)
+          schema:
+            type: integer
+            example: 1673518800
+
+security:
+  - BearerAuth: []

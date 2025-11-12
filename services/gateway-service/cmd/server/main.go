@@ -70,8 +70,12 @@ func main() {
 	logger.Info("Connected to backend services")
 
 	// Create router
-	router := proxy.NewRouter(clients)
+	router := proxy.NewRouter(clients, cfg.DevMode)
 	handler := router.GetRouter()
+
+	if cfg.DevMode {
+		logger.Info("DEV mode enabled - Swagger UI available at /swagger")
+	}
 
 	// Apply middleware in order
 	var finalHandler http.Handler = handler
