@@ -3,28 +3,24 @@ package domain
 import (
 	"time"
 
-	"gorm.io/gorm"
 )
 
 // Item represents a base product (e.g., "Monster Energy", "Coca Cola")
 type Item struct {
-	ID         string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	Name       string         `gorm:"type:varchar(255);not null" json:"name"`
-	Slug       string         `gorm:"type:varchar(255);not null;uniqueIndex" json:"slug"`
-	CategoryID string         `gorm:"type:uuid;not null;index" json:"category_id"`
-	CompanyID  string         `gorm:"type:uuid;not null;index" json:"company_id"`
-	TypeID     string         `gorm:"type:uuid;not null;index" json:"type_id"`
-	CreatedAt  time.Time      `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt  time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
-	DeletedAt  gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	ID         string         
+	Name       string         
+	Slug       string         
+	CategoryID string         
+	CompanyID  string         
+	TypeID     string         
+	CreatedAt  time.Time      
+	UpdatedAt  time.Time      
+	DeletedAt  *time.Time 
 
 	// Relations
-	Category     *Category     `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
-	Company      *Company      `gorm:"foreignKey:CompanyID" json:"company,omitempty"`
-	Type         *Type         `gorm:"foreignKey:TypeID" json:"type,omitempty"`
-	ItemVariants []ItemVariant `gorm:"foreignKey:ItemID" json:"item_variants,omitempty"`
+	Category     *Category     
+	Company      *Company      
+	Type         *Type         
+	ItemVariants []ItemVariant 
 }
 
-func (Item) TableName() string {
-	return "items"
-}

@@ -3,7 +3,11 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 
 	"toxictoast/services/link-service/internal/domain"
 	"toxictoast/services/link-service/internal/repository"
@@ -29,15 +33,17 @@ type RecordClickInput struct {
 }
 
 type clickUseCase struct {
-	clickRepo repository.ClickRepository
-	linkRepo  repository.LinkRepository
+	clickRepo     repository.ClickRepository
+	linkRepo      repository.LinkRepository
+	kafkaProducer *kafka.Producer
 }
 
 // NewClickUseCase creates a new instance of ClickUseCase
-func NewClickUseCase(clickRepo repository.ClickRepository, linkRepo repository.LinkRepository) ClickUseCase {
+func NewClickUseCase(clickRepo repository.ClickRepository, linkRepo repository.LinkRepository, kafkaProducer *kafka.Producer) ClickUseCase {
 	return &clickUseCase{
-		clickRepo: clickRepo,
-		linkRepo:  linkRepo,
+		clickRepo:     clickRepo,
+		linkRepo:      linkRepo,
+		kafkaProducer: kafkaProducer,
 	}
 }
 
@@ -53,8 +59,12 @@ func (uc *clickUseCase) RecordClick(ctx context.Context, input RecordClickInput)
 		return nil, fmt.Errorf("link is not available")
 	}
 
+	// Generate UUID for click
+	clickID := uuid.New().String()
+
 	// Create click entity
 	click := &domain.Click{
+		ID:         clickID,
 		LinkID:     input.LinkID,
 		IPAddress:  input.IPAddress,
 		UserAgent:  input.UserAgent,
@@ -68,6 +78,27 @@ func (uc *clickUseCase) RecordClick(ctx context.Context, input RecordClickInput)
 	// Save to database
 	if err := uc.clickRepo.Create(ctx, click); err != nil {
 		return nil, fmt.Errorf("failed to record click: %w", err)
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.LinkClickedEvent{
+			ClickID:    click.ID,
+			LinkID:     click.LinkID,
+			ShortCode:  link.ShortCode,
+			IPAddress:  click.IPAddress,
+			UserAgent:  click.UserAgent,
+			Referer:    click.Referer,
+			Country:    click.Country,
+			City:       click.City,
+			DeviceType: click.DeviceType,
+			ClickedAt:  click.ClickedAt,
+		}
+		topic := "link.clicked"
+		if err := uc.kafkaProducer.PublishLinkClicked(topic, event); err != nil {
+			// Log error but don't fail the request
+			log.Printf("Warning: Failed to publish link clicked event: %v", err)
+		}
 	}
 
 	return click, nil

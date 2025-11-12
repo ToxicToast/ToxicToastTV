@@ -1,0 +1,199 @@
+syntax = "proto3";
+
+package notification;
+
+option go_package = "toxictoast/services/notification-service/api/proto;notification";
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================================================
+// Channel Management Service
+// ============================================================================
+
+service ChannelManagementService {
+  rpc CreateChannel(CreateChannelRequest) returns (ChannelResponse);
+  rpc GetChannel(GetChannelRequest) returns (ChannelResponse);
+  rpc ListChannels(ListChannelsRequest) returns (ListChannelsResponse);
+  rpc UpdateChannel(UpdateChannelRequest) returns (ChannelResponse);
+  rpc DeleteChannel(DeleteChannelRequest) returns (DeleteChannelResponse);
+  rpc ToggleChannel(ToggleChannelRequest) returns (ChannelResponse);
+  rpc TestChannel(TestChannelRequest) returns (TestChannelResponse);
+}
+
+// ============================================================================
+// Notification Service
+// ============================================================================
+
+service NotificationService {
+  rpc GetNotification(GetNotificationRequest) returns (NotificationResponse);
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
+  rpc DeleteNotification(DeleteNotificationRequest) returns (DeleteNotificationResponse);
+  rpc CleanupOldNotifications(CleanupOldNotificationsRequest) returns (CleanupOldNotificationsResponse);
+}
+
+// ============================================================================
+// Messages
+// ============================================================================
+
+message DiscordChannel {
+  string id = 1;
+  string name = 2;
+  string webhook_url = 3;
+  repeated string event_types = 4;
+  int32 color = 5;
+  bool active = 6;
+  string description = 7;
+  int32 total_notifications = 8;
+  int32 success_notifications = 9;
+  int32 failed_notifications = 10;
+  google.protobuf.Timestamp last_notification_at = 11;
+  google.protobuf.Timestamp last_success_at = 12;
+  google.protobuf.Timestamp last_failure_at = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+message Notification {
+  string id = 1;
+  string channel_id = 2;
+  string event_id = 3;
+  string event_type = 4;
+  string event_payload = 5;
+  string discord_message_id = 6;
+  NotificationStatus status = 7;
+  int32 attempt_count = 8;
+  string last_error = 9;
+  google.protobuf.Timestamp sent_at = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+message NotificationAttempt {
+  string id = 1;
+  string notification_id = 2;
+  int32 attempt_number = 3;
+  int32 response_status = 4;
+  string response_body = 5;
+  string discord_message_id = 6;
+  bool success = 7;
+  string error = 8;
+  int32 duration_ms = 9;
+  google.protobuf.Timestamp created_at = 10;
+}
+
+enum NotificationStatus {
+  NOTIFICATION_STATUS_UNSPECIFIED = 0;
+  NOTIFICATION_STATUS_PENDING = 1;
+  NOTIFICATION_STATUS_SUCCESS = 2;
+  NOTIFICATION_STATUS_FAILED = 3;
+}
+
+// ============================================================================
+// Channel Management Requests/Responses
+// ============================================================================
+
+message CreateChannelRequest {
+  string name = 1;
+  string webhook_url = 2;
+  repeated string event_types = 3;
+  int32 color = 4;
+  string description = 5;
+}
+
+message ChannelResponse {
+  DiscordChannel channel = 1;
+}
+
+message GetChannelRequest {
+  string id = 1;
+}
+
+message ListChannelsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  bool active_only = 3;
+}
+
+message ListChannelsResponse {
+  repeated DiscordChannel channels = 1;
+  int64 total = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message UpdateChannelRequest {
+  string id = 1;
+  string name = 2;
+  string webhook_url = 3;
+  repeated string event_types = 4;
+  int32 color = 5;
+  string description = 6;
+  bool active = 7;
+}
+
+message DeleteChannelRequest {
+  string id = 1;
+}
+
+message DeleteChannelResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ToggleChannelRequest {
+  string id = 1;
+  bool active = 2;
+}
+
+message TestChannelRequest {
+  string id = 1;
+}
+
+message TestChannelResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ============================================================================
+// Notification Requests/Responses
+// ============================================================================
+
+message GetNotificationRequest {
+  string id = 1;
+}
+
+message NotificationResponse {
+  Notification notification = 1;
+  repeated NotificationAttempt attempts = 2;
+}
+
+message ListNotificationsRequest {
+  string channel_id = 1;
+  NotificationStatus status = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message ListNotificationsResponse {
+  repeated Notification notifications = 1;
+  int64 total = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message DeleteNotificationRequest {
+  string id = 1;
+}
+
+message DeleteNotificationResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message CleanupOldNotificationsRequest {
+  int32 older_than_days = 1;
+}
+
+message CleanupOldNotificationsResponse {
+  string message = 1;
+}

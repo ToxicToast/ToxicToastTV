@@ -250,7 +250,7 @@ DB_NAME=foodfolio
 DB_SSL_MODE=disable
 
 # Kafka/Redpanda
-KAFKA_BROKERS=localhost:9092
+KAFKA_BROKERS=localhost:19092
 KAFKA_GROUP_ID=foodfolio-service
 KAFKA_TOPIC_PREFIX=foodfolio
 KAFKA_TOPIC_ITEM_EVENTS=foodfolio.events.item

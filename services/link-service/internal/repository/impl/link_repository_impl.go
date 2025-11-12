@@ -8,6 +8,8 @@ import (
 	"gorm.io/gorm"
 	"toxictoast/services/link-service/internal/domain"
 	"toxictoast/services/link-service/internal/repository"
+	"toxictoast/services/link-service/internal/repository/entity"
+	"toxictoast/services/link-service/internal/repository/mapper"
 )
 
 type linkRepository struct {
@@ -20,38 +22,39 @@ func NewLinkRepository(db *gorm.DB) repository.LinkRepository {
 }
 
 func (r *linkRepository) Create(ctx context.Context, link *domain.Link) error {
-	return r.db.WithContext(ctx).Create(link).Error
+	e := mapper.LinkToEntity(link)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *linkRepository) GetByID(ctx context.Context, id string) (*domain.Link, error) {
-	var link domain.Link
-	err := r.db.WithContext(ctx).First(&link, "id = ?", id).Error
+	var e entity.LinkEntity
+	err := r.db.WithContext(ctx).First(&e, "id = ?", id).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("link not found")
 		}
 		return nil, err
 	}
-	return &link, nil
+	return mapper.LinkToDomain(&e), nil
 }
 
 func (r *linkRepository) GetByShortCode(ctx context.Context, shortCode string) (*domain.Link, error) {
-	var link domain.Link
-	err := r.db.WithContext(ctx).First(&link, "short_code = ?", shortCode).Error
+	var e entity.LinkEntity
+	err := r.db.WithContext(ctx).First(&e, "short_code = ?", shortCode).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("link not found")
 		}
 		return nil, err
 	}
-	return &link, nil
+	return mapper.LinkToDomain(&e), nil
 }
 
 func (r *linkRepository) List(ctx context.Context, filters repository.LinkFilters) ([]domain.Link, int64, error) {
-	var links []domain.Link
+	var entities []*entity.LinkEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Link{})
+	query := r.db.WithContext(ctx).Model(&entity.LinkEntity{})
 
 	// Apply filters
 	if filters.IsActive != nil {
@@ -95,30 +98,37 @@ func (r *linkRepository) List(ctx context.Context, filters repository.LinkFilter
 	}
 
 	// Execute query
-	if err := query.Find(&links).Error; err != nil {
+	if err := query.Find(&entities).Error; err != nil {
 		return nil, 0, err
+	}
+
+	// Convert entities to domain
+	links := make([]domain.Link, len(entities))
+	for i, e := range entities {
+		links[i] = *mapper.LinkToDomain(e)
 	}
 
 	return links, total, nil
 }
 
 func (r *linkRepository) Update(ctx context.Context, link *domain.Link) error {
-	return r.db.WithContext(ctx).Save(link).Error
+	e := mapper.LinkToEntity(link)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *linkRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.Link{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.LinkEntity{}, "id = ?", id).Error
 }
 
 func (r *linkRepository) IncrementClicks(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Model(&domain.Link{}).
+	return r.db.WithContext(ctx).Model(&entity.LinkEntity{}).
 		Where("id = ?", id).
 		UpdateColumn("click_count", gorm.Expr("click_count + 1")).Error
 }
 
 func (r *linkRepository) ShortCodeExists(ctx context.Context, shortCode string) (bool, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&domain.Link{}).Where("short_code = ?", shortCode).Count(&count).Error
+	err := r.db.WithContext(ctx).Model(&entity.LinkEntity{}).Where("short_code = ?", shortCode).Count(&count).Error
 	return count > 0, err
 }
 
@@ -128,16 +138,16 @@ func (r *linkRepository) GetStats(ctx context.Context, linkID string) (*reposito
 	}
 
 	// Get total clicks from link
-	var link domain.Link
-	if err := r.db.WithContext(ctx).First(&link, "id = ?", linkID).Error; err != nil {
+	var e entity.LinkEntity
+	if err := r.db.WithContext(ctx).First(&e, "id = ?", linkID).Error; err != nil {
 		return nil, err
 	}
-	stats.TotalClicks = link.ClickCount
+	stats.TotalClicks = e.ClickCount
 
 	// Get unique IPs
 	var uniqueIPs int64
 	if err := r.db.WithContext(ctx).
-		Model(&domain.Click{}).
+		Model(&entity.ClickEntity{}).
 		Where("link_id = ?", linkID).
 		Distinct("ip_address").
 		Count(&uniqueIPs).Error; err != nil {
@@ -149,7 +159,7 @@ func (r *linkRepository) GetStats(ctx context.Context, linkID string) (*reposito
 	today := time.Now().Truncate(24 * time.Hour)
 	var clicksToday int64
 	if err := r.db.WithContext(ctx).
-		Model(&domain.Click{}).
+		Model(&entity.ClickEntity{}).
 		Where("link_id = ? AND clicked_at >= ?", linkID, today).
 		Count(&clicksToday).Error; err != nil {
 		return nil, err
@@ -160,7 +170,7 @@ func (r *linkRepository) GetStats(ctx context.Context, linkID string) (*reposito
 	weekStart := time.Now().AddDate(0, 0, -7)
 	var clicksWeek int64
 	if err := r.db.WithContext(ctx).
-		Model(&domain.Click{}).
+		Model(&entity.ClickEntity{}).
 		Where("link_id = ? AND clicked_at >= ?", linkID, weekStart).
 		Count(&clicksWeek).Error; err != nil {
 		return nil, err
@@ -171,7 +181,7 @@ func (r *linkRepository) GetStats(ctx context.Context, linkID string) (*reposito
 	monthStart := time.Now().AddDate(0, -1, 0)
 	var clicksMonth int64
 	if err := r.db.WithContext(ctx).
-		Model(&domain.Click{}).
+		Model(&entity.ClickEntity{}).
 		Where("link_id = ? AND clicked_at >= ?", linkID, monthStart).
 		Count(&clicksMonth).Error; err != nil {
 		return nil, err

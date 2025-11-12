@@ -7,7 +7,9 @@ import (
 	"gorm.io/gorm"
 
 	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/repository/entity"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
+	"toxictoast/services/foodfolio-service/internal/repository/mapper"
 )
 
 type locationRepository struct {
@@ -21,38 +23,39 @@ func NewLocationRepository(db *gorm.DB) interfaces.LocationRepository {
 
 func (r *locationRepository) Create(ctx context.Context, location *domain.Location) error {
 	location.Slug = generateSlug(location.Name)
-	return r.db.WithContext(ctx).Create(location).Error
+	e := mapper.LocationToEntity(location)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *locationRepository) GetByID(ctx context.Context, id string) (*domain.Location, error) {
-	var location domain.Location
-	err := r.db.WithContext(ctx).First(&location, "id = ?", id).Error
+	var e entity.LocationEntity
+	err := r.db.WithContext(ctx).First(&e, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &location, nil
+	return mapper.LocationToDomain(&e), nil
 }
 
 func (r *locationRepository) GetBySlug(ctx context.Context, slug string) (*domain.Location, error) {
-	var location domain.Location
-	err := r.db.WithContext(ctx).First(&location, "slug = ?", slug).Error
+	var e entity.LocationEntity
+	err := r.db.WithContext(ctx).First(&e, "slug = ?", slug).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &location, nil
+	return mapper.LocationToDomain(&e), nil
 }
 
 func (r *locationRepository) List(ctx context.Context, offset, limit int, parentID *string, includeChildren bool, includeDeleted bool) ([]*domain.Location, int64, error) {
-	var locations []*domain.Location
+	var entities []*entity.LocationEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Location{})
+	query := r.db.WithContext(ctx).Model(&entity.LocationEntity{})
 
 	if includeDeleted {
 		query = query.Unscoped()
@@ -78,15 +81,15 @@ func (r *locationRepository) List(ctx context.Context, offset, limit int, parent
 		queryWithPagination = queryWithPagination.Preload("Children")
 	}
 
-	if err := queryWithPagination.Find(&locations).Error; err != nil {
+	if err := queryWithPagination.Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return locations, total, nil
+	return mapper.LocationsToDomain(entities), total, nil
 }
 
 func (r *locationRepository) GetTree(ctx context.Context, rootID *string, maxDepth int) ([]*domain.Location, error) {
-	var locations []*domain.Location
+	var entities []*entity.LocationEntity
 
 	query := r.db.WithContext(ctx)
 
@@ -109,50 +112,51 @@ func (r *locationRepository) GetTree(ctx context.Context, rootID *string, maxDep
 		}
 	}
 
-	if err := query.Find(&locations).Error; err != nil {
+	if err := query.Find(&entities).Error; err != nil {
 		return nil, err
 	}
 
-	return locations, nil
+	return mapper.LocationsToDomain(entities), nil
 }
 
 func (r *locationRepository) GetChildren(ctx context.Context, parentID string) ([]*domain.Location, error) {
-	var locations []*domain.Location
+	var entities []*entity.LocationEntity
 
 	err := r.db.WithContext(ctx).
 		Where("parent_id = ?", parentID).
-		Find(&locations).Error
+		Find(&entities).Error
 
 	if err != nil {
 		return nil, err
 	}
 
-	return locations, nil
+	return mapper.LocationsToDomain(entities), nil
 }
 
 func (r *locationRepository) GetRootLocations(ctx context.Context) ([]*domain.Location, error) {
-	var locations []*domain.Location
+	var entities []*entity.LocationEntity
 
 	err := r.db.WithContext(ctx).
 		Where("parent_id IS NULL").
-		Find(&locations).Error
+		Find(&entities).Error
 
 	if err != nil {
 		return nil, err
 	}
 
-	return locations, nil
+	return mapper.LocationsToDomain(entities), nil
 }
 
 func (r *locationRepository) Update(ctx context.Context, location *domain.Location) error {
 	location.Slug = generateSlug(location.Name)
-	return r.db.WithContext(ctx).Save(location).Error
+	e := mapper.LocationToEntity(location)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *locationRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.Location{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.LocationEntity{}, "id = ?", id).Error
 }
 
 func (r *locationRepository) HardDelete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Unscoped().Delete(&domain.Location{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Unscoped().Delete(&entity.LocationEntity{}, "id = ?", id).Error
 }

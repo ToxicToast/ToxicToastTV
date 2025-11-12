@@ -3,9 +3,11 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"toxictoast/services/foodfolio-service/internal/domain"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
 )
@@ -37,6 +39,7 @@ type receiptUseCase struct {
 	variantRepo   interfaces.ItemVariantRepository
 	detailRepo    interfaces.ItemDetailRepository
 	locationRepo  interfaces.LocationRepository
+	kafkaProducer *kafka.Producer
 }
 
 func NewReceiptUseCase(
@@ -45,6 +48,7 @@ func NewReceiptUseCase(
 	variantRepo interfaces.ItemVariantRepository,
 	detailRepo interfaces.ItemDetailRepository,
 	locationRepo interfaces.LocationRepository,
+	kafkaProducer *kafka.Producer,
 ) ReceiptUseCase {
 	return &receiptUseCase{
 		receiptRepo:   receiptRepo,
@@ -52,6 +56,7 @@ func NewReceiptUseCase(
 		variantRepo:   variantRepo,
 		detailRepo:    detailRepo,
 		locationRepo:  locationRepo,
+		kafkaProducer: kafkaProducer,
 	}
 }
 
@@ -84,6 +89,36 @@ func (uc *receiptUseCase) CreateReceipt(ctx context.Context, warehouseID string,
 
 	if err := uc.receiptRepo.Create(ctx, receipt); err != nil {
 		return nil, err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioReceiptCreatedEvent{
+			ReceiptID:   receipt.ID,
+			WarehouseID: receipt.WarehouseID,
+			ScanDate:    receipt.ScanDate,
+			TotalPrice:  receipt.TotalPrice,
+			ImagePath:   receipt.ImagePath,
+			OCRText:     receipt.OCRText,
+			CreatedAt:   time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioReceiptCreated("foodfolio.receipt.created", event); err != nil {
+			log.Printf("Warning: Failed to publish receipt created event: %v", err)
+		}
+
+		// If it has OCR text or image, also publish scanned event
+		if receipt.ImagePath != nil || receipt.OCRText != nil {
+			scannedEvent := kafka.FoodfolioReceiptScannedEvent{
+				ReceiptID:   receipt.ID,
+				WarehouseID: receipt.WarehouseID,
+				ImagePath:   receipt.ImagePath,
+				OCRText:     receipt.OCRText,
+				ScannedAt:   time.Now(),
+			}
+			if err := uc.kafkaProducer.PublishFoodfolioReceiptScanned("foodfolio.receipt.scanned", scannedEvent); err != nil {
+				log.Printf("Warning: Failed to publish receipt scanned event: %v", err)
+			}
+		}
 	}
 
 	return receipt, nil
@@ -153,7 +188,22 @@ func (uc *receiptUseCase) DeleteReceipt(ctx context.Context, id string) error {
 		return err
 	}
 
-	return uc.receiptRepo.Delete(ctx, id)
+	if err := uc.receiptRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioReceiptDeletedEvent{
+			ReceiptID: id,
+			DeletedAt: time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioReceiptDeleted("foodfolio.receipt.deleted", event); err != nil {
+			log.Printf("Warning: Failed to publish receipt deleted event: %v", err)
+		}
+	}
+
+	return nil
 }
 
 func (uc *receiptUseCase) AddItemToReceipt(ctx context.Context, receiptID, itemName string, quantity int, unitPrice, totalPrice float64, articleNumber *string, itemVariantID *string) (*domain.ReceiptItem, error) {

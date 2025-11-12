@@ -3,7 +3,9 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
 
 	"toxictoast/services/blog-service/internal/domain"
@@ -64,8 +66,12 @@ func (uc *categoryUseCase) CreateCategory(ctx context.Context, input CreateCateg
 		}
 	}
 
+	// Generate UUID for category
+	categoryID := uuid.New().String()
+
 	// Create category entity
 	category := &domain.Category{
+		ID:          categoryID,
 		Name:        input.Name,
 		Slug:        slug,
 		Description: input.Description,
@@ -77,8 +83,21 @@ func (uc *categoryUseCase) CreateCategory(ctx context.Context, input CreateCateg
 		return nil, fmt.Errorf("failed to create category: %w", err)
 	}
 
-	// Publish Kafka event (optional - no event defined yet, skip for now)
-	// if uc.kafkaProducer != nil { ... }
+	if uc.kafkaProducer != nil {
+		event := kafka.CategoryCreatedEvent{
+			CategoryID:  category.ID,
+			Name:        category.Name,
+			Slug:        category.Slug,
+			Description: category.Description,
+			ParentID:    category.ParentID,
+			CreatedAt:   category.CreatedAt,
+		}
+		topic := "blog.category.created"
+		if err := uc.kafkaProducer.PublishCategoryCreated(topic, event); err != nil {
+			// Log error but don't fail the request
+			fmt.Printf("Warning: Failed to publish category created event: %v\n", err)
+		}
+	}
 
 	return category, nil
 }
@@ -130,6 +149,22 @@ func (uc *categoryUseCase) UpdateCategory(ctx context.Context, id string, input 
 		return nil, fmt.Errorf("failed to update category: %w", err)
 	}
 
+	if uc.kafkaProducer != nil {
+		event := kafka.CategoryUpdatedEvent{
+			CategoryID:  category.ID,
+			Name:        category.Name,
+			Slug:        category.Slug,
+			Description: category.Description,
+			ParentID:    category.ParentID,
+			UpdatedAt:   category.UpdatedAt,
+		}
+		topic := "blog.category.updated"
+		if err := uc.kafkaProducer.PublishCategoryUpdated(topic, event); err != nil {
+			// Log error but don't fail the request
+			fmt.Printf("Warning: Failed to publish category updated event: %v\n", err)
+		}
+	}
+
 	return category, nil
 }
 
@@ -153,6 +188,17 @@ func (uc *categoryUseCase) DeleteCategory(ctx context.Context, id string) error 
 	// Delete from database
 	if err := uc.repo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete category: %w", err)
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.CategoryDeletedEvent{
+			CategoryID: id,
+			DeletedAt:  time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishCategoryDeleted("blog.category.deleted", event); err != nil {
+			fmt.Printf("Warning: Failed to publish category deleted event: %v\n", err)
+		}
 	}
 
 	return nil

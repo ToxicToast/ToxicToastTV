@@ -4,8 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"log"
 	"net/url"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 
 	"toxictoast/services/link-service/internal/domain"
 	"toxictoast/services/link-service/internal/repository"
@@ -49,15 +53,17 @@ type UpdateLinkInput struct {
 }
 
 type linkUseCase struct {
-	linkRepo repository.LinkRepository
-	config   *config.Config
+	linkRepo      repository.LinkRepository
+	kafkaProducer *kafka.Producer
+	config        *config.Config
 }
 
 // NewLinkUseCase creates a new instance of LinkUseCase
-func NewLinkUseCase(linkRepo repository.LinkRepository, cfg *config.Config) LinkUseCase {
+func NewLinkUseCase(linkRepo repository.LinkRepository, kafkaProducer *kafka.Producer, cfg *config.Config) LinkUseCase {
 	return &linkUseCase{
-		linkRepo: linkRepo,
-		config:   cfg,
+		linkRepo:      linkRepo,
+		kafkaProducer: kafkaProducer,
+		config:        cfg,
 	}
 }
 
@@ -91,8 +97,12 @@ func (uc *linkUseCase) CreateLink(ctx context.Context, input CreateLinkInput) (*
 		}
 	}
 
+	// Generate UUID for link
+	linkID := uuid.New().String()
+
 	// Create link entity
 	link := &domain.Link{
+		ID:          linkID,
 		OriginalURL: input.OriginalURL,
 		ShortCode:   shortCode,
 		CustomAlias: input.CustomAlias,
@@ -106,6 +116,26 @@ func (uc *linkUseCase) CreateLink(ctx context.Context, input CreateLinkInput) (*
 	// Save to database
 	if err := uc.linkRepo.Create(ctx, link); err != nil {
 		return nil, "", fmt.Errorf("failed to create link: %w", err)
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.LinkCreatedEvent{
+			LinkID:      link.ID,
+			OriginalURL: link.OriginalURL,
+			ShortCode:   link.ShortCode,
+			CustomAlias: link.CustomAlias,
+			Title:       link.Title,
+			Description: link.Description,
+			ExpiresAt:   link.ExpiresAt,
+			IsActive:    link.IsActive,
+			CreatedAt:   link.CreatedAt,
+		}
+		topic := "link.created"
+		if err := uc.kafkaProducer.PublishLinkCreated(topic, event); err != nil {
+			// Log error but don't fail the request
+			log.Printf("Warning: Failed to publish link created event: %v", err)
+		}
 	}
 
 	// Generate full short URL
@@ -128,6 +158,10 @@ func (uc *linkUseCase) UpdateLink(ctx context.Context, id string, input UpdateLi
 	if err != nil {
 		return nil, err
 	}
+
+	// Track activation status change
+	oldIsActive := link.IsActive
+	activationChanged := false
 
 	// Update fields if provided
 	if input.OriginalURL != nil {
@@ -163,6 +197,9 @@ func (uc *linkUseCase) UpdateLink(ctx context.Context, id string, input UpdateLi
 	}
 
 	if input.IsActive != nil {
+		if oldIsActive != *input.IsActive {
+			activationChanged = true
+		}
 		link.IsActive = *input.IsActive
 	}
 
@@ -171,12 +208,58 @@ func (uc *linkUseCase) UpdateLink(ctx context.Context, id string, input UpdateLi
 		return nil, fmt.Errorf("failed to update link: %w", err)
 	}
 
+	// Publish Kafka events
+	if uc.kafkaProducer != nil {
+		// Publish link updated event
+		event := kafka.LinkUpdatedEvent{
+			LinkID:      link.ID,
+			OriginalURL: link.OriginalURL,
+			ShortCode:   link.ShortCode,
+			CustomAlias: link.CustomAlias,
+			Title:       link.Title,
+			Description: link.Description,
+			ExpiresAt:   link.ExpiresAt,
+			IsActive:    link.IsActive,
+			UpdatedAt:   link.UpdatedAt,
+		}
+		topic := "link.updated"
+		if err := uc.kafkaProducer.PublishLinkUpdated(topic, event); err != nil {
+			// Log error but don't fail the request
+			log.Printf("Warning: Failed to publish link updated event: %v", err)
+		}
+
+		// Publish activation/deactivation events if status changed
+		if activationChanged {
+			if link.IsActive {
+				activatedEvent := kafka.LinkActivatedEvent{
+					LinkID:      link.ID,
+					ShortCode:   link.ShortCode,
+					ActivatedAt: time.Now(),
+				}
+				activatedTopic := "link.activated"
+				if err := uc.kafkaProducer.PublishLinkActivated(activatedTopic, activatedEvent); err != nil {
+					log.Printf("Warning: Failed to publish link activated event: %v", err)
+				}
+			} else {
+				deactivatedEvent := kafka.LinkDeactivatedEvent{
+					LinkID:        link.ID,
+					ShortCode:     link.ShortCode,
+					DeactivatedAt: time.Now(),
+				}
+				deactivatedTopic := "link.deactivated"
+				if err := uc.kafkaProducer.PublishLinkDeactivated(deactivatedTopic, deactivatedEvent); err != nil {
+					log.Printf("Warning: Failed to publish link deactivated event: %v", err)
+				}
+			}
+		}
+	}
+
 	return link, nil
 }
 
 func (uc *linkUseCase) DeleteLink(ctx context.Context, id string) error {
 	// Check if link exists
-	_, err := uc.linkRepo.GetByID(ctx, id)
+	link, err := uc.linkRepo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -184,6 +267,20 @@ func (uc *linkUseCase) DeleteLink(ctx context.Context, id string) error {
 	// Delete from database
 	if err := uc.linkRepo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete link: %w", err)
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.LinkDeletedEvent{
+			LinkID:    link.ID,
+			ShortCode: link.ShortCode,
+			DeletedAt: time.Now(),
+		}
+		topic := "link.deleted"
+		if err := uc.kafkaProducer.PublishLinkDeleted(topic, event); err != nil {
+			// Log error but don't fail the request
+			log.Printf("Warning: Failed to publish link deleted event: %v", err)
+		}
 	}
 
 	return nil

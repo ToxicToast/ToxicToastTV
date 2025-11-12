@@ -3,7 +3,9 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
 
 	"toxictoast/services/blog-service/internal/domain"
@@ -73,8 +75,12 @@ func (uc *commentUseCase) CreateComment(ctx context.Context, input CreateComment
 		}
 	}
 
+	// Generate UUID for comment
+	commentID := uuid.New().String()
+
 	// Create comment entity (default status: pending for moderation)
 	comment := &domain.Comment{
+		ID:          commentID,
 		PostID:      input.PostID,
 		ParentID:    input.ParentID,
 		AuthorName:  input.AuthorName,
@@ -88,8 +94,21 @@ func (uc *commentUseCase) CreateComment(ctx context.Context, input CreateComment
 		return nil, fmt.Errorf("failed to create comment: %w", err)
 	}
 
-	// TODO: Publish Kafka event for new comment (for notifications)
-	// if uc.kafkaProducer != nil { ... }
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.CommentCreatedEvent{
+			CommentID:   comment.ID,
+			PostID:      comment.PostID,
+			AuthorName:  comment.AuthorName,
+			AuthorEmail: comment.AuthorEmail,
+			Content:     comment.Content,
+			Status:      string(comment.Status),
+			CreatedAt:   comment.CreatedAt,
+		}
+		if err := uc.kafkaProducer.PublishCommentCreated("blog.comment.created", event); err != nil {
+			fmt.Printf("Warning: Failed to publish comment created event: %v\n", err)
+		}
+	}
 
 	return comment, nil
 }
@@ -138,6 +157,18 @@ func (uc *commentUseCase) DeleteComment(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to delete comment: %w", err)
 	}
 
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.CommentDeletedEvent{
+			CommentID: comment.ID,
+			PostID:    comment.PostID,
+			DeletedAt: time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishCommentDeleted("blog.comment.deleted", event); err != nil {
+			fmt.Printf("Warning: Failed to publish comment deleted event: %v\n", err)
+		}
+	}
+
 	return nil
 }
 
@@ -172,8 +203,30 @@ func (uc *commentUseCase) ModerateComment(ctx context.Context, id string, status
 		return nil, fmt.Errorf("failed to moderate comment: %w", err)
 	}
 
-	// TODO: Publish Kafka event for moderation action
-	// if uc.kafkaProducer != nil { ... }
+	// Publish Kafka event based on status
+	if uc.kafkaProducer != nil {
+		switch status {
+		case domain.CommentStatusApproved:
+			event := kafka.CommentApprovedEvent{
+				CommentID:  comment.ID,
+				PostID:     comment.PostID,
+				ApprovedAt: time.Now(),
+			}
+			if err := uc.kafkaProducer.PublishCommentApproved("blog.comment.approved", event); err != nil {
+				fmt.Printf("Warning: Failed to publish comment approved event: %v\n", err)
+			}
+		case domain.CommentStatusSpam, domain.CommentStatusTrash:
+			event := kafka.CommentRejectedEvent{
+				CommentID:  comment.ID,
+				PostID:     comment.PostID,
+				Reason:     string(status),
+				RejectedAt: time.Now(),
+			}
+			if err := uc.kafkaProducer.PublishCommentRejected("blog.comment.rejected", event); err != nil {
+				fmt.Printf("Warning: Failed to publish comment rejected event: %v\n", err)
+			}
+		}
+	}
 
 	return comment, nil
 }

@@ -3,7 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
+	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"toxictoast/services/foodfolio-service/internal/domain"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
 )
@@ -32,15 +35,18 @@ type ShoppinglistUseCase interface {
 type shoppinglistUseCase struct {
 	shoppinglistRepo interfaces.ShoppinglistRepository
 	variantRepo      interfaces.ItemVariantRepository
+	kafkaProducer    *kafka.Producer
 }
 
 func NewShoppinglistUseCase(
 	shoppinglistRepo interfaces.ShoppinglistRepository,
 	variantRepo interfaces.ItemVariantRepository,
+	kafkaProducer *kafka.Producer,
 ) ShoppinglistUseCase {
 	return &shoppinglistUseCase{
 		shoppinglistRepo: shoppinglistRepo,
 		variantRepo:      variantRepo,
+		kafkaProducer:    kafkaProducer,
 	}
 }
 
@@ -55,6 +61,18 @@ func (uc *shoppinglistUseCase) CreateShoppinglist(ctx context.Context, name stri
 
 	if err := uc.shoppinglistRepo.Create(ctx, shoppinglist); err != nil {
 		return nil, err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioShoppinglistCreatedEvent{
+			ShoppinglistID: shoppinglist.ID,
+			Name:           shoppinglist.Name,
+			CreatedAt:      time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioShoppinglistCreated("foodfolio.shoppinglist.created", event); err != nil {
+			log.Printf("Warning: Failed to publish shoppinglist created event: %v", err)
+		}
 	}
 
 	return shoppinglist, nil
@@ -99,6 +117,18 @@ func (uc *shoppinglistUseCase) UpdateShoppinglist(ctx context.Context, id, name 
 		return nil, err
 	}
 
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioShoppinglistUpdatedEvent{
+			ShoppinglistID: shoppinglist.ID,
+			Name:           shoppinglist.Name,
+			UpdatedAt:      time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioShoppinglistUpdated("foodfolio.shoppinglist.updated", event); err != nil {
+			log.Printf("Warning: Failed to publish shoppinglist updated event: %v", err)
+		}
+	}
+
 	return shoppinglist, nil
 }
 
@@ -108,7 +138,22 @@ func (uc *shoppinglistUseCase) DeleteShoppinglist(ctx context.Context, id string
 		return err
 	}
 
-	return uc.shoppinglistRepo.Delete(ctx, id)
+	if err := uc.shoppinglistRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioShoppinglistDeletedEvent{
+			ShoppinglistID: id,
+			DeletedAt:      time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioShoppinglistDeleted("foodfolio.shoppinglist.deleted", event); err != nil {
+			log.Printf("Warning: Failed to publish shoppinglist deleted event: %v", err)
+		}
+	}
+
+	return nil
 }
 
 func (uc *shoppinglistUseCase) AddItemToShoppinglist(ctx context.Context, shoppinglistID, variantID string, quantity int) (*domain.ShoppinglistItem, error) {
@@ -147,6 +192,20 @@ func (uc *shoppinglistUseCase) AddItemToShoppinglist(ctx context.Context, shoppi
 		return nil, err
 	}
 
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioShoppinglistItemAddedEvent{
+			ShoppinglistID: shoppinglistID,
+			ItemID:         item.ID,
+			VariantID:      variantID,
+			Quantity:       quantity,
+			AddedAt:        time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioShoppinglistItemAdded("foodfolio.shoppinglist.item.added", event); err != nil {
+			log.Printf("Warning: Failed to publish shoppinglist item added event: %v", err)
+		}
+	}
+
 	return item, nil
 }
 
@@ -157,7 +216,23 @@ func (uc *shoppinglistUseCase) RemoveItemFromShoppinglist(ctx context.Context, s
 		return err
 	}
 
-	return uc.shoppinglistRepo.RemoveItem(ctx, shoppinglistID, itemID)
+	if err := uc.shoppinglistRepo.RemoveItem(ctx, shoppinglistID, itemID); err != nil {
+		return err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioShoppinglistItemRemovedEvent{
+			ShoppinglistID: shoppinglistID,
+			ItemID:         itemID,
+			RemovedAt:      time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioShoppinglistItemRemoved("foodfolio.shoppinglist.item.removed", event); err != nil {
+			log.Printf("Warning: Failed to publish shoppinglist item removed event: %v", err)
+		}
+	}
+
+	return nil
 }
 
 func (uc *shoppinglistUseCase) UpdateShoppinglistItem(ctx context.Context, itemID string, quantity int, isPurchased bool) (*domain.ShoppinglistItem, error) {
@@ -185,8 +260,28 @@ func (uc *shoppinglistUseCase) UpdateShoppinglistItem(ctx context.Context, itemI
 }
 
 func (uc *shoppinglistUseCase) MarkItemPurchased(ctx context.Context, itemID string) (*domain.ShoppinglistItem, error) {
+	// Get item before marking purchased to get details for event
+	item, err := uc.shoppinglistRepo.GetItem(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := uc.shoppinglistRepo.MarkItemPurchased(ctx, itemID); err != nil {
 		return nil, err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil && item != nil {
+		event := kafka.FoodfolioShoppinglistItemPurchasedEvent{
+			ShoppinglistID: item.ShoppinglistID,
+			ItemID:         itemID,
+			VariantID:      item.ItemVariantID,
+			Quantity:       item.Quantity,
+			PurchasedAt:    time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioShoppinglistItemPurchased("foodfolio.shoppinglist.item.purchased", event); err != nil {
+			log.Printf("Warning: Failed to publish shoppinglist item purchased event: %v", err)
+		}
 	}
 
 	// Reload item

@@ -3,7 +3,8 @@ module toxictoast/services/foodfolio-service
 go 1.24.4
 
 require (
-	github.com/gorilla/mux v1.8.0
+	github.com/gorilla/mux v1.8.1
+	github.com/joho/godotenv v1.5.1
 	google.golang.org/grpc v1.76.0
 	google.golang.org/protobuf v1.36.10
 	gorm.io/gorm v1.31.1

@@ -3,7 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
+	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"toxictoast/services/foodfolio-service/internal/domain"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
 )
@@ -26,12 +29,14 @@ type CategoryUseCase interface {
 }
 
 type categoryUseCase struct {
-	categoryRepo interfaces.CategoryRepository
+	categoryRepo  interfaces.CategoryRepository
+	kafkaProducer *kafka.Producer
 }
 
-func NewCategoryUseCase(categoryRepo interfaces.CategoryRepository) CategoryUseCase {
+func NewCategoryUseCase(categoryRepo interfaces.CategoryRepository, kafkaProducer *kafka.Producer) CategoryUseCase {
 	return &categoryUseCase{
-		categoryRepo: categoryRepo,
+		categoryRepo:  categoryRepo,
+		kafkaProducer: kafkaProducer,
 	}
 }
 
@@ -58,6 +63,20 @@ func (uc *categoryUseCase) CreateCategory(ctx context.Context, name string, pare
 
 	if err := uc.categoryRepo.Create(ctx, category); err != nil {
 		return nil, err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioCategoryCreatedEvent{
+			CategoryID: category.ID,
+			Name:       category.Name,
+			Slug:       category.Slug,
+			ParentID:   category.ParentID,
+			CreatedAt:  time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioCategoryCreated("foodfolio.category.created", event); err != nil {
+			log.Printf("Warning: Failed to publish category created event: %v", err)
+		}
 	}
 
 	return category, nil
@@ -156,6 +175,20 @@ func (uc *categoryUseCase) UpdateCategory(ctx context.Context, id, name string, 
 		return nil, err
 	}
 
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioCategoryUpdatedEvent{
+			CategoryID: category.ID,
+			Name:       category.Name,
+			Slug:       category.Slug,
+			ParentID:   category.ParentID,
+			UpdatedAt:  time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioCategoryUpdated("foodfolio.category.updated", event); err != nil {
+			log.Printf("Warning: Failed to publish category updated event: %v", err)
+		}
+	}
+
 	return category, nil
 }
 
@@ -175,5 +208,20 @@ func (uc *categoryUseCase) DeleteCategory(ctx context.Context, id string) error 
 		return errors.New("cannot delete category with children")
 	}
 
-	return uc.categoryRepo.Delete(ctx, id)
+	if err := uc.categoryRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioCategoryDeletedEvent{
+			CategoryID: id,
+			DeletedAt:  time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioCategoryDeleted("foodfolio.category.deleted", event); err != nil {
+			log.Printf("Warning: Failed to publish category deleted event: %v", err)
+		}
+	}
+
+	return nil
 }

@@ -3,7 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
+	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"toxictoast/services/foodfolio-service/internal/domain"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
 )
@@ -25,12 +28,14 @@ type LocationUseCase interface {
 }
 
 type locationUseCase struct {
-	locationRepo interfaces.LocationRepository
+	locationRepo  interfaces.LocationRepository
+	kafkaProducer *kafka.Producer
 }
 
-func NewLocationUseCase(locationRepo interfaces.LocationRepository) LocationUseCase {
+func NewLocationUseCase(locationRepo interfaces.LocationRepository, kafkaProducer *kafka.Producer) LocationUseCase {
 	return &locationUseCase{
-		locationRepo: locationRepo,
+		locationRepo:  locationRepo,
+		kafkaProducer: kafkaProducer,
 	}
 }
 
@@ -57,6 +62,20 @@ func (uc *locationUseCase) CreateLocation(ctx context.Context, name string, pare
 
 	if err := uc.locationRepo.Create(ctx, location); err != nil {
 		return nil, err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioLocationCreatedEvent{
+			LocationID: location.ID,
+			Name:       location.Name,
+			Slug:       location.Slug,
+			ParentID:   location.ParentID,
+			CreatedAt:  time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioLocationCreated("foodfolio.location.created", event); err != nil {
+			log.Printf("Warning: Failed to publish location created event: %v", err)
+		}
 	}
 
 	return location, nil
@@ -155,6 +174,20 @@ func (uc *locationUseCase) UpdateLocation(ctx context.Context, id, name string, 
 		return nil, err
 	}
 
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioLocationUpdatedEvent{
+			LocationID: location.ID,
+			Name:       location.Name,
+			Slug:       location.Slug,
+			ParentID:   location.ParentID,
+			UpdatedAt:  time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioLocationUpdated("foodfolio.location.updated", event); err != nil {
+			log.Printf("Warning: Failed to publish location updated event: %v", err)
+		}
+	}
+
 	return location, nil
 }
 
@@ -174,5 +207,20 @@ func (uc *locationUseCase) DeleteLocation(ctx context.Context, id string) error 
 		return errors.New("cannot delete location with children")
 	}
 
-	return uc.locationRepo.Delete(ctx, id)
+	if err := uc.locationRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioLocationDeletedEvent{
+			LocationID: id,
+			DeletedAt:  time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioLocationDeleted("foodfolio.location.deleted", event); err != nil {
+			log.Printf("Warning: Failed to publish location deleted event: %v", err)
+		}
+	}
+
+	return nil
 }

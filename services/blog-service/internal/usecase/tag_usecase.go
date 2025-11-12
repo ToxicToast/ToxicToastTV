@@ -3,7 +3,9 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
 
 	"toxictoast/services/blog-service/internal/domain"
@@ -51,8 +53,12 @@ func (uc *tagUseCase) CreateTag(ctx context.Context, input CreateTagInput) (*dom
 	// Generate slug from name
 	slug := uc.generateUniqueSlug(ctx, input.Name)
 
+	// Generate UUID for tag
+	tagID := uuid.New().String()
+
 	// Create tag entity
 	tag := &domain.Tag{
+		ID:   tagID,
 		Name: input.Name,
 		Slug: slug,
 	}
@@ -60,6 +66,19 @@ func (uc *tagUseCase) CreateTag(ctx context.Context, input CreateTagInput) (*dom
 	// Save to database
 	if err := uc.repo.Create(ctx, tag); err != nil {
 		return nil, fmt.Errorf("failed to create tag: %w", err)
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.TagCreatedEvent{
+			TagID:     tag.ID,
+			Name:      tag.Name,
+			Slug:      tag.Slug,
+			CreatedAt: tag.CreatedAt,
+		}
+		if err := uc.kafkaProducer.PublishTagCreated("blog.tag.created", event); err != nil {
+			fmt.Printf("Warning: Failed to publish tag created event: %v\n", err)
+		}
 	}
 
 	return tag, nil
@@ -89,6 +108,19 @@ func (uc *tagUseCase) UpdateTag(ctx context.Context, id string, input UpdateTagI
 		return nil, fmt.Errorf("failed to update tag: %w", err)
 	}
 
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.TagUpdatedEvent{
+			TagID:     tag.ID,
+			Name:      tag.Name,
+			Slug:      tag.Slug,
+			UpdatedAt: tag.UpdatedAt,
+		}
+		if err := uc.kafkaProducer.PublishTagUpdated("blog.tag.updated", event); err != nil {
+			fmt.Printf("Warning: Failed to publish tag updated event: %v\n", err)
+		}
+	}
+
 	return tag, nil
 }
 
@@ -103,6 +135,17 @@ func (uc *tagUseCase) DeleteTag(ctx context.Context, id string) error {
 	// Note: Many-to-many relationship with posts will be handled by GORM cascading
 	if err := uc.repo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete tag: %w", err)
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.TagDeletedEvent{
+			TagID:     id,
+			DeletedAt: time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishTagDeleted("blog.tag.deleted", event); err != nil {
+			fmt.Printf("Warning: Failed to publish tag deleted event: %v\n", err)
+		}
 	}
 
 	return nil

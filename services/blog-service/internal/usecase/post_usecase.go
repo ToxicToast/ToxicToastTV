@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
 
 	"toxictoast/services/blog-service/internal/domain"
@@ -97,8 +98,12 @@ func (uc *postUseCase) CreatePost(ctx context.Context, input CreatePostInput) (*
 	// Calculate reading time
 	readingTime := utils.CalculateReadingTime(input.Content)
 
+	// Generate UUID for post
+	postID := uuid.New().String()
+
 	// Create post entity
 	post := &domain.Post{
+		ID:              postID,
 		Title:           input.Title,
 		Slug:            slug,
 		Content:         input.Content,
@@ -153,8 +158,7 @@ func (uc *postUseCase) CreatePost(ctx context.Context, input CreatePostInput) (*
 			Status:    string(post.Status),
 			CreatedAt: post.CreatedAt,
 		}
-		topic := uc.config.Kafka.TopicPostEvents + ".created"
-		if err := uc.kafkaProducer.PublishPostCreated(topic, event); err != nil {
+		if err := uc.kafkaProducer.PublishPostCreated("blog.post.created", event); err != nil {
 			// Log error but don't fail the request
 			fmt.Printf("Warning: Failed to publish post created event: %v\n", err)
 		}
@@ -246,8 +250,7 @@ func (uc *postUseCase) UpdatePost(ctx context.Context, id string, input UpdatePo
 			Slug:      post.Slug,
 			UpdatedAt: post.UpdatedAt,
 		}
-		topic := uc.config.Kafka.TopicPostEvents + ".updated"
-		if err := uc.kafkaProducer.PublishPostUpdated(topic, event); err != nil {
+		if err := uc.kafkaProducer.PublishPostUpdated("blog.post.updated", event); err != nil {
 			fmt.Printf("Warning: Failed to publish post updated event: %v\n", err)
 		}
 	}
@@ -273,8 +276,7 @@ func (uc *postUseCase) DeletePost(ctx context.Context, id string) error {
 			PostID:    id,
 			DeletedAt: time.Now(),
 		}
-		topic := uc.config.Kafka.TopicPostEvents + ".deleted"
-		if err := uc.kafkaProducer.PublishPostDeleted(topic, event); err != nil {
+		if err := uc.kafkaProducer.PublishPostDeleted("blog.post.deleted", event); err != nil {
 			fmt.Printf("Warning: Failed to publish post deleted event: %v\n", err)
 		}
 	}
@@ -317,8 +319,7 @@ func (uc *postUseCase) PublishPost(ctx context.Context, id string) (*domain.Post
 			AuthorID:    post.AuthorID,
 			PublishedAt: *post.PublishedAt,
 		}
-		topic := uc.config.Kafka.TopicPostEvents + ".published"
-		if err := uc.kafkaProducer.PublishPostPublished(topic, event); err != nil {
+		if err := uc.kafkaProducer.PublishPostPublished("blog.post.published", event); err != nil {
 			fmt.Printf("Warning: Failed to publish post published event: %v\n", err)
 		}
 	}

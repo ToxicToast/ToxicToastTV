@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 	"toxictoast/services/blog-service/internal/domain"
+	"toxictoast/services/blog-service/internal/repository/entity"
+	"toxictoast/services/blog-service/internal/repository/mapper"
 )
 
 type MediaRepository interface {
@@ -31,12 +33,13 @@ func NewMediaRepository(db *gorm.DB) MediaRepository {
 }
 
 func (r *mediaRepository) Create(ctx context.Context, media *domain.Media) error {
-	return r.db.WithContext(ctx).Create(media).Error
+	e := mapper.MediaToEntity(media)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *mediaRepository) GetByID(ctx context.Context, id string) (*domain.Media, error) {
-	var media domain.Media
-	err := r.db.WithContext(ctx).First(&media, "id = ?", id).Error
+	var e entity.MediaEntity
+	err := r.db.WithContext(ctx).First(&e, "id = ?", id).Error
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -45,18 +48,18 @@ func (r *mediaRepository) GetByID(ctx context.Context, id string) (*domain.Media
 		return nil, err
 	}
 
-	return &media, nil
+	return mapper.MediaToDomain(&e), nil
 }
 
 func (r *mediaRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.Media{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.MediaEntity{}, "id = ?", id).Error
 }
 
 func (r *mediaRepository) List(ctx context.Context, filters MediaFilters) ([]domain.Media, int64, error) {
-	var media []domain.Media
+	var entities []entity.MediaEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Media{})
+	query := r.db.WithContext(ctx).Model(&entity.MediaEntity{})
 
 	// Filter by MIME type
 	if filters.MimeType != nil {
@@ -83,8 +86,14 @@ func (r *mediaRepository) List(ctx context.Context, filters MediaFilters) ([]dom
 	query = query.Order("created_at DESC")
 
 	// Execute query
-	if err := query.Find(&media).Error; err != nil {
+	if err := query.Find(&entities).Error; err != nil {
 		return nil, 0, err
+	}
+
+	// Convert to domain
+	media := make([]domain.Media, 0, len(entities))
+	for _, e := range entities {
+		media = append(media, *mapper.MediaToDomain(&e))
 	}
 
 	return media, total, nil

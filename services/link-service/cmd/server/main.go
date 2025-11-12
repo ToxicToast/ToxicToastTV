@@ -13,17 +13,19 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"gorm.io/gorm"
 
 	"github.com/toxictoast/toxictoastgo/shared/auth"
 	"github.com/toxictoast/toxictoastgo/shared/database"
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
 	pb "toxictoast/services/link-service/api/proto"
-	"toxictoast/services/link-service/internal/domain"
 	grpcHandler "toxictoast/services/link-service/internal/handler/grpc"
+	"toxictoast/services/link-service/internal/repository/entity"
 	"toxictoast/services/link-service/internal/repository/impl"
 	"toxictoast/services/link-service/internal/usecase"
 	"toxictoast/services/link-service/pkg/config"
@@ -44,6 +46,9 @@ var (
 )
 
 func main() {
+	// Load .env file (ignore error in production where env vars are set directly)
+	_ = godotenv.Load()
+
 	// Load configuration
 	cfg := config.Load()
 
@@ -62,14 +67,25 @@ func main() {
 	log.Printf("Database connected successfully")
 
 	// Run auto-migrations
-	entities := []interface{}{
-		&domain.Link{},
-		&domain.Click{},
+	dbEntities := []interface{}{
+		&entity.LinkEntity{},
+		&entity.ClickEntity{},
 	}
-	if err := database.AutoMigrate(db, entities...); err != nil {
+	if err := database.AutoMigrate(db, dbEntities...); err != nil {
 		log.Fatalf("Auto-migration failed: %v", err)
 	}
-	log.Printf("Database schema is up to date")
+	log.Printf("Database schema is up to date (using link_ table prefix)")
+
+	// Initialize Kafka producer
+	kafkaProducer, err := kafka.NewProducer(cfg.Kafka.Brokers)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize Kafka producer: %v", err)
+		log.Printf("Service will continue without event publishing")
+		kafkaProducer = nil
+	} else {
+		log.Printf("Kafka producer connected successfully")
+		defer kafkaProducer.Close()
+	}
 
 	// Initialize Keycloak auth (optional)
 	var keycloakAuth *auth.KeycloakAuth
@@ -91,8 +107,8 @@ func main() {
 	clickRepo := impl.NewClickRepository(db)
 
 	// Initialize use cases
-	linkUseCase := usecase.NewLinkUseCase(linkRepo, cfg)
-	clickUseCase := usecase.NewClickUseCase(clickRepo, linkRepo)
+	linkUseCase := usecase.NewLinkUseCase(linkRepo, kafkaProducer, cfg)
+	clickUseCase := usecase.NewClickUseCase(clickRepo, linkRepo, kafkaProducer)
 
 	// Initialize gRPC handler
 	linkHandler := grpcHandler.NewLinkHandler(linkUseCase, clickUseCase)

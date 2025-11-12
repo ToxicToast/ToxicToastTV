@@ -38,9 +38,8 @@ func LinkToProto(link *domain.Link) *pb.Link {
 		protoLink.ExpiresAt = timestampOrNil(link.ExpiresAt)
 	}
 
-	if !link.DeletedAt.Time.IsZero() {
-		t := link.DeletedAt.Time
-		protoLink.DeletedAt = timestampOrNil(&t)
+	if link.DeletedAt != nil {
+		protoLink.DeletedAt = timestampOrNil(link.DeletedAt)
 	}
 
 	return protoLink

@@ -8,7 +8,9 @@ import (
 	"gorm.io/gorm"
 
 	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/repository/entity"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
+	"toxictoast/services/foodfolio-service/internal/repository/mapper"
 )
 
 type receiptRepository struct {
@@ -21,18 +23,19 @@ func NewReceiptRepository(db *gorm.DB) interfaces.ReceiptRepository {
 }
 
 func (r *receiptRepository) Create(ctx context.Context, receipt *domain.Receipt) error {
-	return r.db.WithContext(ctx).Create(receipt).Error
+	e := mapper.ReceiptToEntity(receipt)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *receiptRepository) GetByID(ctx context.Context, id string) (*domain.Receipt, error) {
-	var receipt domain.Receipt
+	var e entity.ReceiptEntity
 	err := r.db.WithContext(ctx).
 		Preload("Warehouse").
 		Preload("ReceiptItems").
 		Preload("ReceiptItems.ItemVariant").
 		Preload("ReceiptItems.ItemVariant.Item").
 		Preload("ReceiptItems.ItemVariant.Size").
-		First(&receipt, "id = ?", id).Error
+		First(&e, "id = ?", id).Error
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -40,14 +43,14 @@ func (r *receiptRepository) GetByID(ctx context.Context, id string) (*domain.Rec
 		}
 		return nil, err
 	}
-	return &receipt, nil
+	return mapper.ReceiptToDomain(&e), nil
 }
 
 func (r *receiptRepository) List(ctx context.Context, offset, limit int, warehouseID *string, startDate, endDate *time.Time, includeDeleted bool) ([]*domain.Receipt, int64, error) {
-	var receipts []*domain.Receipt
+	var entities []*entity.ReceiptEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Receipt{})
+	query := r.db.WithContext(ctx).Model(&entity.ReceiptEntity{})
 
 	if includeDeleted {
 		query = query.Unscoped()
@@ -76,38 +79,41 @@ func (r *receiptRepository) List(ctx context.Context, offset, limit int, warehou
 		Order("scan_date DESC").
 		Offset(offset).
 		Limit(limit).
-		Find(&receipts).Error; err != nil {
+		Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return receipts, total, nil
+	return mapper.ReceiptsToDomain(entities), total, nil
 }
 
 func (r *receiptRepository) Update(ctx context.Context, receipt *domain.Receipt) error {
-	return r.db.WithContext(ctx).Save(receipt).Error
+	e := mapper.ReceiptToEntity(receipt)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *receiptRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.Receipt{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.ReceiptEntity{}, "id = ?", id).Error
 }
 
 func (r *receiptRepository) HardDelete(ctx context.Context, id string) error {
 	// Also delete associated items
-	r.db.WithContext(ctx).Unscoped().Where("receipt_id = ?", id).Delete(&domain.ReceiptItem{})
-	return r.db.WithContext(ctx).Unscoped().Delete(&domain.Receipt{}, "id = ?", id).Error
+	r.db.WithContext(ctx).Unscoped().Where("receipt_id = ?", id).Delete(&entity.ReceiptItemEntity{})
+	return r.db.WithContext(ctx).Unscoped().Delete(&entity.ReceiptEntity{}, "id = ?", id).Error
 }
 
 func (r *receiptRepository) AddItem(ctx context.Context, item *domain.ReceiptItem) error {
-	return r.db.WithContext(ctx).Create(item).Error
+	e := mapper.ReceiptItemToEntity(item)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *receiptRepository) UpdateItem(ctx context.Context, item *domain.ReceiptItem) error {
-	return r.db.WithContext(ctx).Save(item).Error
+	e := mapper.ReceiptItemToEntity(item)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *receiptRepository) MatchItem(ctx context.Context, receiptItemID, itemVariantID string) error {
 	return r.db.WithContext(ctx).
-		Model(&domain.ReceiptItem{}).
+		Model(&entity.ReceiptItemEntity{}).
 		Where("id = ?", receiptItemID).
 		Updates(map[string]interface{}{
 			"item_variant_id": itemVariantID,
@@ -116,12 +122,12 @@ func (r *receiptRepository) MatchItem(ctx context.Context, receiptItemID, itemVa
 }
 
 func (r *receiptRepository) GetItem(ctx context.Context, itemID string) (*domain.ReceiptItem, error) {
-	var item domain.ReceiptItem
+	var e entity.ReceiptItemEntity
 	err := r.db.WithContext(ctx).
 		Preload("ItemVariant").
 		Preload("ItemVariant.Item").
 		Preload("ItemVariant.Size").
-		First(&item, "id = ?", itemID).Error
+		First(&e, "id = ?", itemID).Error
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -129,44 +135,44 @@ func (r *receiptRepository) GetItem(ctx context.Context, itemID string) (*domain
 		}
 		return nil, err
 	}
-	return &item, nil
+	return mapper.ReceiptItemToDomain(&e), nil
 }
 
 func (r *receiptRepository) GetItems(ctx context.Context, receiptID string) ([]*domain.ReceiptItem, error) {
-	var items []*domain.ReceiptItem
+	var entities []*entity.ReceiptItemEntity
 
 	err := r.db.WithContext(ctx).
 		Preload("ItemVariant").
 		Preload("ItemVariant.Item").
 		Preload("ItemVariant.Size").
 		Where("receipt_id = ?", receiptID).
-		Find(&items).Error
+		Find(&entities).Error
 
 	if err != nil {
 		return nil, err
 	}
 
-	return items, nil
+	return mapper.ReceiptItemsToDomain(entities), nil
 }
 
 func (r *receiptRepository) GetUnmatchedItems(ctx context.Context, receiptID string) ([]*domain.ReceiptItem, error) {
-	var items []*domain.ReceiptItem
+	var entities []*entity.ReceiptItemEntity
 
 	err := r.db.WithContext(ctx).
 		Where("receipt_id = ? AND is_matched = ?", receiptID, false).
-		Find(&items).Error
+		Find(&entities).Error
 
 	if err != nil {
 		return nil, err
 	}
 
-	return items, nil
+	return mapper.ReceiptItemsToDomain(entities), nil
 }
 
 func (r *receiptRepository) GetTotalAmount(ctx context.Context, warehouseID *string, startDate, endDate *time.Time) (float64, error) {
 	var total float64
 
-	query := r.db.WithContext(ctx).Model(&domain.Receipt{})
+	query := r.db.WithContext(ctx).Model(&entity.ReceiptEntity{})
 
 	if warehouseID != nil && *warehouseID != "" {
 		query = query.Where("warehouse_id = ?", *warehouseID)
@@ -191,7 +197,7 @@ func (r *receiptRepository) GetTotalAmount(ctx context.Context, warehouseID *str
 func (r *receiptRepository) GetStatistics(ctx context.Context, warehouseID *string, startDate, endDate *time.Time) (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
-	query := r.db.WithContext(ctx).Model(&domain.Receipt{})
+	query := r.db.WithContext(ctx).Model(&entity.ReceiptEntity{})
 
 	if warehouseID != nil && *warehouseID != "" {
 		query = query.Where("warehouse_id = ?", *warehouseID)
@@ -228,7 +234,7 @@ func (r *receiptRepository) GetStatistics(ctx context.Context, warehouseID *stri
 
 	// Total items
 	var totalItems int64
-	itemQuery := r.db.WithContext(ctx).Model(&domain.ReceiptItem{})
+	itemQuery := r.db.WithContext(ctx).Model(&entity.ReceiptItemEntity{})
 
 	if warehouseID != nil || startDate != nil || endDate != nil {
 		itemQuery = itemQuery.Joins("JOIN receipts ON receipts.id = receipt_items.receipt_id")
@@ -266,7 +272,7 @@ func (r *receiptRepository) GetStatistics(ctx context.Context, warehouseID *stri
 	var warehouseCounts []WarehouseCount
 
 	warehouseQuery := r.db.WithContext(ctx).
-		Model(&domain.Receipt{}).
+		Model(&entity.ReceiptEntity{}).
 		Select("warehouse_id, COUNT(*) as count").
 		Group("warehouse_id")
 

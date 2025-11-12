@@ -7,7 +7,9 @@ import (
 	"gorm.io/gorm"
 
 	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/repository/entity"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
+	"toxictoast/services/foodfolio-service/internal/repository/mapper"
 )
 
 type warehouseRepository struct {
@@ -21,38 +23,39 @@ func NewWarehouseRepository(db *gorm.DB) interfaces.WarehouseRepository {
 
 func (r *warehouseRepository) Create(ctx context.Context, warehouse *domain.Warehouse) error {
 	warehouse.Slug = generateSlug(warehouse.Name)
-	return r.db.WithContext(ctx).Create(warehouse).Error
+	e := mapper.WarehouseToEntity(warehouse)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *warehouseRepository) GetByID(ctx context.Context, id string) (*domain.Warehouse, error) {
-	var warehouse domain.Warehouse
-	err := r.db.WithContext(ctx).First(&warehouse, "id = ?", id).Error
+	var e entity.WarehouseEntity
+	err := r.db.WithContext(ctx).First(&e, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &warehouse, nil
+	return mapper.WarehouseToDomain(&e), nil
 }
 
 func (r *warehouseRepository) GetBySlug(ctx context.Context, slug string) (*domain.Warehouse, error) {
-	var warehouse domain.Warehouse
-	err := r.db.WithContext(ctx).First(&warehouse, "slug = ?", slug).Error
+	var e entity.WarehouseEntity
+	err := r.db.WithContext(ctx).First(&e, "slug = ?", slug).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &warehouse, nil
+	return mapper.WarehouseToDomain(&e), nil
 }
 
 func (r *warehouseRepository) List(ctx context.Context, offset, limit int, search string, includeDeleted bool) ([]*domain.Warehouse, int64, error) {
-	var warehouses []*domain.Warehouse
+	var entities []*entity.WarehouseEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Warehouse{})
+	query := r.db.WithContext(ctx).Model(&entity.WarehouseEntity{})
 
 	if includeDeleted {
 		query = query.Unscoped()
@@ -66,22 +69,23 @@ func (r *warehouseRepository) List(ctx context.Context, offset, limit int, searc
 		return nil, 0, err
 	}
 
-	if err := query.Offset(offset).Limit(limit).Find(&warehouses).Error; err != nil {
+	if err := query.Offset(offset).Limit(limit).Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return warehouses, total, nil
+	return mapper.WarehousesToDomain(entities), total, nil
 }
 
 func (r *warehouseRepository) Update(ctx context.Context, warehouse *domain.Warehouse) error {
 	warehouse.Slug = generateSlug(warehouse.Name)
-	return r.db.WithContext(ctx).Save(warehouse).Error
+	e := mapper.WarehouseToEntity(warehouse)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *warehouseRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.Warehouse{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.WarehouseEntity{}, "id = ?", id).Error
 }
 
 func (r *warehouseRepository) HardDelete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Unscoped().Delete(&domain.Warehouse{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Unscoped().Delete(&entity.WarehouseEntity{}, "id = ?", id).Error
 }

@@ -3,7 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
+	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"toxictoast/services/foodfolio-service/internal/domain"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
 )
@@ -28,20 +31,23 @@ type ItemVariantUseCase interface {
 }
 
 type itemVariantUseCase struct {
-	variantRepo interfaces.ItemVariantRepository
-	itemRepo    interfaces.ItemRepository
-	sizeRepo    interfaces.SizeRepository
+	variantRepo   interfaces.ItemVariantRepository
+	itemRepo      interfaces.ItemRepository
+	sizeRepo      interfaces.SizeRepository
+	kafkaProducer *kafka.Producer
 }
 
 func NewItemVariantUseCase(
 	variantRepo interfaces.ItemVariantRepository,
 	itemRepo interfaces.ItemRepository,
 	sizeRepo interfaces.SizeRepository,
+	kafkaProducer *kafka.Producer,
 ) ItemVariantUseCase {
 	return &itemVariantUseCase{
-		variantRepo: variantRepo,
-		itemRepo:    itemRepo,
-		sizeRepo:    sizeRepo,
+		variantRepo:   variantRepo,
+		itemRepo:      itemRepo,
+		sizeRepo:      sizeRepo,
+		kafkaProducer: kafkaProducer,
 	}
 }
 
@@ -100,6 +106,24 @@ func (uc *itemVariantUseCase) CreateItemVariant(ctx context.Context, itemID, siz
 
 	if err := uc.variantRepo.Create(ctx, variant); err != nil {
 		return nil, err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioVariantCreatedEvent{
+			VariantID:        variant.ID,
+			ItemID:           variant.ItemID,
+			SizeID:           variant.SizeID,
+			VariantName:      variant.VariantName,
+			Barcode:          variant.Barcode,
+			MinSKU:           variant.MinSKU,
+			MaxSKU:           variant.MaxSKU,
+			IsNormallyFrozen: variant.IsNormallyFrozen,
+			CreatedAt:        time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioVariantCreated("foodfolio.variant.created", event); err != nil {
+			log.Printf("Warning: Failed to publish variant created event: %v", err)
+		}
 	}
 
 	return variant, nil
@@ -242,6 +266,54 @@ func (uc *itemVariantUseCase) UpdateItemVariant(ctx context.Context, id, variant
 		return nil, err
 	}
 
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioVariantUpdatedEvent{
+			VariantID:        variant.ID,
+			VariantName:      variant.VariantName,
+			Barcode:          variant.Barcode,
+			MinSKU:           variant.MinSKU,
+			MaxSKU:           variant.MaxSKU,
+			IsNormallyFrozen: variant.IsNormallyFrozen,
+			UpdatedAt:        time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioVariantUpdated("foodfolio.variant.updated", event); err != nil {
+			log.Printf("Warning: Failed to publish variant updated event: %v", err)
+		}
+	}
+
+	// Check stock levels after update
+	if uc.kafkaProducer != nil {
+		stock, needsRestock, _, err := uc.GetCurrentStock(ctx, variant.ID)
+		if err == nil {
+			if stock == 0 {
+				// Publish stock empty event
+				emptyEvent := kafka.FoodfolioVariantStockEmptyEvent{
+					VariantID:   variant.ID,
+					ItemID:      variant.ItemID,
+					VariantName: variant.VariantName,
+					DetectedAt:  time.Now(),
+				}
+				if err := uc.kafkaProducer.PublishFoodfolioVariantStockEmpty("foodfolio.variant.stock.empty", emptyEvent); err != nil {
+					log.Printf("Warning: Failed to publish variant stock empty event: %v", err)
+				}
+			} else if needsRestock {
+				// Publish low stock event
+				lowStockEvent := kafka.FoodfolioVariantStockLowEvent{
+					VariantID:    variant.ID,
+					ItemID:       variant.ItemID,
+					VariantName:  variant.VariantName,
+					CurrentStock: stock,
+					MinSKU:       variant.MinSKU,
+					DetectedAt:   time.Now(),
+				}
+				if err := uc.kafkaProducer.PublishFoodfolioVariantStockLow("foodfolio.variant.stock.low", lowStockEvent); err != nil {
+					log.Printf("Warning: Failed to publish variant stock low event: %v", err)
+				}
+			}
+		}
+	}
+
 	return variant, nil
 }
 
@@ -251,5 +323,20 @@ func (uc *itemVariantUseCase) DeleteItemVariant(ctx context.Context, id string) 
 		return err
 	}
 
-	return uc.variantRepo.Delete(ctx, id)
+	if err := uc.variantRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioVariantDeletedEvent{
+			VariantID: id,
+			DeletedAt: time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioVariantDeleted("foodfolio.variant.deleted", event); err != nil {
+			log.Printf("Warning: Failed to publish variant deleted event: %v", err)
+		}
+	}
+
+	return nil
 }

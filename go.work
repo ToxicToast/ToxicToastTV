@@ -4,5 +4,9 @@ use (
 	./services/blog-service
 	./services/foodfolio-service
 	./services/link-service
+	./services/notification-service
+	./services/sse-service
+	./services/twitchbot-service
+	./services/webhook-service
 	./shared
 )

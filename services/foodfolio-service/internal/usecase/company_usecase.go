@@ -3,7 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
+	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"toxictoast/services/foodfolio-service/internal/domain"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
 )
@@ -24,12 +27,14 @@ type CompanyUseCase interface {
 }
 
 type companyUseCase struct {
-	companyRepo interfaces.CompanyRepository
+	companyRepo   interfaces.CompanyRepository
+	kafkaProducer *kafka.Producer
 }
 
-func NewCompanyUseCase(companyRepo interfaces.CompanyRepository) CompanyUseCase {
+func NewCompanyUseCase(companyRepo interfaces.CompanyRepository, kafkaProducer *kafka.Producer) CompanyUseCase {
 	return &companyUseCase{
-		companyRepo: companyRepo,
+		companyRepo:   companyRepo,
+		kafkaProducer: kafkaProducer,
 	}
 }
 
@@ -46,6 +51,19 @@ func (uc *companyUseCase) CreateCompany(ctx context.Context, name string) (*doma
 
 	if err := uc.companyRepo.Create(ctx, company); err != nil {
 		return nil, err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioCompanyCreatedEvent{
+			CompanyID: company.ID,
+			Name:      company.Name,
+			Slug:      company.Slug,
+			CreatedAt: time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioCompanyCreated("foodfolio.company.created", event); err != nil {
+			log.Printf("Warning: Failed to publish company created event: %v", err)
+		}
 	}
 
 	return company, nil
@@ -108,6 +126,19 @@ func (uc *companyUseCase) UpdateCompany(ctx context.Context, id, name string) (*
 		return nil, err
 	}
 
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioCompanyUpdatedEvent{
+			CompanyID: company.ID,
+			Name:      company.Name,
+			Slug:      company.Slug,
+			UpdatedAt: time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioCompanyUpdated("foodfolio.company.updated", event); err != nil {
+			log.Printf("Warning: Failed to publish company updated event: %v", err)
+		}
+	}
+
 	return company, nil
 }
 
@@ -118,5 +149,20 @@ func (uc *companyUseCase) DeleteCompany(ctx context.Context, id string) error {
 		return err
 	}
 
-	return uc.companyRepo.Delete(ctx, id)
+	if err := uc.companyRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.FoodfolioCompanyDeletedEvent{
+			CompanyID: id,
+			DeletedAt: time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishFoodfolioCompanyDeleted("foodfolio.company.deleted", event); err != nil {
+			log.Printf("Warning: Failed to publish company deleted event: %v", err)
+		}
+	}
+
+	return nil
 }

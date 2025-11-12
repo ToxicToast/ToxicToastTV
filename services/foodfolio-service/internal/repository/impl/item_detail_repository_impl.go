@@ -8,7 +8,9 @@ import (
 	"gorm.io/gorm"
 
 	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/repository/entity"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
+	"toxictoast/services/foodfolio-service/internal/repository/mapper"
 )
 
 type itemDetailRepository struct {
@@ -21,22 +23,27 @@ func NewItemDetailRepository(db *gorm.DB) interfaces.ItemDetailRepository {
 }
 
 func (r *itemDetailRepository) Create(ctx context.Context, detail *domain.ItemDetail) error {
-	return r.db.WithContext(ctx).Create(detail).Error
+	e := mapper.ItemDetailToEntity(detail)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *itemDetailRepository) BatchCreate(ctx context.Context, details []*domain.ItemDetail) error {
-	return r.db.WithContext(ctx).CreateInBatches(details, 100).Error
+	entities := make([]*entity.ItemDetailEntity, len(details))
+	for i, d := range details {
+		entities[i] = mapper.ItemDetailToEntity(d)
+	}
+	return r.db.WithContext(ctx).CreateInBatches(entities, 100).Error
 }
 
 func (r *itemDetailRepository) GetByID(ctx context.Context, id string) (*domain.ItemDetail, error) {
-	var detail domain.ItemDetail
+	var e entity.ItemDetailEntity
 	err := r.db.WithContext(ctx).
 		Preload("ItemVariant").
 		Preload("ItemVariant.Item").
 		Preload("ItemVariant.Size").
 		Preload("Warehouse").
 		Preload("Location").
-		First(&detail, "id = ?", id).Error
+		First(&e, "id = ?", id).Error
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -44,14 +51,14 @@ func (r *itemDetailRepository) GetByID(ctx context.Context, id string) (*domain.
 		}
 		return nil, err
 	}
-	return &detail, nil
+	return mapper.ItemDetailToDomain(&e), nil
 }
 
 func (r *itemDetailRepository) List(ctx context.Context, offset, limit int, variantID, warehouseID, locationID *string, isOpened, hasDeposit, isFrozen *bool, includeDeleted bool) ([]*domain.ItemDetail, int64, error) {
-	var details []*domain.ItemDetail
+	var entities []*entity.ItemDetailEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.ItemDetail{})
+	query := r.db.WithContext(ctx).Model(&entity.ItemDetailEntity{})
 
 	if includeDeleted {
 		query = query.Unscoped()
@@ -94,31 +101,31 @@ func (r *itemDetailRepository) List(ctx context.Context, offset, limit int, vari
 		Preload("Location").
 		Offset(offset).
 		Limit(limit).
-		Find(&details).Error; err != nil {
+		Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return details, total, nil
+	return mapper.ItemDetailsToDomain(entities), total, nil
 }
 
 func (r *itemDetailRepository) GetByVariant(ctx context.Context, variantID string) ([]*domain.ItemDetail, error) {
-	var details []*domain.ItemDetail
+	var entities []*entity.ItemDetailEntity
 
 	err := r.db.WithContext(ctx).
 		Preload("Warehouse").
 		Preload("Location").
 		Where("item_variant_id = ?", variantID).
-		Find(&details).Error
+		Find(&entities).Error
 
 	if err != nil {
 		return nil, err
 	}
 
-	return details, nil
+	return mapper.ItemDetailsToDomain(entities), nil
 }
 
 func (r *itemDetailRepository) GetByLocation(ctx context.Context, locationID string, includeChildren bool) ([]*domain.ItemDetail, error) {
-	var details []*domain.ItemDetail
+	var entities []*entity.ItemDetailEntity
 
 	query := r.db.WithContext(ctx).
 		Preload("ItemVariant").
@@ -133,7 +140,7 @@ func (r *itemDetailRepository) GetByLocation(ctx context.Context, locationID str
 		locationIDs = append(locationIDs, locationID)
 
 		// Get direct children
-		var children []*domain.Location
+		var children []*entity.LocationEntity
 		r.db.Where("parent_id = ?", locationID).Find(&children)
 		for _, child := range children {
 			locationIDs = append(locationIDs, child.ID)
@@ -144,20 +151,20 @@ func (r *itemDetailRepository) GetByLocation(ctx context.Context, locationID str
 		query = query.Where("location_id = ?", locationID)
 	}
 
-	if err := query.Find(&details).Error; err != nil {
+	if err := query.Find(&entities).Error; err != nil {
 		return nil, err
 	}
 
-	return details, nil
+	return mapper.ItemDetailsToDomain(entities), nil
 }
 
 func (r *itemDetailRepository) GetExpiringItems(ctx context.Context, days int, offset, limit int) ([]*domain.ItemDetail, int64, error) {
-	var details []*domain.ItemDetail
+	var entities []*entity.ItemDetailEntity
 	var total int64
 
 	threshold := time.Now().AddDate(0, 0, days)
 
-	query := r.db.WithContext(ctx).Model(&domain.ItemDetail{}).
+	query := r.db.WithContext(ctx).Model(&entity.ItemDetailEntity{}).
 		Where("expiry_date IS NOT NULL").
 		Where("expiry_date <= ?", threshold).
 		Where("expiry_date > ?", time.Now()).
@@ -176,18 +183,18 @@ func (r *itemDetailRepository) GetExpiringItems(ctx context.Context, days int, o
 		Order("expiry_date ASC").
 		Offset(offset).
 		Limit(limit).
-		Find(&details).Error; err != nil {
+		Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return details, total, nil
+	return mapper.ItemDetailsToDomain(entities), total, nil
 }
 
 func (r *itemDetailRepository) GetExpiredItems(ctx context.Context, offset, limit int) ([]*domain.ItemDetail, int64, error) {
-	var details []*domain.ItemDetail
+	var entities []*entity.ItemDetailEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.ItemDetail{}).
+	query := r.db.WithContext(ctx).Model(&entity.ItemDetailEntity{}).
 		Where("expiry_date IS NOT NULL").
 		Where("expiry_date < ?", time.Now()).
 		Where("is_opened = ?", false)
@@ -205,18 +212,18 @@ func (r *itemDetailRepository) GetExpiredItems(ctx context.Context, offset, limi
 		Order("expiry_date ASC").
 		Offset(offset).
 		Limit(limit).
-		Find(&details).Error; err != nil {
+		Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return details, total, nil
+	return mapper.ItemDetailsToDomain(entities), total, nil
 }
 
 func (r *itemDetailRepository) GetItemsWithDeposit(ctx context.Context, offset, limit int) ([]*domain.ItemDetail, int64, error) {
-	var details []*domain.ItemDetail
+	var entities []*entity.ItemDetailEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.ItemDetail{}).
+	query := r.db.WithContext(ctx).Model(&entity.ItemDetailEntity{}).
 		Where("has_deposit = ?", true).
 		Where("is_opened = ?", false)
 
@@ -232,16 +239,16 @@ func (r *itemDetailRepository) GetItemsWithDeposit(ctx context.Context, offset, 
 		Preload("Location").
 		Offset(offset).
 		Limit(limit).
-		Find(&details).Error; err != nil {
+		Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return details, total, nil
+	return mapper.ItemDetailsToDomain(entities), total, nil
 }
 
 func (r *itemDetailRepository) OpenItem(ctx context.Context, id string, openedDate time.Time) error {
 	return r.db.WithContext(ctx).
-		Model(&domain.ItemDetail{}).
+		Model(&entity.ItemDetailEntity{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
 			"is_opened":   true,
@@ -251,28 +258,29 @@ func (r *itemDetailRepository) OpenItem(ctx context.Context, id string, openedDa
 
 func (r *itemDetailRepository) MoveItems(ctx context.Context, itemIDs []string, newLocationID string) error {
 	return r.db.WithContext(ctx).
-		Model(&domain.ItemDetail{}).
+		Model(&entity.ItemDetailEntity{}).
 		Where("id IN ?", itemIDs).
 		Update("location_id", newLocationID).Error
 }
 
 func (r *itemDetailRepository) Update(ctx context.Context, detail *domain.ItemDetail) error {
-	return r.db.WithContext(ctx).Save(detail).Error
+	e := mapper.ItemDetailToEntity(detail)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *itemDetailRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.ItemDetail{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.ItemDetailEntity{}, "id = ?", id).Error
 }
 
 func (r *itemDetailRepository) HardDelete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Unscoped().Delete(&domain.ItemDetail{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Unscoped().Delete(&entity.ItemDetailEntity{}, "id = ?", id).Error
 }
 
 func (r *itemDetailRepository) CountByVariant(ctx context.Context, variantID string) (int, error) {
 	var count int64
 
 	err := r.db.WithContext(ctx).
-		Model(&domain.ItemDetail{}).
+		Model(&entity.ItemDetailEntity{}).
 		Where("item_variant_id = ? AND is_opened = ? AND (expiry_date IS NULL OR expiry_date > ?)", variantID, false, time.Now()).
 		Count(&count).Error
 

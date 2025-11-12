@@ -7,7 +7,9 @@ import (
 	"gorm.io/gorm"
 
 	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/repository/entity"
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
+	"toxictoast/services/foodfolio-service/internal/repository/mapper"
 )
 
 type categoryRepository struct {
@@ -21,38 +23,39 @@ func NewCategoryRepository(db *gorm.DB) interfaces.CategoryRepository {
 
 func (r *categoryRepository) Create(ctx context.Context, category *domain.Category) error {
 	category.Slug = generateSlug(category.Name)
-	return r.db.WithContext(ctx).Create(category).Error
+	e := mapper.CategoryToEntity(category)
+	return r.db.WithContext(ctx).Create(e).Error
 }
 
 func (r *categoryRepository) GetByID(ctx context.Context, id string) (*domain.Category, error) {
-	var category domain.Category
-	err := r.db.WithContext(ctx).First(&category, "id = ?", id).Error
+	var e entity.CategoryEntity
+	err := r.db.WithContext(ctx).First(&e, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &category, nil
+	return mapper.CategoryToDomain(&e), nil
 }
 
 func (r *categoryRepository) GetBySlug(ctx context.Context, slug string) (*domain.Category, error) {
-	var category domain.Category
-	err := r.db.WithContext(ctx).First(&category, "slug = ?", slug).Error
+	var e entity.CategoryEntity
+	err := r.db.WithContext(ctx).First(&e, "slug = ?", slug).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &category, nil
+	return mapper.CategoryToDomain(&e), nil
 }
 
 func (r *categoryRepository) List(ctx context.Context, offset, limit int, parentID *string, includeChildren bool, includeDeleted bool) ([]*domain.Category, int64, error) {
-	var categories []*domain.Category
+	var entities []*entity.CategoryEntity
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Category{})
+	query := r.db.WithContext(ctx).Model(&entity.CategoryEntity{})
 
 	if includeDeleted {
 		query = query.Unscoped()
@@ -78,15 +81,15 @@ func (r *categoryRepository) List(ctx context.Context, offset, limit int, parent
 		queryWithPagination = queryWithPagination.Preload("Children")
 	}
 
-	if err := queryWithPagination.Find(&categories).Error; err != nil {
+	if err := queryWithPagination.Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	return categories, total, nil
+	return mapper.CategoriesToDomain(entities), total, nil
 }
 
 func (r *categoryRepository) GetTree(ctx context.Context, rootID *string, maxDepth int) ([]*domain.Category, error) {
-	var categories []*domain.Category
+	var entities []*entity.CategoryEntity
 
 	query := r.db.WithContext(ctx)
 
@@ -111,50 +114,51 @@ func (r *categoryRepository) GetTree(ctx context.Context, rootID *string, maxDep
 		}
 	}
 
-	if err := query.Find(&categories).Error; err != nil {
+	if err := query.Find(&entities).Error; err != nil {
 		return nil, err
 	}
 
-	return categories, nil
+	return mapper.CategoriesToDomain(entities), nil
 }
 
 func (r *categoryRepository) GetChildren(ctx context.Context, parentID string) ([]*domain.Category, error) {
-	var categories []*domain.Category
+	var entities []*entity.CategoryEntity
 
 	err := r.db.WithContext(ctx).
 		Where("parent_id = ?", parentID).
-		Find(&categories).Error
+		Find(&entities).Error
 
 	if err != nil {
 		return nil, err
 	}
 
-	return categories, nil
+	return mapper.CategoriesToDomain(entities), nil
 }
 
 func (r *categoryRepository) GetRootCategories(ctx context.Context) ([]*domain.Category, error) {
-	var categories []*domain.Category
+	var entities []*entity.CategoryEntity
 
 	err := r.db.WithContext(ctx).
 		Where("parent_id IS NULL").
-		Find(&categories).Error
+		Find(&entities).Error
 
 	if err != nil {
 		return nil, err
 	}
 
-	return categories, nil
+	return mapper.CategoriesToDomain(entities), nil
 }
 
 func (r *categoryRepository) Update(ctx context.Context, category *domain.Category) error {
 	category.Slug = generateSlug(category.Name)
-	return r.db.WithContext(ctx).Save(category).Error
+	e := mapper.CategoryToEntity(category)
+	return r.db.WithContext(ctx).Save(e).Error
 }
 
 func (r *categoryRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&domain.Category{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Delete(&entity.CategoryEntity{}, "id = ?", id).Error
 }
 
 func (r *categoryRepository) HardDelete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Unscoped().Delete(&domain.Category{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Unscoped().Delete(&entity.CategoryEntity{}, "id = ?", id).Error
 }
