@@ -42,7 +42,7 @@ func Load() (*Config, error) {
 		KeycloakClientID: keycloakCfg.ClientID,
 
 		// Gateway config
-		HTTPPort:       config.GetEnv("HTTP_PORT", "8080"),
+		HTTPPort:       config.GetEnv("HTTP_PORT", "8081"),
 		GRPCPort:       config.GetEnv("GRPC_PORT", "9090"),
 		EnableCORS:     config.GetEnvAsBool("ENABLE_CORS", true),
 		RateLimitRPS:   config.GetEnvAsInt("RATE_LIMIT_RPS", 100),
@@ -50,13 +50,13 @@ func Load() (*Config, error) {
 		DevMode:        config.GetEnvAsBool("DEV_MODE", false),
 
 		// Service URLs
-		BlogServiceURL:         config.GetEnv("BLOG_SERVICE_URL", "localhost:9090"),
-		LinkServiceURL:         config.GetEnv("LINK_SERVICE_URL", "localhost:9090"),
-		FoodfolioServiceURL:    config.GetEnv("FOODFOLIO_SERVICE_URL", "localhost:9091"),
-		NotificationServiceURL: config.GetEnv("NOTIFICATION_SERVICE_URL", "localhost:9090"),
-		SSEServiceURL:          config.GetEnv("SSE_SERVICE_URL", "localhost:9090"),
-		TwitchBotServiceURL:    config.GetEnv("TWITCHBOT_SERVICE_URL", "localhost:9093"),
-		WebhookServiceURL:      config.GetEnv("WEBHOOK_SERVICE_URL", "localhost:9090"),
+		BlogServiceURL:         config.GetEnv("BLOG_SERVICE_URL", "localhost:9091"),
+		LinkServiceURL:         config.GetEnv("LINK_SERVICE_URL", "localhost:9092"),
+		FoodfolioServiceURL:    config.GetEnv("FOODFOLIO_SERVICE_URL", "localhost:9093"),
+		NotificationServiceURL: config.GetEnv("NOTIFICATION_SERVICE_URL", "localhost:9094"),
+		SSEServiceURL:          config.GetEnv("SSE_SERVICE_URL", "localhost:9095"),
+		TwitchBotServiceURL:    config.GetEnv("TWITCHBOT_SERVICE_URL", "localhost:9096"),
+		WebhookServiceURL:      config.GetEnv("WEBHOOK_SERVICE_URL", "localhost:9097"),
 	}
 
 	return cfg, nil
