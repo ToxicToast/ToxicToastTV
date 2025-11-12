@@ -4,23 +4,23 @@ FROM golang:1.24-alpine AS builder
 # Install build dependencies
 RUN apk add --no-cache git make
 
-WORKDIR /build
+WORKDIR /workspace
 
-# Copy go workspace files
-COPY go.work go.work.sum ./
-
-# Copy shared module
+# Copy shared module first
 COPY shared/ ./shared/
 
-# Copy service files
+# Copy service module
 COPY services/twitchbot-service/ ./services/twitchbot-service/
 
-# Download dependencies
-WORKDIR /build/services/twitchbot-service
+# Set working directory to service
+WORKDIR /workspace/services/twitchbot-service
+
+# Download dependencies (go.mod has replace directive pointing to ../../shared)
 RUN go mod download
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /build/bin/twitchbot-service ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
+    -o /workspace/bin/twitchbot-service ./cmd/server
 
 # Final stage
 FROM alpine:latest
@@ -32,7 +32,7 @@ RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /build/bin/twitchbot-service .
+COPY --from=builder /workspace/bin/twitchbot-service .
 
 # Expose ports
 EXPOSE 8083 9093

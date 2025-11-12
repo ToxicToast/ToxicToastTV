@@ -1,23 +1,24 @@
 # Build stage
 FROM golang:1.24-alpine AS builder
 
-WORKDIR /build
+WORKDIR /workspace
 
-# Copy go workspace files
-COPY go.work go.work.sum ./
-
-# Copy shared module
+# Copy shared module first
 COPY shared/ ./shared/
 
-# Copy service files
+# Copy service module
 COPY services/notification-service/ ./services/notification-service/
 
-# Download dependencies
-WORKDIR /build/services/notification-service
+# Set working directory to service
+WORKDIR /workspace/services/notification-service
+
+# Download dependencies (go.mod has replace directive pointing to ../../shared)
 RUN go mod download
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o /build/bin/notification-service ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
+    -ldflags '-extldflags "-static"' \
+    -o /workspace/bin/notification-service ./cmd/server
 
 # Final stage
 FROM alpine:latest
@@ -28,7 +29,7 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /app
 
 # Copy the binary from builder stage
-COPY --from=builder /build/bin/notification-service .
+COPY --from=builder /workspace/bin/notification-service .
 
 # Expose ports
 EXPOSE 8080 9090
