@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"golang.org/x/time/rate"
+	"toxictoast/services/gateway-service/internal/metrics"
 )
 
 // RateLimiter implements token bucket rate limiting per IP
@@ -13,14 +14,16 @@ type RateLimiter struct {
 	mu       sync.RWMutex
 	rps      int
 	burst    int
+	metrics  *metrics.Metrics
 }
 
 // NewRateLimiter creates a new rate limiter
-func NewRateLimiter(rps, burst int) *RateLimiter {
+func NewRateLimiter(rps, burst int, m *metrics.Metrics) *RateLimiter {
 	return &RateLimiter{
 		limiters: make(map[string]*rate.Limiter),
 		rps:      rps,
 		burst:    burst,
+		metrics:  m,
 	}
 }
 
@@ -49,8 +52,17 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 
 		limiter := rl.getLimiter(ip)
 		if !limiter.Allow() {
+			// Record rate limit hit
+			if rl.metrics != nil {
+				rl.metrics.RecordRateLimitHit(ip)
+			}
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
+		}
+
+		// Record allowed request
+		if rl.metrics != nil {
+			rl.metrics.RecordRateLimitAllowed(ip)
 		}
 
 		next.ServeHTTP(w, r)
