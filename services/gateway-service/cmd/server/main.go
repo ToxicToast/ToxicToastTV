@@ -63,6 +63,7 @@ func main() {
 		SSEURL:          cfg.SSEServiceURL,
 		TwitchBotURL:    cfg.TwitchBotServiceURL,
 		WebhookURL:      cfg.WebhookServiceURL,
+		WarcraftURL:     cfg.WarcraftServiceURL,
 	}
 
 	clients, err := proxy.NewServiceClients(ctx, serviceURLs)
@@ -82,6 +83,7 @@ func main() {
 	m.SetBackendHealthStatus("sse", clients.SSEConn != nil)
 	m.SetBackendHealthStatus("twitchbot", clients.TwitchBotConn != nil)
 	m.SetBackendHealthStatus("webhook", clients.WebhookConn != nil)
+	m.SetBackendHealthStatus("warcraft", clients.WarcraftConn != nil)
 
 	// Create router
 	router := proxy.NewRouter(clients, cfg.DevMode)

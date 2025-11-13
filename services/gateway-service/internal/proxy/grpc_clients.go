@@ -17,6 +17,7 @@ type ServiceClients struct {
 	SSEConn          *grpc.ClientConn
 	TwitchBotConn    *grpc.ClientConn
 	WebhookConn      *grpc.ClientConn
+	WarcraftConn     *grpc.ClientConn
 }
 
 // NewServiceClients creates gRPC connections to all backend services
@@ -102,6 +103,17 @@ func NewServiceClients(ctx context.Context, config ServiceURLs) (*ServiceClients
 		}
 	}
 
+	// Connect to Warcraft service
+	if config.WarcraftURL != "" {
+		clients.WarcraftConn, err = grpc.NewClient(
+			config.WarcraftURL,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to warcraft service: %w", err)
+		}
+	}
+
 	return clients, nil
 }
 
@@ -128,6 +140,9 @@ func (sc *ServiceClients) Close() error {
 	if sc.WebhookConn != nil {
 		sc.WebhookConn.Close()
 	}
+	if sc.WarcraftConn != nil {
+		sc.WarcraftConn.Close()
+	}
 	return nil
 }
 
@@ -140,4 +155,5 @@ type ServiceURLs struct {
 	SSEURL          string
 	TwitchBotURL    string
 	WebhookURL      string
+	WarcraftURL     string
 }
