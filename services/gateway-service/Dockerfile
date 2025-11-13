@@ -6,13 +6,22 @@ WORKDIR /workspace
 # Copy shared module first
 COPY shared/ ./shared/
 
-# Copy service module
+# Copy all service modules that gateway depends on (for replace directives)
+COPY services/blog-service/ ./services/blog-service/
+COPY services/foodfolio-service/ ./services/foodfolio-service/
+COPY services/link-service/ ./services/link-service/
+COPY services/notification-service/ ./services/notification-service/
+COPY services/sse-service/ ./services/sse-service/
+COPY services/twitchbot-service/ ./services/twitchbot-service/
+COPY services/webhook-service/ ./services/webhook-service/
+
+# Copy gateway service
 COPY services/gateway-service/ ./services/gateway-service/
 
 # Set working directory to service
 WORKDIR /workspace/services/gateway-service
 
-# Download dependencies (go.mod has replace directive pointing to ../../shared)
+# Download dependencies (go.mod has replace directives pointing to other services)
 RUN go mod download
 
 # Build the application
