@@ -43,6 +43,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	toxictoast/services/foodfolio-service v0.0.0
 	toxictoast/services/link-service v0.0.0
+	toxictoast/services/sse-service v0.0.0
 	toxictoast/services/twitchbot-service v0.0.0
 	toxictoast/services/webhook-service v0.0.0
 )
@@ -54,6 +55,8 @@ replace toxictoast/services/blog-service => ../blog-service
 replace toxictoast/services/foodfolio-service => ../foodfolio-service
 
 replace toxictoast/services/link-service => ../link-service
+
+replace toxictoast/services/sse-service => ../sse-service
 
 replace toxictoast/services/twitchbot-service => ../twitchbot-service
 

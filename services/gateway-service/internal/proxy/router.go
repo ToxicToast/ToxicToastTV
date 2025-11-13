@@ -77,8 +77,9 @@ func (r *Router) setupRoutes() {
 
 	// SSE service routes - /api/events/*
 	if r.clients.SSEConn != nil {
+		sseHandler := handler.NewSSEHandler(r.clients.SSEConn)
 		sseRouter := r.router.PathPrefix("/api/events").Subrouter()
-		sseRouter.PathPrefix("/").HandlerFunc(r.proxyToSSE)
+		sseHandler.RegisterRoutes(sseRouter)
 	}
 
 	// TwitchBot service routes - /api/twitch/*
