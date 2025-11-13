@@ -71,8 +71,9 @@ func (r *Router) setupRoutes() {
 
 	// Notification service routes - /api/notifications/*
 	if r.clients.NotificationConn != nil {
+		notificationHandler := handler.NewNotificationHandler(r.clients.NotificationConn)
 		notificationRouter := r.router.PathPrefix("/api/notifications").Subrouter()
-		notificationRouter.PathPrefix("/").HandlerFunc(r.proxyToNotification)
+		notificationHandler.RegisterRoutes(notificationRouter)
 	}
 
 	// SSE service routes - /api/events/*
