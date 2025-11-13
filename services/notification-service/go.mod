@@ -4,6 +4,7 @@ go 1.24.4
 
 require (
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/mux v1.8.1
 	github.com/joho/godotenv v1.5.1
 	github.com/segmentio/kafka-go v0.4.49
 	github.com/toxictoast/toxictoastgo/shared v0.0.0
