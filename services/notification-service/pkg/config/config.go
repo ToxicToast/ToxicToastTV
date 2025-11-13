@@ -11,8 +11,10 @@ import (
 // Config holds all configuration for the notification service
 type Config struct {
 	Environment string
+	Port        string
 	GRPCPort    string
 	Database    sharedConfig.DatabaseConfig
+	Server      sharedConfig.ServerConfig
 	Kafka       KafkaConfig
 }
 
@@ -27,6 +29,7 @@ type KafkaConfig struct {
 func Load() *Config {
 	return &Config{
 		Environment: getEnv("ENVIRONMENT", "development"),
+		Port:        getEnv("PORT", "8080"),
 		GRPCPort:    getEnv("GRPC_PORT", "9096"),
 		Database: sharedConfig.DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
@@ -36,6 +39,7 @@ func Load() *Config {
 			Name:     getEnv("DB_NAME", "azkaban"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
+		Server: sharedConfig.LoadServerConfig(),
 		Kafka: KafkaConfig{
 			Brokers: getEnvAsSlice("KAFKA_BROKERS", []string{"localhost:19092"}),
 			GroupID: getEnv("KAFKA_GROUP_ID", "notification-service"),

@@ -9,6 +9,7 @@ import (
 
 // Config holds warcraft-service specific configuration
 type Config struct {
+	Port        string
 	GRPCPort    string
 	Environment string
 
@@ -34,7 +35,13 @@ func Load() (*Config, error) {
 	// Load .env file if exists
 	godotenv.Load()
 
+	// Load shared configs
+	databaseCfg := sharedConfig.LoadDatabaseConfig()
+	serverCfg := sharedConfig.LoadServerConfig()
+	keycloakCfg := sharedConfig.LoadKeycloakConfig()
+
 	return &Config{
+		Port:        getEnv("PORT", "8080"),
 		GRPCPort:    getEnv("GRPC_PORT", "9090"),
 		Environment: getEnv("ENVIRONMENT", "development"),
 
@@ -49,6 +56,11 @@ func Load() (*Config, error) {
 		BlizzardClientID:     getEnv("BLIZZARD_CLIENT_ID", ""),
 		BlizzardClientSecret: getEnv("BLIZZARD_CLIENT_SECRET", ""),
 		BlizzardRegion:       getEnv("BLIZZARD_REGION", "us"),
+
+		// Embedded shared configs
+		Database: databaseCfg,
+		Server:   serverCfg,
+		Keycloak: keycloakCfg,
 	}, nil
 }
 

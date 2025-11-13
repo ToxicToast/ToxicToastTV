@@ -18,7 +18,7 @@ type Config struct {
 	Kafka        KafkaConfig
 	Keycloak     sharedConfig.KeycloakConfig
 	AuthEnabled  bool
-	Server       ServerConfig
+	Server       sharedConfig.ServerConfig
 	Webhook      WebhookConfig
 }
 
@@ -28,13 +28,6 @@ type KafkaConfig struct {
 	GroupID         string
 	Topics          []string
 	AutoOffsetReset string
-}
-
-// ServerConfig holds HTTP server configuration
-type ServerConfig struct {
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-	IdleTimeout  time.Duration
 }
 
 // WebhookConfig holds webhook-specific configuration
@@ -105,11 +98,7 @@ func Load() *Config {
 			ClientID: getEnv("KEYCLOAK_CLIENT_ID", "webhook-service"),
 		},
 		AuthEnabled: getEnvAsBool("AUTH_ENABLED", false),
-		Server: ServerConfig{
-			ReadTimeout:  time.Duration(getEnvAsInt("SERVER_READ_TIMEOUT", 15)) * time.Second,
-			WriteTimeout: time.Duration(getEnvAsInt("SERVER_WRITE_TIMEOUT", 15)) * time.Second,
-			IdleTimeout:  time.Duration(getEnvAsInt("SERVER_IDLE_TIMEOUT", 60)) * time.Second,
-		},
+		Server:      sharedConfig.LoadServerConfig(),
 		Webhook: WebhookConfig{
 			DeliveryTimeout:   time.Duration(getEnvAsInt("WEBHOOK_DELIVERY_TIMEOUT", 30)) * time.Second,
 			MaxRetries:        getEnvAsInt("WEBHOOK_MAX_RETRIES", 3),
