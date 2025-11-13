@@ -8,6 +8,7 @@ use (
 	./services/notification-service
 	./services/sse-service
 	./services/twitchbot-service
+	./services/warcraft-service
 	./services/webhook-service
 	./shared
 )
