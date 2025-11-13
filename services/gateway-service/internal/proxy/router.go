@@ -90,8 +90,9 @@ func (r *Router) setupRoutes() {
 
 	// Webhook service routes - /api/webhooks/*
 	if r.clients.WebhookConn != nil {
+		webhookHandler := handler.NewWebhookHandler(r.clients.WebhookConn)
 		webhookRouter := r.router.PathPrefix("/api/webhooks").Subrouter()
-		webhookRouter.PathPrefix("/").HandlerFunc(r.proxyToWebhook)
+		webhookHandler.RegisterRoutes(webhookRouter)
 	}
 }
 
