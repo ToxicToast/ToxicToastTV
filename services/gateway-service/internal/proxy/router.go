@@ -57,8 +57,9 @@ func (r *Router) setupRoutes() {
 
 	// Link service routes - /api/links/*
 	if r.clients.LinkConn != nil {
+		linkHandler := handler.NewLinkHandler(r.clients.LinkConn)
 		linkRouter := r.router.PathPrefix("/api/links").Subrouter()
-		linkRouter.PathPrefix("/").HandlerFunc(r.proxyToLink)
+		linkHandler.RegisterRoutes(linkRouter)
 	}
 
 	// Foodfolio service routes - /api/foodfolio/*
