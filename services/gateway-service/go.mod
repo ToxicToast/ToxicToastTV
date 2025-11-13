@@ -44,6 +44,7 @@ require (
 	toxictoast/services/foodfolio-service v0.0.0
 	toxictoast/services/link-service v0.0.0
 	toxictoast/services/twitchbot-service v0.0.0
+	toxictoast/services/webhook-service v0.0.0
 )
 
 replace github.com/toxictoast/toxictoastgo/shared => ../../shared
@@ -55,3 +56,5 @@ replace toxictoast/services/foodfolio-service => ../foodfolio-service
 replace toxictoast/services/link-service => ../link-service
 
 replace toxictoast/services/twitchbot-service => ../twitchbot-service
+
+replace toxictoast/services/webhook-service => ../webhook-service
