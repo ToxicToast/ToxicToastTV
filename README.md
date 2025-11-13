@@ -19,12 +19,14 @@ This is a **Go monorepo** using Go workspaces, containing multiple microservices
 ToxicToastGo/
 ├── services/                   # Microservices
 │   ├── blog-service/          # ✅ Blog CMS backend
-│   ├── warcraft-service/      # 📋 WoW character & guild tracking
-│   ├── foodfolio-service/     # 📋 Food inventory management
+│   ├── foodfolio-service/     # ✅ Food inventory management
+│   ├── link-service/          # ✅ URL shortener
+│   ├── notification-service/  # ✅ Discord webhook notifications
+│   ├── sse-service/           # ✅ Real-time events for frontends
 │   ├── twitchbot-service/     # 📋 Twitch stream analytics
-│   ├── notification-service/  # 📋 Multi-channel notifications
-│   ├── sse-service/           # 📋 Real-time events for frontends
-│   └── gateway-service/       # 📋 API Gateway (last priority)
+│   ├── warcraft-service/      # ✅ WoW character & guild tracking
+│   ├── webhook-service/       # ✅ Webhook event management
+│   └── gateway-service/       # ✅ API Gateway with HTTP-to-gRPC proxy
 ├── shared/                     # Shared modules
 │   ├── auth/                  # Authentication (Keycloak JWT)
 │   ├── kafka/                 # Event producer/consumer
@@ -54,31 +56,94 @@ A full-featured blog CMS backend with support for posts, categories, tags, comme
 👉 [View Blog Service Documentation](./services/blog-service/README.md)
 
 ### Warcraft Service
-**Status:** 📋 Planned
+**Status:** ✅ Production Ready
 
-Integration with Blizzard API for World of Warcraft data tracking.
+Integration with Blizzard Battle.net API for World of Warcraft character and guild tracking.
 
-**Planned Features:**
-- Character management and tracking
-- Guild information and roster
-- Blizzard API integration
-- Character progression tracking
-- Achievement tracking
-- Item and gear tracking
+**Features:**
+- Character management (CRUD operations)
+- Character details with class, race, faction tracking
+- Equipment and stats tracking
+- Guild management and roster
+- Reference data (races, classes, factions) with normalization
+- Blizzard API client stub (OAuth2 ready for future integration)
+- gRPC API with Protocol Buffers
+- Clean Architecture with separated concerns
+
+**Data Model:**
+- Character entity separation (API fields vs. game data)
+- Normalized reference data with foreign keys
+- One-to-one relationships for character details and equipment
+
+👉 [View Warcraft Service Documentation](./services/warcraft-service/README.md)
 
 ### Foodfolio Service
 **Status:** ✅ Production Ready
 
 A custom food inventory management system inspired by Grocy, focused on food items.
 
-**Planned Features:**
-- Food inventory tracking
-- Expiration date management
-- Purchase location tracking
-- Receipt scanning and OCR
+**Features:**
+- Food inventory tracking with categories and types
+- Item management with variants and details
+- Company and location tracking
+- Warehouse and storage management
 - Shopping list generation
-- Nutritional information
-- Barcode scanning
+- Receipt management
+- Size management
+- gRPC API with Protocol Buffers
+
+### Link Service
+**Status:** ✅ Production Ready
+
+URL shortener service for creating and managing short links with click tracking.
+
+**Features:**
+- URL shortening with custom slugs
+- Click tracking and analytics
+- Link expiration management
+- gRPC API with Protocol Buffers
+- Clean Architecture
+
+### Webhook Service
+**Status:** ✅ Production Ready
+
+Webhook event management and delivery system.
+
+**Features:**
+- Webhook registration and management
+- Event delivery tracking
+- Retry logic for failed deliveries
+- gRPC API with Protocol Buffers
+- Clean Architecture
+
+### Notification Service
+**Status:** ✅ Production Ready
+
+Discord webhook notification system for centralized event notifications.
+
+**Features:**
+- Discord channel management via webhooks
+- Notification history tracking
+- Multi-channel support
+- Notification delivery tracking
+- Channel enable/disable toggle
+- Test webhook functionality
+- Cleanup of old notifications
+- gRPC API with Protocol Buffers
+
+### SSE Service
+**Status:** ✅ Production Ready
+
+Server-Sent Events service for real-time frontend updates.
+
+**Features:**
+- Real-time event streaming to frontends
+- Connection management
+- Client tracking and statistics
+- Health monitoring
+- Message broadcasting
+- gRPC management API
+- Clean Architecture
 
 ### Twitchbot Service
 **Status:** 📋 Planned
@@ -94,47 +159,31 @@ A Twitch bot for tracking and managing stream data (personal channel only).
 - Stream notifications
 - Custom alerts
 
-### Notification Service
-**Status:** 📋 Planned
-
-Centralized notification system for all services.
-
-**Planned Features:**
-- Multi-channel notifications (Email, Discord, Telegram)
-- Event-driven notifications via Kafka
-- Template-based messages
-- Notification history
-- User preferences
-- Rate limiting
-- Delivery tracking
-
-### SSE Service
-**Status:** 📋 Planned
-
-Server-Sent Events service for real-time frontend updates.
-
-**Planned Features:**
-- Real-time event streaming to frontends
-- Connection management
-- Event filtering per client
-- Reconnection handling
-- Message queueing
-- Multi-tenant support
-- WebSocket fallback
-
 ### Gateway Service
-**Status:** 📋 Planned (Last Priority)
+**Status:** ✅ Production Ready
 
-API Gateway for unified access to all microservices.
+API Gateway providing unified HTTP REST API access to all gRPC microservices.
 
-**Planned Features:**
-- Request routing to services
-- Authentication/Authorization
-- Rate limiting
-- Request/Response transformation
-- Load balancing
-- API versioning
-- Monitoring and logging
+**Features:**
+- HTTP-to-gRPC translation for all backend services
+- Request routing with path-based routing (/api/{service}/*)
+- CORS middleware support
+- Rate limiting (configurable RPS and burst)
+- Prometheus metrics collection
+- Health and readiness endpoints
+- Swagger UI (dev mode)
+- Logging middleware
+- Clean Architecture
+
+**Supported Services:**
+- Blog Service - `/api/blog/*`
+- Foodfolio Service - `/api/foodfolio/*`
+- Link Service - `/api/links/*`
+- Notification Service - `/api/notifications/*`
+- SSE Service - `/api/events/*`
+- TwitchBot Service - `/api/twitch/*`
+- Warcraft Service - `/api/warcraft/*`
+- Webhook Service - `/api/webhooks/*`
 
 ## 🛠️ Tech Stack
 
@@ -287,17 +336,27 @@ go get -u ./...
 
 ## 🗺️ Roadmap
 
-### Service Implementation Priority
+### Service Implementation Status
 
-**High Priority:**
-1. [ ] Warcraft Service - Blizzard API integration
-2. [ ] Foodfolio Service - Food inventory management
-3. [ ] Twitchbot Service - Stream tracking and analytics
-4. [ ] Notification Service - Multi-channel notifications
-5. [ ] SSE Service - Real-time frontend updates
+**Completed Services:**
+1. [x] Blog Service - Full-featured blog CMS
+2. [x] Foodfolio Service - Food inventory management
+3. [x] Link Service - URL shortener with click tracking
+4. [x] Notification Service - Discord webhook notifications
+5. [x] SSE Service - Real-time event streaming
+6. [x] Warcraft Service - WoW character & guild tracking
+7. [x] Webhook Service - Webhook event management
+8. [x] Gateway Service - API Gateway with HTTP-to-gRPC proxy
 
-**Low Priority:**
-6. [ ] Gateway Service - API Gateway (implement last)
+**Planned Services:**
+1. [ ] Twitchbot Service - Stream tracking and analytics
+
+### Service Enhancements
+- [ ] Warcraft: Implement full Blizzard OAuth2 integration
+- [ ] Warcraft: Add character equipment and stats endpoints
+- [ ] Warcraft: Add guild roster sync
+- [ ] All Services: Add Kafka event publishing
+- [ ] All Services: Add integration tests
 
 ### Infrastructure Improvements
 - [ ] Telemetry integration in all services (Prometheus, OpenTelemetry)
@@ -334,8 +393,8 @@ This is a private project and not open for external contributions.
 
 ---
 
-**Current Services:** 1 (Blog Service)
-**Planned Services:** 6 (Warcraft, Foodfolio, Twitchbot, Notification, SSE, Gateway)
-**Total Ecosystem:** 7 Microservices
+**Implemented Services:** 8 (Blog, Foodfolio, Link, Notification, SSE, Warcraft, Webhook, Gateway)
+**Planned Services:** 1 (Twitchbot)
+**Total Ecosystem:** 9 Microservices
 
 Built with ❤️ using Go and gRPC
