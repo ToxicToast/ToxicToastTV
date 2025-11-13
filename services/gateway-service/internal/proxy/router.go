@@ -83,8 +83,9 @@ func (r *Router) setupRoutes() {
 
 	// TwitchBot service routes - /api/twitch/*
 	if r.clients.TwitchBotConn != nil {
+		twitchbotHandler := handler.NewTwitchBotHandler(r.clients.TwitchBotConn)
 		twitchRouter := r.router.PathPrefix("/api/twitch").Subrouter()
-		twitchRouter.PathPrefix("/").HandlerFunc(r.proxyToTwitchBot)
+		twitchbotHandler.RegisterRoutes(twitchRouter)
 	}
 
 	// Webhook service routes - /api/webhooks/*
