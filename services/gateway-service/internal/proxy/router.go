@@ -63,8 +63,9 @@ func (r *Router) setupRoutes() {
 
 	// Foodfolio service routes - /api/foodfolio/*
 	if r.clients.FoodfolioConn != nil {
+		foodfolioHandler := handler.NewFoodFolioHandler(r.clients.FoodfolioConn)
 		foodfolioRouter := r.router.PathPrefix("/api/foodfolio").Subrouter()
-		foodfolioRouter.PathPrefix("/").HandlerFunc(r.proxyToFoodfolio)
+		foodfolioHandler.RegisterRoutes(foodfolioRouter)
 	}
 
 	// Notification service routes - /api/notifications/*

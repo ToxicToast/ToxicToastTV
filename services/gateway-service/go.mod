@@ -4,6 +4,7 @@ go 1.24.4
 
 require (
 	github.com/gorilla/mux v1.8.1
+	github.com/prometheus/client_golang v1.23.2
 	github.com/toxictoast/toxictoastgo/shared v0.0.0
 	golang.org/x/time v0.14.0
 	google.golang.org/grpc v1.76.0
@@ -14,7 +15,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
@@ -41,8 +41,11 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250804133106-a7a43d27e69b // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+	toxictoast/services/foodfolio-service v0.0.0
 )
 
 replace github.com/toxictoast/toxictoastgo/shared => ../../shared
 
 replace toxictoast/services/blog-service => ../blog-service
+
+replace toxictoast/services/foodfolio-service => ../foodfolio-service
