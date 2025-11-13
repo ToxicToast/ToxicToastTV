@@ -96,6 +96,13 @@ func (r *Router) setupRoutes() {
 		webhookRouter := r.router.PathPrefix("/api/webhooks").Subrouter()
 		webhookHandler.RegisterRoutes(webhookRouter)
 	}
+
+	// Warcraft service routes - /api/warcraft/*
+	if r.clients.WarcraftConn != nil {
+		warcraftHandler := handler.NewWarcraftHandler(r.clients.WarcraftConn)
+		warcraftRouter := r.router.PathPrefix("/api/warcraft").Subrouter()
+		warcraftHandler.RegisterRoutes(warcraftRouter)
+	}
 }
 
 // GetRouter returns the mux router
@@ -125,6 +132,7 @@ func (r *Router) readinessCheck(w http.ResponseWriter, req *http.Request) {
 			"sse":          r.clients.SSEConn != nil,
 			"twitchbot":    r.clients.TwitchBotConn != nil,
 			"webhook":      r.clients.WebhookConn != nil,
+			"warcraft":     r.clients.WarcraftConn != nil,
 		},
 	}
 

@@ -26,6 +26,7 @@ type Config struct {
 	SSEServiceURL          string
 	TwitchBotServiceURL    string
 	WebhookServiceURL      string
+	WarcraftServiceURL     string
 }
 
 func Load() (*Config, error) {
@@ -57,6 +58,7 @@ func Load() (*Config, error) {
 		SSEServiceURL:          config.GetEnv("SSE_SERVICE_URL", "localhost:9095"),
 		TwitchBotServiceURL:    config.GetEnv("TWITCHBOT_SERVICE_URL", "localhost:9096"),
 		WebhookServiceURL:      config.GetEnv("WEBHOOK_SERVICE_URL", "localhost:9097"),
+		WarcraftServiceURL:     config.GetEnv("WARCRAFT_SERVICE_URL", "localhost:9098"),
 	}
 
 	return cfg, nil

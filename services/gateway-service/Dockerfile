@@ -13,6 +13,7 @@ COPY services/link-service/ ./services/link-service/
 COPY services/notification-service/ ./services/notification-service/
 COPY services/sse-service/ ./services/sse-service/
 COPY services/twitchbot-service/ ./services/twitchbot-service/
+COPY services/warcraft-service/ ./services/warcraft-service/
 COPY services/webhook-service/ ./services/webhook-service/
 
 # Copy gateway service

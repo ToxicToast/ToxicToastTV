@@ -46,6 +46,7 @@ require (
 	toxictoast/services/notification-service v0.0.0
 	toxictoast/services/sse-service v0.0.0
 	toxictoast/services/twitchbot-service v0.0.0
+	toxictoast/services/warcraft-service v0.0.0
 	toxictoast/services/webhook-service v0.0.0
 )
 
@@ -62,5 +63,7 @@ replace toxictoast/services/notification-service => ../notification-service
 replace toxictoast/services/sse-service => ../sse-service
 
 replace toxictoast/services/twitchbot-service => ../twitchbot-service
+
+replace toxictoast/services/warcraft-service => ../warcraft-service
 
 replace toxictoast/services/webhook-service => ../webhook-service
