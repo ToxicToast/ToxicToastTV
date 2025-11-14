@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"toxictoast/services/warcraft-service/internal/domain"
 	"toxictoast/services/warcraft-service/internal/repository"
 	"toxictoast/services/warcraft-service/pkg/blizzard"
@@ -24,6 +25,7 @@ type CharacterUseCase struct {
 	factionRepo       repository.FactionRepository
 	guildRepo         repository.GuildRepository
 	blizzardClient    *blizzard.Client
+	kafkaProducer     *kafka.Producer
 }
 
 func NewCharacterUseCase(
@@ -36,6 +38,7 @@ func NewCharacterUseCase(
 	factionRepo repository.FactionRepository,
 	guildRepo repository.GuildRepository,
 	blizzardClient *blizzard.Client,
+	kafkaProducer *kafka.Producer,
 ) *CharacterUseCase {
 	return &CharacterUseCase{
 		repo:              repo,
@@ -47,6 +50,7 @@ func NewCharacterUseCase(
 		factionRepo:       factionRepo,
 		guildRepo:         guildRepo,
 		blizzardClient:    blizzardClient,
+		kafkaProducer:     kafkaProducer,
 	}
 }
 
@@ -83,6 +87,21 @@ func (uc *CharacterUseCase) CreateCharacter(ctx context.Context, name, realm, re
 		// Rollback character creation
 		_ = uc.repo.Delete(ctx, character.ID)
 		return nil, fmt.Errorf("failed to create character details: %w", err)
+	}
+
+	// Publish character created event
+	if uc.kafkaProducer != nil {
+		event := kafka.WarcraftCharacterCreatedEvent{
+			CharacterID: character.ID,
+			Name:        character.Name,
+			Realm:       character.Realm,
+			Region:      character.Region,
+			CreatedAt:   character.CreatedAt,
+		}
+		if err := uc.kafkaProducer.PublishWarcraftCharacterCreated("warcraft.character.created", event); err != nil {
+			// Log error but don't fail the request
+			fmt.Printf("Warning: Failed to publish character created event: %v\n", err)
+		}
 	}
 
 	return character, nil
@@ -134,13 +153,37 @@ func (uc *CharacterUseCase) UpdateCharacter(ctx context.Context, id string, guil
 }
 
 func (uc *CharacterUseCase) DeleteCharacter(ctx context.Context, id string) error {
+	// Get character for event
+	character, err := uc.repo.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
 	// Delete related data first
 	_ = uc.detailsRepo.Delete(ctx, id)
 	_ = uc.equipmentRepo.Delete(ctx, id)
 	_ = uc.statsRepo.Delete(ctx, id)
 
 	// Delete character (soft delete)
-	return uc.repo.Delete(ctx, id)
+	if err := uc.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Publish character deleted event
+	if uc.kafkaProducer != nil {
+		event := kafka.WarcraftCharacterDeletedEvent{
+			CharacterID: character.ID,
+			Name:        character.Name,
+			Realm:       character.Realm,
+			Region:      character.Region,
+			DeletedAt:   time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishWarcraftCharacterDeleted("warcraft.character.deleted", event); err != nil {
+			fmt.Printf("Warning: Failed to publish character deleted event: %v\n", err)
+		}
+	}
+
+	return nil
 }
 
 func (uc *CharacterUseCase) RefreshCharacter(ctx context.Context, id string) (*domain.Character, error) {
@@ -161,7 +204,32 @@ func (uc *CharacterUseCase) RefreshCharacter(ctx context.Context, id string) (*d
 	}
 
 	character.UpdatedAt = time.Now()
-	return uc.repo.Update(ctx, character)
+	character, err = uc.repo.Update(ctx, character)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish character synced event
+	if uc.kafkaProducer != nil {
+		event := kafka.WarcraftCharacterSyncedEvent{
+			CharacterID:       character.ID,
+			Name:              character.Name,
+			Realm:             character.Realm,
+			Region:            character.Region,
+			Level:             profile.Level,
+			ItemLevel:         profile.ItemLevel,
+			ClassName:         profile.ClassName,
+			RaceName:          profile.RaceName,
+			FactionName:       profile.FactionType,
+			AchievementPoints: profile.AchievementPoints,
+			SyncedAt:          time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishWarcraftCharacterSynced("warcraft.character.synced", event); err != nil {
+			fmt.Printf("Warning: Failed to publish character synced event: %v\n", err)
+		}
+	}
+
+	return character, nil
 }
 
 func (uc *CharacterUseCase) GetCharacterEquipment(ctx context.Context, characterID string) (*domain.CharacterEquipment, error) {
@@ -183,7 +251,24 @@ func (uc *CharacterUseCase) GetCharacterEquipment(ctx context.Context, character
 	equipment.UpdatedAt = time.Now()
 
 	// CreateOrUpdate equipment in database
-	return uc.equipmentRepo.CreateOrUpdate(ctx, equipment)
+	equipment, err = uc.equipmentRepo.CreateOrUpdate(ctx, equipment)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish equipment updated event
+	if uc.kafkaProducer != nil {
+		event := kafka.WarcraftCharacterEquipmentUpdatedEvent{
+			CharacterID: characterID,
+			Name:        character.Name,
+			UpdatedAt:   equipment.UpdatedAt,
+		}
+		if err := uc.kafkaProducer.PublishWarcraftCharacterEquipmentUpdated("warcraft.character.equipment.updated", event); err != nil {
+			fmt.Printf("Warning: Failed to publish equipment updated event: %v\n", err)
+		}
+	}
+
+	return equipment, nil
 }
 
 func (uc *CharacterUseCase) GetCharacterStats(ctx context.Context, characterID string) (*domain.CharacterStats, error) {
@@ -205,7 +290,24 @@ func (uc *CharacterUseCase) GetCharacterStats(ctx context.Context, characterID s
 	stats.UpdatedAt = time.Now()
 
 	// CreateOrUpdate stats in database
-	return uc.statsRepo.CreateOrUpdate(ctx, stats)
+	stats, err = uc.statsRepo.CreateOrUpdate(ctx, stats)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish stats updated event
+	if uc.kafkaProducer != nil {
+		event := kafka.WarcraftCharacterStatsUpdatedEvent{
+			CharacterID: characterID,
+			Name:        character.Name,
+			UpdatedAt:   stats.UpdatedAt,
+		}
+		if err := uc.kafkaProducer.PublishWarcraftCharacterStatsUpdated("warcraft.character.stats.updated", event); err != nil {
+			fmt.Printf("Warning: Failed to publish stats updated event: %v\n", err)
+		}
+	}
+
+	return stats, nil
 }
 
 // Helper function to create or update character details with reference data

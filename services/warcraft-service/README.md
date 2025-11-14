@@ -9,13 +9,15 @@ World of Warcraft character and guild tracking service with Blizzard API integra
 - Character details (level, item level, class, race, faction)
 - Equipment tracking
 - Character stats monitoring
-- Automatic data refresh from Blizzard API
+- Manual data refresh from Blizzard API
+- **Background job for automatic character synchronization** (configurable interval)
 
 ### Guild Management
 - Track guild information
 - Guild roster management
 - Achievement tracking
 - Member statistics
+- **Background job for automatic guild synchronization** (configurable interval)
 
 ### Reference Data
 - Normalized character races
@@ -34,8 +36,9 @@ warcraft-service/
 │   │   ├── entity/       # Database entities
 │   │   ├── mapper/       # Domain ↔ Entity mapping
 │   │   └── impl/         # Repository implementations
-│   ├── usecase/          # Business logic
-│   └── handler/grpc/     # gRPC handlers
+│   ├── usecase/          # Business logic (Kafka event publishing)
+│   ├── handler/grpc/     # gRPC handlers
+│   └── scheduler/        # Background job schedulers
 ├── pkg/
 │   ├── config/           # Configuration management
 │   └── blizzard/         # Blizzard API client
@@ -83,6 +86,15 @@ DB_NAME=warcraft_db
 BLIZZARD_CLIENT_ID=your_client_id
 BLIZZARD_CLIENT_SECRET=your_client_secret
 BLIZZARD_REGION=us
+
+# Kafka (for event publishing)
+KAFKA_BROKERS=localhost:19092
+
+# Background Jobs
+CHARACTER_SYNC_ENABLED=true
+CHARACTER_SYNC_INTERVAL=6h  # Can use "6h", "30m", or number of hours
+GUILD_SYNC_ENABLED=true
+GUILD_SYNC_INTERVAL=12h
 ```
 
 ## Getting Blizzard API Credentials
@@ -91,6 +103,71 @@ BLIZZARD_REGION=us
 2. Create a new client
 3. Copy Client ID and Client Secret
 4. Add to your `.env` file
+
+## Background Jobs & Event Publishing
+
+### Automatic Synchronization
+
+The service includes background job schedulers that automatically refresh character and guild data from the Blizzard API at configurable intervals.
+
+**Character Sync Scheduler**
+- Default: Enabled
+- Default Interval: Every 6 hours
+- Automatically refreshes all tracked characters
+- Publishes Kafka events for each sync
+
+**Guild Sync Scheduler**
+- Default: Enabled
+- Default Interval: Every 12 hours
+- Automatically refreshes all tracked guilds
+- Publishes Kafka events for each sync
+
+**Configuration:**
+```bash
+# Disable character sync
+CHARACTER_SYNC_ENABLED=false
+
+# Change interval to 2 hours
+CHARACTER_SYNC_INTERVAL=2h
+
+# Or use minutes
+CHARACTER_SYNC_INTERVAL=30m
+```
+
+### Kafka Event Publishing
+
+All character and guild operations publish events to Kafka for event-driven architecture:
+
+**Character Events:**
+- `warcraft.character.created` - New character tracked
+- `warcraft.character.synced` - Character data refreshed from Blizzard API
+- `warcraft.character.deleted` - Character removed from tracking
+- `warcraft.character.equipment.updated` - Equipment data updated
+- `warcraft.character.stats.updated` - Stats data updated
+
+**Guild Events:**
+- `warcraft.guild.created` - New guild tracked
+- `warcraft.guild.synced` - Guild data refreshed from Blizzard API
+- `warcraft.guild.deleted` - Guild removed from tracking
+
+Events can be consumed by other services (notification service, SSE service, webhook service, analytics, etc.)
+
+**Event Payload Example:**
+```json
+{
+  "character_id": "uuid",
+  "name": "Ragnaros",
+  "realm": "Area 52",
+  "region": "us",
+  "level": 70,
+  "item_level": 450,
+  "class_name": "Warrior",
+  "race_name": "Orc",
+  "faction_name": "Horde",
+  "achievement_points": 12500,
+  "synced_at": "2025-01-07T12:00:00Z"
+}
+```
 
 ## Running the Service
 
@@ -352,9 +429,10 @@ go test ./...
 - [x] Implement equipment endpoint
 - [x] Implement stats endpoint
 - [x] Add guild roster sync
-- [ ] Add background job for auto-refresh of tracked characters
+- [x] Add background job for auto-refresh of tracked characters
+- [x] Add background job for auto-refresh of tracked guilds
+- [x] Add Kafka event publishing for all operations
 - [ ] Add rate limiting for API calls (429 handling)
-- [ ] Add Kafka event publishing
 - [ ] Add integration tests
 - [ ] Add caching layer (Redis) for frequently accessed data
 
