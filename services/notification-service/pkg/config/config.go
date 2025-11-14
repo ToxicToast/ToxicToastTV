@@ -4,6 +4,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	sharedConfig "github.com/toxictoast/toxictoastgo/shared/config"
 )
@@ -16,6 +17,13 @@ type Config struct {
 	Database    sharedConfig.DatabaseConfig
 	Server      sharedConfig.ServerConfig
 	Kafka       KafkaConfig
+	// Background Jobs
+	NotificationRetryEnabled          bool
+	NotificationRetryInterval         time.Duration
+	NotificationRetryMaxRetries       int
+	NotificationCleanupEnabled        bool
+	NotificationCleanupInterval       time.Duration
+	NotificationCleanupRetentionDays  int
 }
 
 // KafkaConfig holds Kafka consumer configuration
@@ -77,6 +85,13 @@ func Load() *Config {
 				"foodfolio.shoppinglist.item.added", "foodfolio.shoppinglist.item.removed", "foodfolio.shoppinglist.item.purchased",
 			}),
 		},
+		// Background Jobs
+		NotificationRetryEnabled:          sharedConfig.GetEnvAsBool("NOTIFICATION_RETRY_ENABLED", true),
+		NotificationRetryInterval:         sharedConfig.GetEnvAsDuration("NOTIFICATION_RETRY_INTERVAL", "5m"),
+		NotificationRetryMaxRetries:       getEnvAsInt("NOTIFICATION_RETRY_MAX_RETRIES", 3),
+		NotificationCleanupEnabled:        sharedConfig.GetEnvAsBool("NOTIFICATION_CLEANUP_ENABLED", true),
+		NotificationCleanupInterval:       sharedConfig.GetEnvAsDuration("NOTIFICATION_CLEANUP_INTERVAL", "24h"),
+		NotificationCleanupRetentionDays:  getEnvAsInt("NOTIFICATION_CLEANUP_RETENTION_DAYS", 30),
 	}
 }
 

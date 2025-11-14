@@ -14,6 +14,23 @@ The Webhook Service receives events from Kafka and delivers them to registered H
 - **Automatic Retries**: Background retry processor for failed deliveries
 - **Statistics**: Track success/failure rates per webhook
 - **Testing**: Send test events to webhooks
+- **Background Jobs**: Automatic retry scheduler and cleanup of old deliveries
+
+### Background Jobs
+
+The service includes two automated background job schedulers:
+
+1. **Webhook Retry Scheduler** (default: every 5 minutes)
+   - Finds failed deliveries that haven't exceeded max retries
+   - Calculates next retry time with exponential backoff (2^attempt minutes)
+   - Marks deliveries as "retrying" with scheduled retry time
+   - The delivery pool automatically picks them up when ready
+
+2. **Webhook Cleanup Scheduler** (default: every 24 hours)
+   - Removes old successful and failed deliveries
+   - Configurable retention period (default: 30 days)
+   - Helps maintain database performance
+   - Removes both successful and permanently failed deliveries
 
 ## Architecture
 
@@ -77,9 +94,14 @@ See `.env.example` for all configuration options.
 | `GRPC_PORT` | 9095 | gRPC server port |
 | `KAFKA_BROKERS` | localhost:9092 | Kafka broker addresses |
 | `KAFKA_TOPICS` | See .env.example | Comma-separated list of topics to consume |
-| `WEBHOOK_MAX_RETRIES` | 5 | Maximum delivery attempts |
+| `WEBHOOK_MAX_RETRIES` | 3 | Maximum delivery attempts |
 | `WEBHOOK_WORKER_COUNT` | 10 | Number of concurrent workers |
-| `WEBHOOK_TIMEOUT_SECONDS` | 30 | HTTP request timeout |
+| `WEBHOOK_DELIVERY_TIMEOUT` | 30 | HTTP request timeout (seconds) |
+| `WEBHOOK_RETRY_SCHEDULER_ENABLED` | true | Enable webhook retry scheduler |
+| `WEBHOOK_RETRY_SCHEDULER_INTERVAL` | 5m | How often to schedule failed deliveries for retry |
+| `WEBHOOK_CLEANUP_ENABLED` | true | Enable delivery cleanup scheduler |
+| `WEBHOOK_CLEANUP_INTERVAL` | 24h | How often to run cleanup |
+| `WEBHOOK_CLEANUP_RETENTION_DAYS` | 30 | How many days to keep old deliveries |
 
 ### Retry Configuration
 

@@ -192,6 +192,85 @@ func (uc *NotificationUseCase) CleanupOldNotifications(ctx context.Context, olde
 	return nil
 }
 
+// RetryNotification retries sending a failed notification
+func (uc *NotificationUseCase) RetryNotification(ctx context.Context, notification *domain.Notification) error {
+	// Get the Discord channel
+	channel, err := uc.channelRepo.GetByID(ctx, notification.ChannelID)
+	if err != nil {
+		return fmt.Errorf("failed to get channel: %w", err)
+	}
+
+	// Unmarshal event from stored payload
+	var event domain.Event
+	if err := json.Unmarshal([]byte(notification.EventPayload), &event); err != nil {
+		return fmt.Errorf("failed to unmarshal event payload: %w", err)
+	}
+
+	startTime := time.Now()
+
+	// Build Discord embed
+	color := channel.Color
+	if color == 0 {
+		color = discord.GetEmbedColor(event.Type)
+	}
+	embed := discord.BuildEmbedFromEvent(&event, color)
+
+	// Send to Discord
+	messageID, responseStatus, responseBody, err := uc.discordClient.SendNotification(ctx, channel.WebhookURL, embed)
+
+	duration := time.Since(startTime)
+
+	// Increment attempt count
+	notification.AttemptCount++
+
+	// Record attempt
+	attempt := &domain.NotificationAttempt{
+		ID:               uuid.New().String(),
+		NotificationID:   notification.ID,
+		AttemptNumber:    notification.AttemptCount,
+		ResponseStatus:   responseStatus,
+		ResponseBody:     responseBody,
+		DiscordMessageID: messageID,
+		Success:          err == nil,
+		Error:            "",
+		DurationMs:       int(duration.Milliseconds()),
+	}
+
+	if err != nil {
+		attempt.Error = err.Error()
+	}
+
+	if err := uc.notificationRepo.CreateAttempt(ctx, attempt); err != nil {
+		logger.Error(fmt.Sprintf("Failed to record retry attempt: %v", err))
+	}
+
+	// Update notification status
+	if err == nil {
+		notification.Status = domain.NotificationStatusSuccess
+		notification.DiscordMessageID = messageID
+		now := time.Now()
+		notification.SentAt = &now
+		notification.LastError = ""
+		logger.Info(fmt.Sprintf("Successfully retried notification %s (attempt %d)", notification.ID, notification.AttemptCount))
+	} else {
+		notification.Status = domain.NotificationStatusFailed
+		notification.LastError = err.Error()
+		logger.Error(fmt.Sprintf("Retry failed for notification %s (attempt %d): %v", notification.ID, notification.AttemptCount, err))
+	}
+
+	if err := uc.notificationRepo.Update(ctx, notification); err != nil {
+		logger.Error(fmt.Sprintf("Failed to update notification after retry: %v", err))
+		return fmt.Errorf("failed to update notification: %w", err)
+	}
+
+	// Update channel statistics
+	if err := uc.channelRepo.UpdateStatistics(ctx, channel.ID, err == nil); err != nil {
+		logger.Error(fmt.Sprintf("Failed to update channel statistics: %v", err))
+	}
+
+	return nil
+}
+
 // TestChannel sends a test notification to a Discord channel
 func (uc *NotificationUseCase) TestChannel(ctx context.Context, channelID string) error {
 	channel, err := uc.channelRepo.GetByID(ctx, channelID)

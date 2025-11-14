@@ -104,3 +104,36 @@ func (r *notificationRepository) CleanupOldNotifications(ctx context.Context, ol
 		Where("created_at < ? AND (status = ? OR status = ?)", cutoff, domain.NotificationStatusSuccess, domain.NotificationStatusFailed).
 		Delete(&entity.NotificationEntity{}).Error
 }
+
+func (r *notificationRepository) GetFailedNotifications(ctx context.Context, maxRetries int) ([]domain.Notification, error) {
+	var entities []entity.NotificationEntity
+
+	err := r.db.WithContext(ctx).
+		Where("status = ? AND attempt_count < ?", domain.NotificationStatusFailed, maxRetries).
+		Order("created_at ASC").
+		Limit(100).
+		Find(&entities).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	notifications := make([]domain.Notification, len(entities))
+	for i, ent := range entities {
+		notifications[i] = *mapper.NotificationToDomain(&ent)
+	}
+
+	return notifications, nil
+}
+
+func (r *notificationRepository) DeleteOldSuccessfulNotifications(ctx context.Context, cutoffDate time.Time) (int64, error) {
+	result := r.db.WithContext(ctx).
+		Where("status = ? AND created_at < ?", domain.NotificationStatusSuccess, cutoffDate).
+		Delete(&entity.NotificationEntity{})
+
+	if result.Error != nil {
+		return 0, result.Error
+	}
+
+	return result.RowsAffected, nil
+}

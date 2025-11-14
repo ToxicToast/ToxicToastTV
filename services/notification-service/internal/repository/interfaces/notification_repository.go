@@ -31,4 +31,10 @@ type NotificationRepository interface {
 
 	// CleanupOldNotifications removes notifications older than the specified duration
 	CleanupOldNotifications(ctx context.Context, olderThan time.Duration) error
+
+	// GetFailedNotifications gets all failed notifications with attempts < maxRetries
+	GetFailedNotifications(ctx context.Context, maxRetries int) ([]domain.Notification, error)
+
+	// DeleteOldSuccessfulNotifications deletes successful notifications older than cutoffDate
+	DeleteOldSuccessfulNotifications(ctx context.Context, cutoffDate time.Time) (int64, error)
 }

@@ -12,6 +12,23 @@ The Notification Service consumes events from Kafka and sends rich Discord notif
 - **Delivery Tracking**: Complete audit trail of all notifications and attempts
 - **Statistics**: Track success/failure rates per channel
 - **Test Notifications**: Send test messages to verify Discord webhooks
+- **Background Jobs**: Automatic retry of failed notifications and cleanup of old records
+
+### Background Jobs
+
+The service includes two automated background job schedulers:
+
+1. **Notification Retry Scheduler** (default: every 5 minutes)
+   - Automatically retries failed notification deliveries
+   - Respects maximum retry limit (default: 3 attempts)
+   - Increments attempt counter and records each retry
+   - Updates notification status on success
+
+2. **Notification Cleanup Scheduler** (default: every 24 hours)
+   - Removes old successful notifications
+   - Configurable retention period (default: 30 days)
+   - Helps maintain database performance
+   - Only deletes successful notifications
 
 ## Architecture
 
@@ -79,6 +96,12 @@ Kafka Topics → Consumer → Event Processing
 | `KAFKA_BROKERS` | localhost:9092 | Kafka broker addresses |
 | `KAFKA_GROUP_ID` | notification-service | Consumer group ID |
 | `KAFKA_TOPICS` | See .env.example | Comma-separated topics |
+| `NOTIFICATION_RETRY_ENABLED` | true | Enable notification retry scheduler |
+| `NOTIFICATION_RETRY_INTERVAL` | 5m | How often to check for failed notifications |
+| `NOTIFICATION_RETRY_MAX_RETRIES` | 3 | Maximum retry attempts per notification |
+| `NOTIFICATION_CLEANUP_ENABLED` | true | Enable notification cleanup scheduler |
+| `NOTIFICATION_CLEANUP_INTERVAL` | 24h | How often to run cleanup |
+| `NOTIFICATION_CLEANUP_RETENTION_DAYS` | 30 | How many days to keep successful notifications |
 
 ### Discord Webhook Setup
 
@@ -298,6 +321,7 @@ notification-service/
 │   ├── repository/          # Data access layer
 │   ├── usecase/             # Business logic
 │   ├── consumer/            # Kafka consumer
+│   ├── scheduler/           # Background job schedulers
 │   └── handler/             # gRPC handlers & mappers
 └── pkg/config/              # Configuration
 ```

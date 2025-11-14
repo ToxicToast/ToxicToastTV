@@ -26,6 +26,7 @@ import (
 	grpcHandler "toxictoast/services/notification-service/internal/handler/grpc"
 	"toxictoast/services/notification-service/internal/repository/entity"
 	"toxictoast/services/notification-service/internal/repository/impl"
+	"toxictoast/services/notification-service/internal/scheduler"
 	"toxictoast/services/notification-service/internal/usecase"
 	"toxictoast/services/notification-service/pkg/config"
 )
@@ -109,6 +110,27 @@ func main() {
 	}
 	logger.Info("Kafka consumer started")
 
+	// Initialize background job schedulers
+	retryScheduler := scheduler.NewNotificationRetryScheduler(
+		notificationUC,
+		notificationRepo,
+		cfg.NotificationRetryInterval,
+		cfg.NotificationRetryMaxRetries,
+		cfg.NotificationRetryEnabled,
+	)
+
+	cleanupScheduler := scheduler.NewNotificationCleanupScheduler(
+		notificationRepo,
+		cfg.NotificationCleanupInterval,
+		cfg.NotificationCleanupRetentionDays,
+		cfg.NotificationCleanupEnabled,
+	)
+
+	// Start background jobs
+	retryScheduler.Start()
+	cleanupScheduler.Start()
+	logger.Info("Background jobs initialized")
+
 	// Initialize gRPC handlers
 	channelHandler := grpcHandler.NewChannelHandler(channelUC, notificationUC)
 	notificationHandler := grpcHandler.NewNotificationHandler(notificationUC)
@@ -164,6 +186,11 @@ func main() {
 	if err := kafkaConsumer.Stop(); err != nil {
 		logger.Error(fmt.Sprintf("Error stopping Kafka consumer: %v", err))
 	}
+
+	// Stop background jobs
+	retryScheduler.Stop()
+	cleanupScheduler.Stop()
+	logger.Info("Background jobs stopped")
 
 	// Stop gRPC server
 	grpcServer.GracefulStop()
