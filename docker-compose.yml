@@ -206,8 +206,8 @@ services:
       POST_PUBLISHER_ENABLED: "true"
       POST_PUBLISHER_INTERVAL: 1m
     ports:
-      - "80000:8080"
-      - "81000:9090"
+      - "10000:8080"
+      - "11000:9090"
     volumes:
       - blog_uploads:/app/uploads
     depends_on:
@@ -257,8 +257,8 @@ services:
       STOCK_LEVEL_ENABLED: "true"
       STOCK_LEVEL_INTERVAL: 6h
     ports:
-      - "79999:8889"
-      - "80999:9091"
+      - "10001:8889"
+      - "11001:9091"
     volumes:
       - foodfolio_receipts:/app/receipts
     depends_on:
@@ -303,8 +303,8 @@ services:
       LINK_EXPIRATION_ENABLED: "true"
       LINK_EXPIRATION_INTERVAL: 1h
     ports:
-      - "79998:8080"
-      - "80998:9090"
+      - "10002:8080"
+      - "11002:9090"
     depends_on:
       postgres:
         condition: service_healthy
@@ -345,8 +345,8 @@ services:
       NOTIFICATION_CLEANUP_INTERVAL: 24h
       NOTIFICATION_CLEANUP_RETENTION_DAYS: 30
     ports:
-      - "79997:8080"
-      - "80997:9090"
+      - "10003:8080"
+      - "11003:9090"
     depends_on:
       postgres:
         condition: service_healthy
@@ -379,8 +379,8 @@ services:
       CLIENT_CLEANUP_INTERVAL: 10m
       CLIENT_CLEANUP_INACTIVE_TIMEOUT: 30m
     ports:
-      - "79996:8080"
-      - "80996:9090"
+      - "10004:8080"
+      - "11004:9090"
     depends_on:
       redpanda:
         condition: service_healthy
@@ -420,8 +420,8 @@ services:
       WEBHOOK_CLEANUP_INTERVAL: 24h
       WEBHOOK_CLEANUP_RETENTION_DAYS: 30
     ports:
-      - "79995:8080"
-      - "80995:9090"
+      - "10005:8080"
+      - "11005:9090"
     depends_on:
       postgres:
         condition: service_healthy
@@ -466,8 +466,8 @@ services:
       STREAM_CLOSER_INTERVAL: 1h
       STREAM_CLOSER_INACTIVE_TIMEOUT: 24h
     ports:
-      - "79994:8083"
-      - "80994:9093"
+      - "10006:8083"
+      - "11006:9093"
     depends_on:
       postgres:
         condition: service_healthy
@@ -498,7 +498,7 @@ services:
       BLIZZARD_REGION: eu
       CACHE_TTL: 3600
     ports:
-      - "80993:9090"
+      - "11007:9090"
     depends_on:
       redpanda:
         condition: service_healthy
@@ -534,8 +534,8 @@ services:
       WARCRAFT_SERVICE_URL: warcraft-service:80993
       KAFKA_BROKERS: redpanda:29092
     ports:
-      - "79992:8080"
-      - "80992:9090"
+      - "10008:8080"
+      - "11008:9090"
     depends_on:
       - blog-service
       - foodfolio-service
