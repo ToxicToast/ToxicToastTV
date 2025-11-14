@@ -406,7 +406,7 @@ services:
       DB_SSL_MODE: disable
       KAFKA_BROKERS: redpanda:29092
       KAFKA_GROUP_ID: webhook-service
-      KAFKA_CONSUMER_TOPICS: blog.events,foodfolio.events,link.events,notification.events
+      KAFKA_TOPICS: blog.post.created,blog.post.updated,blog.post.published,foodfolio.detail.expired,link.created,link.clicked
       WEBHOOK_RETRY_ENABLED: "true"
       WEBHOOK_RETRY_INTERVAL: 5m
       WEBHOOK_RETRY_MAX_ATTEMPTS: 5
@@ -518,14 +518,14 @@ services:
       ENABLE_CORS: "true"
       RATE_LIMIT_RPS: 100
       RATE_LIMIT_BURST: 200
-      BLOG_SERVICE_URL: blog-service:81000
-      LINK_SERVICE_URL: link-service:80998
-      FOODFOLIO_SERVICE_URL: foodfolio-service:80999
-      NOTIFICATION_SERVICE_URL: notification-service:80997
-      SSE_SERVICE_URL: sse-service:80996
-      TWITCHBOT_SERVICE_URL: twitchbot-service:80994
-      WEBHOOK_SERVICE_URL: webhook-service:80995
-      WARCRAFT_SERVICE_URL: warcraft-service:80993
+      BLOG_SERVICE_URL: blog-service:11000
+      LINK_SERVICE_URL: link-service:11002
+      FOODFOLIO_SERVICE_URL: foodfolio-service:11001
+      NOTIFICATION_SERVICE_URL: notification-service:11003
+      SSE_SERVICE_URL: sse-service:11004
+      TWITCHBOT_SERVICE_URL: twitchbot-service:11006
+      WEBHOOK_SERVICE_URL: webhook-service:11005
+      WARCRAFT_SERVICE_URL: warcraft-service:11007
       KAFKA_BROKERS: redpanda:29092
     ports:
       - "10008:8080"
