@@ -25,7 +25,7 @@ services:
       - toxictoast-network
 
   redpanda:
-    image: docker.redpanda.com/vectorized/redpanda:latest
+    image: redpandadata/redpanda:latest
     container_name: toxictoast-redpanda
     restart: unless-stopped
     command:
@@ -178,8 +178,8 @@ services:
 
   blog-service:
     build:
-      context: ./services/blog-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/blog-service/Dockerfile
     container_name: blog-service
     restart: unless-stopped
     environment:
@@ -226,8 +226,8 @@ services:
 
   foodfolio-service:
     build:
-      context: ./services/foodfolio-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/foodfolio-service/Dockerfile
     container_name: foodfolio-service
     restart: unless-stopped
     environment:
@@ -277,8 +277,8 @@ services:
 
   link-service:
     build:
-      context: ./services/link-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/link-service/Dockerfile
     container_name: link-service
     restart: unless-stopped
     environment:
@@ -321,8 +321,8 @@ services:
 
   notification-service:
     build:
-      context: ./services/notification-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/notification-service/Dockerfile
     container_name: notification-service
     restart: unless-stopped
     environment:
@@ -363,8 +363,8 @@ services:
 
   sse-service:
     build:
-      context: ./services/sse-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/sse-service/Dockerfile
     container_name: sse-service
     restart: unless-stopped
     environment:
@@ -395,8 +395,8 @@ services:
 
   webhook-service:
     build:
-      context: ./services/webhook-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/webhook-service/Dockerfile
     container_name: webhook-service
     restart: unless-stopped
     environment:
@@ -438,8 +438,8 @@ services:
 
   twitchbot-service:
     build:
-      context: ./services/twitchbot-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/twitchbot-service/Dockerfile
     container_name: twitchbot-service
     restart: unless-stopped
     environment:
@@ -484,8 +484,8 @@ services:
 
   warcraft-service:
     build:
-      context: ./services/warcraft-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/warcraft-service/Dockerfile
     container_name: warcraft-service
     restart: unless-stopped
     environment:
@@ -514,8 +514,8 @@ services:
 
   gateway-service:
     build:
-      context: ./services/gateway-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/gateway-service/Dockerfile
     container_name: gateway-service
     restart: unless-stopped
     environment:
