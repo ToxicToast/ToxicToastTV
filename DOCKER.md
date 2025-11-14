@@ -49,16 +49,17 @@ docker-compose down -v
 
 ### Database Initialization
 
-All databases are automatically created via `scripts/init-databases.sql`:
-- blog_service
-- foodfolio_service
-- link_service
-- notification_service
-- webhook_service
-- twitchbot_service
-- keycloak
+A single shared database `toxictoast` is created via `scripts/init-databases.sql`.
+All services use the same database with table prefixes for separation:
+- Blog tables: `posts`, `categories`, `tags`, `comments`, `media`
+- FoodFolio tables: `items`, `categories`, `warehouses`, `receipts`, etc.
+- Link tables: `links`, `clicks`
+- Notification tables: `channels`, `notifications`, `notification_attempts`
+- Webhook tables: `subscriptions`, `deliveries`
+- Twitchbot tables: `streams`, `messages`, `commands`
 
-GORM handles automatic migrations on service startup.
+GORM handles automatic table creation and migrations on service startup.
+Keycloak uses a separate `keycloak` database.
 
 ### Kafka Topics
 
@@ -223,11 +224,14 @@ docker-compose restart service-name
 # Verify PostgreSQL is healthy
 docker-compose ps postgres
 
-# Check database exists
+# Check databases exist
 docker-compose exec postgres psql -U postgres -l
 
-# Manually create database
-docker-compose exec postgres psql -U postgres -c "CREATE DATABASE service_db;"
+# Connect to shared database
+docker-compose exec postgres psql -U postgres -d toxictoast
+
+# List all tables (shows all services' tables)
+docker-compose exec postgres psql -U postgres -d toxictoast -c "\dt"
 ```
 
 ### Kafka Connection Errors
