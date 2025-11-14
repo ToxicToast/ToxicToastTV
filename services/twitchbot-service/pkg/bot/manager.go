@@ -378,21 +378,9 @@ func (m *Manager) handleChatMessage(channel, username, displayName, userID, mess
 
 	// Publish event
 	if m.eventPublisher != nil {
-		m.eventPublisher.PublishMessageEvent(events.MessageEvent{
-			BaseEvent: events.BaseEvent{
-				Type: events.MessageReceived,
-			},
-			MessageID:     msg.ID,
-			StreamID:      msg.StreamID,
-			UserID:        msg.UserID,
-			Username:      msg.Username,
-			DisplayName:   msg.DisplayName,
-			Message:       msg.Message,
-			IsModerator:   msg.IsModerator,
-			IsSubscriber:  msg.IsSubscriber,
-			IsVIP:         msg.IsVIP,
-			IsBroadcaster: msg.IsBroadcaster,
-		})
+		if err := m.eventPublisher.PublishMessageReceived(msg.ID, msg.UserID, msg.Username, msg.Message); err != nil {
+			log.Printf("Failed to publish message received event: %v", err)
+		}
 	}
 }
 
@@ -538,18 +526,9 @@ func (m *Manager) handleStreamStart(ctx context.Context, channel string, streamD
 
 	// Publish event
 	if m.eventPublisher != nil {
-		m.eventPublisher.PublishStreamEvent(events.StreamEvent{
-			BaseEvent: events.BaseEvent{
-				Type: events.StreamStarted,
-			},
-			StreamID:    stream.ID,
-			Title:       stream.Title,
-			GameName:    stream.GameName,
-			GameID:      stream.GameID,
-			ViewerCount: streamData.ViewerCount,
-			IsActive:    true,
-			StartedAt:   stream.StartedAt.Format(time.RFC3339),
-		})
+		if err := m.eventPublisher.PublishStreamStarted(stream.ID, stream.Title, stream.GameName, streamData.ViewerCount); err != nil {
+			log.Printf("Failed to publish stream started event: %v", err)
+		}
 	}
 }
 
@@ -589,26 +568,14 @@ func (m *Manager) handleStreamEnd(ctx context.Context, channel string, streamID 
 
 	// Publish event
 	if m.eventPublisher != nil {
-		endedAt := ""
+		duration := 0
 		if stream.EndedAt != nil {
-			endedAt = stream.EndedAt.Format(time.RFC3339)
+			duration = int(stream.EndedAt.Sub(stream.StartedAt).Seconds())
 		}
 
-		m.eventPublisher.PublishStreamEvent(events.StreamEvent{
-			BaseEvent: events.BaseEvent{
-				Type: events.StreamEnded,
-			},
-			StreamID:       stream.ID,
-			Title:          stream.Title,
-			GameName:       stream.GameName,
-			GameID:         stream.GameID,
-			IsActive:       false,
-			StartedAt:      stream.StartedAt.Format(time.RFC3339),
-			EndedAt:        endedAt,
-			PeakViewers:    stream.PeakViewers,
-			AverageViewers: stream.AverageViewers,
-			TotalMessages:  stream.TotalMessages,
-		})
+		if err := m.eventPublisher.PublishStreamEnded(stream.ID, duration); err != nil {
+			log.Printf("Failed to publish stream ended event: %v", err)
+		}
 	}
 
 	// Switch back to Chat-Only stream for this channel
