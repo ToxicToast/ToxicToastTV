@@ -1,0 +1,133 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+jobs:
+  golangci-lint:
+    name: GolangCI-Lint
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - blog-service
+          - foodfolio-service
+          - link-service
+          - notification-service
+          - sse-service
+          - webhook-service
+          - twitchbot-service
+          - warcraft-service
+          - gateway-service
+          - shared
+      fail-fast: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          working-directory: ${{ matrix.service == 'shared' && 'shared' || format('services/{0}', matrix.service) }}
+          args: --timeout=5m
+
+  format-check:
+    name: Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+  go-vet:
+    name: Go Vet
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - blog-service
+          - foodfolio-service
+          - link-service
+          - notification-service
+          - sse-service
+          - webhook-service
+          - twitchbot-service
+          - warcraft-service
+          - gateway-service
+          - shared
+      fail-fast: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Download dependencies
+        working-directory: ${{ matrix.service == 'shared' && 'shared' || format('services/{0}', matrix.service) }}
+        run: go mod download
+
+      - name: Run go vet
+        working-directory: ${{ matrix.service == 'shared' && 'shared' || format('services/{0}', matrix.service) }}
+        run: go vet ./...
+
+  mod-verify:
+    name: Verify go.mod/go.sum
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - blog-service
+          - foodfolio-service
+          - link-service
+          - notification-service
+          - sse-service
+          - webhook-service
+          - twitchbot-service
+          - warcraft-service
+          - gateway-service
+          - shared
+      fail-fast: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Verify go.mod and go.sum
+        working-directory: ${{ matrix.service == 'shared' && 'shared' || format('services/{0}', matrix.service) }}
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum

@@ -1,0 +1,123 @@
+version: 2
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # Docker
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # Go modules - Shared
+  - package-ecosystem: "gomod"
+    directory: "/shared"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "go"
+      - "shared"
+    groups:
+      shared-dependencies:
+        patterns:
+          - "*"
+
+  # Go modules - Blog Service
+  - package-ecosystem: "gomod"
+    directory: "/services/blog-service"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "go"
+      - "blog-service"
+
+  # Go modules - FoodFolio Service
+  - package-ecosystem: "gomod"
+    directory: "/services/foodfolio-service"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "go"
+      - "foodfolio-service"
+
+  # Go modules - Link Service
+  - package-ecosystem: "gomod"
+    directory: "/services/link-service"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "go"
+      - "link-service"
+
+  # Go modules - Notification Service
+  - package-ecosystem: "gomod"
+    directory: "/services/notification-service"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "go"
+      - "notification-service"
+
+  # Go modules - SSE Service
+  - package-ecosystem: "gomod"
+    directory: "/services/sse-service"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "go"
+      - "sse-service"
+
+  # Go modules - Webhook Service
+  - package-ecosystem: "gomod"
+    directory: "/services/webhook-service"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "go"
+      - "webhook-service"
+
+  # Go modules - Twitchbot Service
+  - package-ecosystem: "gomod"
+    directory: "/services/twitchbot-service"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "go"
+      - "twitchbot-service"
+
+  # Go modules - Warcraft Service
+  - package-ecosystem: "gomod"
+    directory: "/services/warcraft-service"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "go"
+      - "warcraft-service"
+
+  # Go modules - Gateway Service
+  - package-ecosystem: "gomod"
+    directory: "/services/gateway-service"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "go"
+      - "gateway-service"
