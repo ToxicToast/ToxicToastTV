@@ -26,63 +26,63 @@ scrape_configs:
   # Blog Service
   - job_name: 'blog-service'
     static_configs:
-      - targets: ['blog-service:8082']
+      - targets: ['blog-service:80000']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # FoodFolio Service
   - job_name: 'foodfolio-service'
     static_configs:
-      - targets: ['foodfolio-service:8081']
+      - targets: ['foodfolio-service:79999']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # Link Service
   - job_name: 'link-service'
     static_configs:
-      - targets: ['link-service:8083']
+      - targets: ['link-service:79998']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # Notification Service
   - job_name: 'notification-service'
     static_configs:
-      - targets: ['notification-service:8084']
+      - targets: ['notification-service:79997']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # SSE Service
   - job_name: 'sse-service'
     static_configs:
-      - targets: ['sse-service:8085']
+      - targets: ['sse-service:79996']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # Webhook Service
   - job_name: 'webhook-service'
     static_configs:
-      - targets: ['webhook-service:8086']
+      - targets: ['webhook-service:79995']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # Twitchbot Service
   - job_name: 'twitchbot-service'
     static_configs:
-      - targets: ['twitchbot-service:8087']
+      - targets: ['twitchbot-service:79994']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # Warcraft Service
   - job_name: 'warcraft-service'
     static_configs:
-      - targets: ['warcraft-service:8088']
+      - targets: ['warcraft-service:79993']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
   # Gateway Service
   - job_name: 'gateway-service'
     static_configs:
-      - targets: ['gateway-service:3000']
+      - targets: ['gateway-service:79992']
     metrics_path: '/metrics'
     scrape_interval: 10s
 
