@@ -35,6 +35,9 @@ import (
 	// Handler layer
 	grpcHandler "toxictoast/services/twitchbot-service/internal/handler/grpc"
 
+	// Scheduler layer
+	"toxictoast/services/twitchbot-service/internal/scheduler"
+
 	// Proto definitions
 	pb "toxictoast/services/twitchbot-service/api/proto"
 )
@@ -147,6 +150,26 @@ func main() {
 	// Note: Bot errors are handled gracefully inside bot.Manager
 	// Service continues in API-only mode if bot fails to start
 
+	// Initialize background job schedulers
+	messageCleanupScheduler := scheduler.NewMessageCleanupScheduler(
+		messageRepo,
+		cfg.BackgroundJobs.MessageCleanupInterval,
+		cfg.BackgroundJobs.MessageCleanupRetentionDays,
+		cfg.BackgroundJobs.MessageCleanupEnabled,
+	)
+
+	streamCloserScheduler := scheduler.NewStreamSessionCloserScheduler(
+		streamRepo,
+		cfg.BackgroundJobs.StreamCloserInterval,
+		cfg.BackgroundJobs.StreamCloserInactiveTimeout,
+		cfg.BackgroundJobs.StreamCloserEnabled,
+	)
+
+	// Start background jobs
+	messageCleanupScheduler.Start()
+	streamCloserScheduler.Start()
+	log.Println("Background jobs initialized")
+
 	// Initialize gRPC handlers
 	log.Println("Initializing gRPC handlers...")
 	streamHandler := grpcHandler.NewStreamHandler(streamUC)
@@ -211,6 +234,11 @@ func main() {
 			log.Printf("Bot manager shutdown error: %v", err)
 		}
 	}
+
+	// Stop background jobs
+	messageCleanupScheduler.Stop()
+	streamCloserScheduler.Stop()
+	log.Println("Background jobs stopped")
 
 	// Shutdown HTTP server
 	if err := httpServer.Shutdown(ctx); err != nil {

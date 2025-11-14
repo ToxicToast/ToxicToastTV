@@ -45,6 +45,10 @@ type SSEConfig struct {
 	HeartbeatSeconds int
 	EventBufferSize  int
 	HistorySize      int // Number of recent events to keep for replay
+	// Background Jobs
+	ClientCleanupEnabled        bool
+	ClientCleanupInterval       time.Duration
+	ClientCleanupInactiveTimeout time.Duration
 }
 
 // CORSConfig holds CORS configuration
@@ -124,10 +128,14 @@ func Load() *Config {
 			IdleTimeout:  time.Duration(getEnvAsInt("SERVER_IDLE_TIMEOUT", 60)) * time.Second,
 		},
 		SSE: SSEConfig{
-			MaxClients:       getEnvAsInt("SSE_MAX_CLIENTS", 1000),
-			HeartbeatSeconds: getEnvAsInt("SSE_HEARTBEAT_SECONDS", 30),
-			EventBufferSize:  getEnvAsInt("SSE_EVENT_BUFFER_SIZE", 100),
-			HistorySize:      getEnvAsInt("SSE_HISTORY_SIZE", 100),
+			MaxClients:                   getEnvAsInt("SSE_MAX_CLIENTS", 1000),
+			HeartbeatSeconds:             getEnvAsInt("SSE_HEARTBEAT_SECONDS", 30),
+			EventBufferSize:              getEnvAsInt("SSE_EVENT_BUFFER_SIZE", 100),
+			HistorySize:                  getEnvAsInt("SSE_HISTORY_SIZE", 100),
+			// Background Jobs
+			ClientCleanupEnabled:         sharedConfig.GetEnvAsBool("SSE_CLIENT_CLEANUP_ENABLED", true),
+			ClientCleanupInterval:        sharedConfig.GetEnvAsDuration("SSE_CLIENT_CLEANUP_INTERVAL", "5m"),
+			ClientCleanupInactiveTimeout: sharedConfig.GetEnvAsDuration("SSE_CLIENT_CLEANUP_INACTIVE_TIMEOUT", "30m"),
 		},
 		CORS: CORSConfig{
 			AllowedOrigins: getEnvAsSlice("CORS_ALLOWED_ORIGINS", []string{"*"}),

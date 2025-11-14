@@ -1,6 +1,8 @@
 package config
 
 import (
+	"time"
+
 	sharedConfig "github.com/toxictoast/toxictoastgo/shared/config"
 )
 
@@ -20,6 +22,8 @@ type Config struct {
 
 	// Service-specific config
 	Twitch TwitchConfig
+	// Background Jobs
+	BackgroundJobs BackgroundJobsConfig
 }
 
 // KafkaConfig extends shared Kafka config
@@ -37,6 +41,16 @@ type TwitchConfig struct {
 	IRCServer    string
 	IRCPort      string
 	IRCDebug     bool
+}
+
+// BackgroundJobsConfig holds background job configuration
+type BackgroundJobsConfig struct {
+	MessageCleanupEnabled        bool
+	MessageCleanupInterval       time.Duration
+	MessageCleanupRetentionDays  int
+	StreamCloserEnabled          bool
+	StreamCloserInterval         time.Duration
+	StreamCloserInactiveTimeout  time.Duration
 }
 
 // Load loads twitchbot-service configuration
@@ -65,6 +79,14 @@ func Load() *Config {
 			IRCServer:    sharedConfig.GetEnv("TWITCH_IRC_SERVER", "irc.chat.twitch.tv"),
 			IRCPort:      sharedConfig.GetEnv("TWITCH_IRC_PORT", "6667"),
 			IRCDebug:     sharedConfig.GetEnvAsBool("TWITCH_IRC_DEBUG", false),
+		},
+		BackgroundJobs: BackgroundJobsConfig{
+			MessageCleanupEnabled:        sharedConfig.GetEnvAsBool("MESSAGE_CLEANUP_ENABLED", true),
+			MessageCleanupInterval:       sharedConfig.GetEnvAsDuration("MESSAGE_CLEANUP_INTERVAL", "24h"),
+			MessageCleanupRetentionDays:  sharedConfig.GetEnvAsInt("MESSAGE_CLEANUP_RETENTION_DAYS", 90),
+			StreamCloserEnabled:          sharedConfig.GetEnvAsBool("STREAM_CLOSER_ENABLED", true),
+			StreamCloserInterval:         sharedConfig.GetEnvAsDuration("STREAM_CLOSER_INTERVAL", "1h"),
+			StreamCloserInactiveTimeout:  sharedConfig.GetEnvAsDuration("STREAM_CLOSER_INACTIVE_TIMEOUT", "24h"),
 		},
 	}
 }

@@ -18,6 +18,21 @@ A Twitch bot service for tracking and managing stream data, built with Go, gRPC,
 - **Event Publishing** - Kafka events for stream, message, viewer, clip, and command activities
 - **Auto Token Refresh** - Automatic Twitch token refresh with reconnect
 - **Clean Architecture** - Maintainable and testable codebase
+- **Background Jobs** - Automatic cleanup of old messages and inactive stream sessions
+
+### Background Jobs
+
+The service includes two automated background job schedulers:
+
+1. **Message Cleanup Scheduler** (default: every 24 hours)
+   - Permanently deletes chat messages older than 90 days
+   - Helps maintain database performance
+   - Retention period configurable via environment variables
+
+2. **Stream Session Closer** (default: every hour)
+   - Automatically closes stream sessions inactive for 24+ hours
+   - Prevents orphaned active streams
+   - Handles edge cases where EndStream wasn't called
 
 ## Architecture
 
