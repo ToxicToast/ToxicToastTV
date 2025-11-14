@@ -183,8 +183,8 @@ services:
     container_name: blog-service
     restart: unless-stopped
     environment:
-      PORT: 8082
-      GRPC_PORT: 9092
+      PORT: 80000
+      GRPC_PORT: 81000
       ENVIRONMENT: docker
       LOG_LEVEL: info
       AUTH_ENABLED: "false"
@@ -206,8 +206,8 @@ services:
       POST_PUBLISHER_ENABLED: "true"
       POST_PUBLISHER_INTERVAL: 1m
     ports:
-      - "8082:8082"
-      - "9092:9092"
+      - "80000:80000"
+      - "81000:81000"
     volumes:
       - blog_uploads:/app/uploads
     depends_on:
@@ -216,7 +216,7 @@ services:
       redpanda:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:9092"]
+      test: ["CMD", "grpc_health_probe", "-addr=:81000"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -231,8 +231,8 @@ services:
     container_name: foodfolio-service
     restart: unless-stopped
     environment:
-      PORT: 8081
-      GRPC_PORT: 9091
+      PORT: 79999
+      GRPC_PORT: 80999
       ENVIRONMENT: docker
       LOG_LEVEL: info
       AUTH_ENABLED: "false"
@@ -257,8 +257,8 @@ services:
       STOCK_LEVEL_ENABLED: "true"
       STOCK_LEVEL_INTERVAL: 6h
     ports:
-      - "8081:8081"
-      - "9091:9091"
+      - "79999:79999"
+      - "80999:80999"
     volumes:
       - foodfolio_receipts:/app/receipts
     depends_on:
@@ -267,7 +267,7 @@ services:
       redpanda:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:9091"]
+      test: ["CMD", "grpc_health_probe", "-addr=:80999"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -282,11 +282,11 @@ services:
     container_name: link-service
     restart: unless-stopped
     environment:
-      PORT: 8083
-      GRPC_PORT: 9093
+      PORT: 79998
+      GRPC_PORT: 80998
       ENVIRONMENT: docker
       LOG_LEVEL: info
-      BASE_URL: http://localhost:8083
+      BASE_URL: http://localhost:79998
       AUTH_ENABLED: "false"
       DB_HOST: postgres
       DB_PORT: 5432
@@ -303,15 +303,15 @@ services:
       LINK_EXPIRATION_ENABLED: "true"
       LINK_EXPIRATION_INTERVAL: 1h
     ports:
-      - "8083:8083"
-      - "9093:9093"
+      - "79998:79998"
+      - "80998:80998"
     depends_on:
       postgres:
         condition: service_healthy
       redpanda:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:9093"]
+      test: ["CMD", "grpc_health_probe", "-addr=:80998"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -326,8 +326,8 @@ services:
     container_name: notification-service
     restart: unless-stopped
     environment:
-      PORT: 8084
-      GRPC_PORT: 9096
+      PORT: 79997
+      GRPC_PORT: 80997
       ENVIRONMENT: docker
       LOG_LEVEL: info
       DB_HOST: postgres
@@ -345,15 +345,15 @@ services:
       NOTIFICATION_CLEANUP_INTERVAL: 24h
       NOTIFICATION_CLEANUP_RETENTION_DAYS: 30
     ports:
-      - "8084:8084"
-      - "9096:9096"
+      - "79997:79997"
+      - "80997:80997"
     depends_on:
       postgres:
         condition: service_healthy
       redpanda:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:9096"]
+      test: ["CMD", "grpc_health_probe", "-addr=:80997"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -368,8 +368,8 @@ services:
     container_name: sse-service
     restart: unless-stopped
     environment:
-      PORT: 8085
-      GRPC_PORT: 9094
+      PORT: 79996
+      GRPC_PORT: 80996
       ENVIRONMENT: docker
       LOG_LEVEL: info
       KAFKA_BROKERS: redpanda:29092
@@ -379,13 +379,13 @@ services:
       CLIENT_CLEANUP_INTERVAL: 10m
       CLIENT_CLEANUP_INACTIVE_TIMEOUT: 30m
     ports:
-      - "8085:8085"
-      - "9094:9094"
+      - "79996:79996"
+      - "80996:80996"
     depends_on:
       redpanda:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:9094"]
+      test: ["CMD", "grpc_health_probe", "-addr=:80996"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -400,8 +400,8 @@ services:
     container_name: webhook-service
     restart: unless-stopped
     environment:
-      PORT: 8086
-      GRPC_PORT: 9095
+      PORT: 79995
+      GRPC_PORT: 80995
       ENVIRONMENT: docker
       LOG_LEVEL: info
       DB_HOST: postgres
@@ -420,15 +420,15 @@ services:
       WEBHOOK_CLEANUP_INTERVAL: 24h
       WEBHOOK_CLEANUP_RETENTION_DAYS: 30
     ports:
-      - "8086:8086"
-      - "9095:9095"
+      - "79995:79995"
+      - "80995:80995"
     depends_on:
       postgres:
         condition: service_healthy
       redpanda:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:9095"]
+      test: ["CMD", "grpc_health_probe", "-addr=:80995"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -443,8 +443,8 @@ services:
     container_name: twitchbot-service
     restart: unless-stopped
     environment:
-      PORT: 8087
-      GRPC_PORT: 9097
+      PORT: 79994
+      GRPC_PORT: 80994
       ENVIRONMENT: docker
       LOG_LEVEL: info
       DB_HOST: postgres
@@ -466,15 +466,15 @@ services:
       STREAM_CLOSER_INTERVAL: 1h
       STREAM_CLOSER_INACTIVE_TIMEOUT: 24h
     ports:
-      - "8087:8087"
-      - "9097:9097"
+      - "79994:79994"
+      - "80994:80994"
     depends_on:
       postgres:
         condition: service_healthy
       redpanda:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:9097"]
+      test: ["CMD", "grpc_health_probe", "-addr=:80994"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -489,8 +489,8 @@ services:
     container_name: warcraft-service
     restart: unless-stopped
     environment:
-      PORT: 8088
-      GRPC_PORT: 9098
+      PORT: 79993
+      GRPC_PORT: 80993
       ENVIRONMENT: docker
       LOG_LEVEL: info
       BLIZZARD_CLIENT_ID: your_client_id_here
@@ -498,13 +498,13 @@ services:
       BLIZZARD_REGION: eu
       CACHE_TTL: 3600
     ports:
-      - "8088:8088"
-      - "9098:9098"
+      - "79993:79993"
+      - "80993:80993"
     depends_on:
       redpanda:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:9098"]
+      test: ["CMD", "grpc_health_probe", "-addr=:80993"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -519,24 +519,24 @@ services:
     container_name: gateway-service
     restart: unless-stopped
     environment:
-      HTTP_PORT: 3000
-      GRPC_PORT: 9099
+      HTTP_PORT: 79992
+      GRPC_PORT: 80992
       DEV_MODE: "true"
       ENABLE_CORS: "true"
       RATE_LIMIT_RPS: 100
       RATE_LIMIT_BURST: 200
-      BLOG_SERVICE_URL: blog-service:9092
-      LINK_SERVICE_URL: link-service:9093
-      FOODFOLIO_SERVICE_URL: foodfolio-service:9091
-      NOTIFICATION_SERVICE_URL: notification-service:9096
-      SSE_SERVICE_URL: sse-service:9094
-      TWITCHBOT_SERVICE_URL: twitchbot-service:9097
-      WEBHOOK_SERVICE_URL: webhook-service:9095
-      WARCRAFT_SERVICE_URL: warcraft-service:9098
+      BLOG_SERVICE_URL: blog-service:81000
+      LINK_SERVICE_URL: link-service:80998
+      FOODFOLIO_SERVICE_URL: foodfolio-service:80999
+      NOTIFICATION_SERVICE_URL: notification-service:80997
+      SSE_SERVICE_URL: sse-service:80996
+      TWITCHBOT_SERVICE_URL: twitchbot-service:80994
+      WEBHOOK_SERVICE_URL: webhook-service:80995
+      WARCRAFT_SERVICE_URL: warcraft-service:80993
       KAFKA_BROKERS: redpanda:29092
     ports:
-      - "3000:3000"
-      - "9099:9099"
+      - "79992:79992"
+      - "80992:80992"
     depends_on:
       - blog-service
       - foodfolio-service
