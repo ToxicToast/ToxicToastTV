@@ -74,6 +74,8 @@ func main() {
 		&entity.Class{},
 		&entity.Character{},
 		&entity.CharacterDetails{},
+		&entity.CharacterEquipment{},
+		&entity.CharacterStats{},
 		&entity.Guild{},
 	}
 	if err := database.AutoMigrate(db, dbEntities...); err != nil {
@@ -96,13 +98,26 @@ func main() {
 	// Initialize repositories
 	characterRepo := impl.NewCharacterRepository(db)
 	characterDetailsRepo := impl.NewCharacterDetailsRepository(db)
+	characterEquipmentRepo := impl.NewCharacterEquipmentRepository(db)
+	characterStatsRepo := impl.NewCharacterStatsRepository(db)
 	guildRepo := impl.NewGuildRepository(db)
-
-	_ = characterDetailsRepo // Will be used when details endpoints are implemented
+	raceRepo := impl.NewRaceRepository(db)
+	classRepo := impl.NewClassRepository(db)
+	factionRepo := impl.NewFactionRepository(db)
 
 	// Initialize use cases
-	characterUseCase := usecase.NewCharacterUseCase(characterRepo, blizzardClient)
-	guildUseCase := usecase.NewGuildUseCase(guildRepo, blizzardClient)
+	characterUseCase := usecase.NewCharacterUseCase(
+		characterRepo,
+		characterDetailsRepo,
+		characterEquipmentRepo,
+		characterStatsRepo,
+		raceRepo,
+		classRepo,
+		factionRepo,
+		guildRepo,
+		blizzardClient,
+	)
+	guildUseCase := usecase.NewGuildUseCase(guildRepo, factionRepo, blizzardClient)
 
 	// Initialize gRPC handlers
 	characterHandler := grpcHandler.NewCharacterHandler(characterUseCase)

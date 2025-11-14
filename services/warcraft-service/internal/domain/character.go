@@ -33,48 +33,17 @@ type CharacterDetails struct {
 }
 
 type CharacterEquipment struct {
-	ID          string
-	CharacterID string
-	Head        *EquipmentSlot
-	Neck        *EquipmentSlot
-	Shoulder    *EquipmentSlot
-	Back        *EquipmentSlot
-	Chest       *EquipmentSlot
-	Wrist       *EquipmentSlot
-	Hands       *EquipmentSlot
-	Waist       *EquipmentSlot
-	Legs        *EquipmentSlot
-	Feet        *EquipmentSlot
-	Finger1     *EquipmentSlot
-	Finger2     *EquipmentSlot
-	Trinket1    *EquipmentSlot
-	Trinket2    *EquipmentSlot
-	MainHand    *EquipmentSlot
-	OffHand     *EquipmentSlot
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-}
-
-type EquipmentSlot struct {
-	ItemID    int
-	Name      string
-	ItemLevel int
-	Quality   string
-	Icon      string
+	ID            string
+	CharacterID   string
+	EquipmentJSON []byte // Flexible JSON storage for equipment data
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type CharacterStats struct {
-	ID             string
-	CharacterID    string
-	Health         int
-	Strength       int
-	Agility        int
-	Intellect      int
-	Stamina        int
-	CriticalStrike int
-	Haste          int
-	Mastery        int
-	Versatility    int
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID          string
+	CharacterID string
+	StatsJSON   []byte // Flexible JSON storage for stats data
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }

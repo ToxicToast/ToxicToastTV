@@ -3,22 +3,31 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 	"toxictoast/services/warcraft-service/internal/domain"
 	"toxictoast/services/warcraft-service/internal/repository"
 	"toxictoast/services/warcraft-service/pkg/blizzard"
 )
 
 type GuildUseCase struct {
-	repo          repository.GuildRepository
+	repo         repository.GuildRepository
+	factionRepo  repository.FactionRepository
 	blizzardClient *blizzard.Client
 }
 
-func NewGuildUseCase(repo repository.GuildRepository, blizzardClient *blizzard.Client) *GuildUseCase {
+func NewGuildUseCase(
+	repo repository.GuildRepository,
+	factionRepo repository.FactionRepository,
+	blizzardClient *blizzard.Client,
+) *GuildUseCase {
 	return &GuildUseCase{
-		repo:          repo,
+		repo:         repo,
+		factionRepo:  factionRepo,
 		blizzardClient: blizzardClient,
 	}
 }
@@ -30,18 +39,45 @@ func (uc *GuildUseCase) CreateGuild(ctx context.Context, name, realm, region str
 		return nil, errors.New("guild already exists")
 	}
 
-	// TODO: Fetch from Blizzard API when implemented
-	// FactionID should be determined from API response
+	// Fetch from Blizzard API
+	profile, err := uc.blizzardClient.GetGuild(ctx, name, realm, region)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch guild from Blizzard API: %w", err)
+	}
+
+	// Get or create Faction
+	factionKey := strings.ToLower(profile.FactionType)
+	faction, err := uc.factionRepo.FindByKey(ctx, factionKey)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("failed to find faction: %w", err)
+	}
+	if faction == nil {
+		faction = &domain.Faction{
+			ID:        uuid.New().String(),
+			Key:       factionKey,
+			Name:      strings.Title(profile.FactionType),
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		faction, err = uc.factionRepo.Create(ctx, faction)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create faction: %w", err)
+		}
+	}
+
+	// Create Guild
+	now := time.Now()
 	guild := &domain.Guild{
 		ID:                uuid.New().String(),
-		Name:              name,
-		Realm:             realm,
-		Region:            region,
-		FactionID:         "", // TODO: Determine from Blizzard API
-		MemberCount:       0,
-		AchievementPoints: 0,
-		CreatedAt:         time.Now(),
-		UpdatedAt:         time.Now(),
+		Name:              profile.Name,
+		Realm:             profile.Realm,
+		Region:            profile.Region,
+		FactionID:         faction.ID,
+		MemberCount:       profile.MemberCount,
+		AchievementPoints: profile.AchievementPoints,
+		LastSyncedAt:      &now,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 
 	return uc.repo.Create(ctx, guild)
@@ -86,8 +122,37 @@ func (uc *GuildUseCase) RefreshGuild(ctx context.Context, id string) (*domain.Gu
 		return nil, err
 	}
 
-	// TODO: Fetch fresh data from Blizzard API when implemented
+	// Fetch fresh data from Blizzard API
+	profile, err := uc.blizzardClient.GetGuild(ctx, guild.Name, guild.Realm, guild.Region)
+	if err != nil {
+		return nil, fmt.Errorf("failed to refresh guild from Blizzard API: %w", err)
+	}
+
+	// Get or create Faction
+	factionKey := strings.ToLower(profile.FactionType)
+	faction, err := uc.factionRepo.FindByKey(ctx, factionKey)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("failed to find faction: %w", err)
+	}
+	if faction == nil {
+		faction = &domain.Faction{
+			ID:        uuid.New().String(),
+			Key:       factionKey,
+			Name:      strings.Title(profile.FactionType),
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		faction, err = uc.factionRepo.Create(ctx, faction)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create faction: %w", err)
+		}
+	}
+
+	// Update guild
 	now := time.Now()
+	guild.FactionID = faction.ID
+	guild.MemberCount = profile.MemberCount
+	guild.AchievementPoints = profile.AchievementPoints
 	guild.LastSyncedAt = &now
 	guild.UpdatedAt = now
 
@@ -95,6 +160,28 @@ func (uc *GuildUseCase) RefreshGuild(ctx context.Context, id string) (*domain.Gu
 }
 
 func (uc *GuildUseCase) GetGuildRoster(ctx context.Context, guildID string, page, pageSize int) ([]domain.GuildMember, int, error) {
-	// TODO: Implement guild roster fetching
-	return nil, 0, errors.New("guild roster not yet implemented")
+	guild, err := uc.repo.FindByID(ctx, guildID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Fetch roster from Blizzard API
+	members, err := uc.blizzardClient.GetGuildRoster(ctx, guild.Name, guild.Realm, guild.Region)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch roster from Blizzard API: %w", err)
+	}
+
+	// Apply pagination
+	total := len(members)
+	start := (page - 1) * pageSize
+	if start >= total {
+		return []domain.GuildMember{}, total, nil
+	}
+
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+
+	return members[start:end], total, nil
 }

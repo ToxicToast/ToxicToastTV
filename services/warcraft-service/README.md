@@ -176,25 +176,52 @@ grpcurl -plaintext -d '{
 
 ## Blizzard API Integration
 
-### Current Status: Stub Implementation
+### Current Status: ✅ Fully Integrated
 
-The Blizzard API client (`pkg/blizzard/client.go`) is currently a stub. To implement full integration:
+The service now includes **complete Blizzard Battle.net API integration** with:
 
-1. **OAuth2 Authentication**
-   - Get access token using client credentials
+1. **OAuth2 Authentication** ✅
+   - Automatic token acquisition using client credentials flow
+   - Token caching with auto-refresh (5 minute buffer before expiration)
+   - Tokens last 24 hours and are automatically renewed
    - Token endpoint: `https://oauth.battle.net/token`
 
-2. **Character Profile API**
+2. **Character Profile API** ✅
    - Endpoint: `GET https://{region}.api.blizzard.com/profile/wow/character/{realm}/{name}`
    - Namespace: `profile-{region}`
+   - Fetches: level, item level, class, race, faction, guild, achievements, avatar
+   - Automatically creates/updates reference data (Race, Class, Faction)
 
-3. **Guild API**
+3. **Character Equipment API** ✅
+   - Endpoint: `GET https://{region}.api.blizzard.com/profile/wow/character/{realm}/{name}/equipment`
+   - Returns all equipped items as flexible JSON storage
+
+4. **Character Stats API** ✅
+   - Endpoint: `GET https://{region}.api.blizzard.com/profile/wow/character/{realm}/{name}/statistics`
+   - Returns character stats as flexible JSON storage
+
+5. **Guild API** ✅
    - Endpoint: `GET https://{region}.api.blizzard.com/data/wow/guild/{realm}/{name}`
    - Namespace: `profile-{region}`
+   - Fetches: faction, member count, achievement points, crest
+
+6. **Guild Roster API** ✅
+   - Endpoint: `GET https://{region}.api.blizzard.com/data/wow/guild/{realm}/{name}/roster`
+   - Returns all guild members with rank information
+
+### Features
+
+- **Automatic Token Management**: Tokens are refreshed automatically before expiration
+- **Real-time Data Sync**: All character and guild operations fetch fresh data from Blizzard API
+- **Reference Data**: Automatically creates Race, Class, and Faction entities from API responses
+- **Guild Linking**: Characters are automatically linked to guilds if they exist in the database
+- **Flexible Storage**: Equipment and stats stored as JSONB for maximum flexibility
+- **Error Handling**: Comprehensive error messages for API failures
 
 ### API Documentation
 - Official Docs: https://develop.battle.net/documentation/world-of-warcraft
 - Game Data APIs: https://develop.battle.net/documentation/world-of-warcraft/game-data-apis
+- OAuth Guide: https://community.developer.battle.net/documentation/guides/using-oauth
 
 ## Database Schema
 
@@ -260,6 +287,24 @@ CREATE TABLE character_details (
   updated_at TIMESTAMP
 );
 
+-- Character Equipment
+CREATE TABLE character_equipment (
+  id UUID PRIMARY KEY,
+  character_id UUID UNIQUE REFERENCES characters(id),
+  equipment_json JSONB,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+
+-- Character Stats
+CREATE TABLE character_stats (
+  id UUID PRIMARY KEY,
+  character_id UUID UNIQUE REFERENCES characters(id),
+  stats_json JSONB,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+
 -- Guilds
 CREATE TABLE guilds (
   id UUID PRIMARY KEY,
@@ -302,15 +347,16 @@ go test ./...
 
 ## TODO
 
-- [ ] Implement full Blizzard API integration
-- [ ] Add OAuth2 token caching
-- [ ] Implement equipment endpoint
-- [ ] Implement stats endpoint
-- [ ] Add guild roster sync
-- [ ] Add background job for auto-refresh
-- [ ] Add rate limiting for API calls
+- [x] Implement full Blizzard API integration
+- [x] Add OAuth2 token caching and auto-refresh
+- [x] Implement equipment endpoint
+- [x] Implement stats endpoint
+- [x] Add guild roster sync
+- [ ] Add background job for auto-refresh of tracked characters
+- [ ] Add rate limiting for API calls (429 handling)
 - [ ] Add Kafka event publishing
 - [ ] Add integration tests
+- [ ] Add caching layer (Redis) for frequently accessed data
 
 ## Tech Stack
 

@@ -203,3 +203,103 @@ func (r *characterDetailsRepositoryImpl) Update(ctx context.Context, details *do
 func (r *characterDetailsRepositoryImpl) Delete(ctx context.Context, characterID string) error {
 	return r.db.WithContext(ctx).Delete(&entity.CharacterDetails{}, "character_id = ?", characterID).Error
 }
+
+// CharacterEquipment Repository
+
+type characterEquipmentRepositoryImpl struct {
+	db *gorm.DB
+}
+
+func NewCharacterEquipmentRepository(db *gorm.DB) repository.CharacterEquipmentRepository {
+	return &characterEquipmentRepositoryImpl{db: db}
+}
+
+func (r *characterEquipmentRepositoryImpl) CreateOrUpdate(ctx context.Context, equipment *domain.CharacterEquipment) (*domain.CharacterEquipment, error) {
+	e := mapper.CharacterEquipmentToEntity(equipment)
+
+	// Check if record exists
+	var existing entity.CharacterEquipment
+	err := r.db.WithContext(ctx).Where("character_id = ?", equipment.CharacterID).First(&existing).Error
+
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+
+	if err == gorm.ErrRecordNotFound {
+		// Create new record
+		if err := r.db.WithContext(ctx).Create(e).Error; err != nil {
+			return nil, err
+		}
+	} else {
+		// Update existing record
+		e.ID = existing.ID
+		e.CreatedAt = existing.CreatedAt
+		if err := r.db.WithContext(ctx).Save(e).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	return mapper.CharacterEquipmentToDomain(e), nil
+}
+
+func (r *characterEquipmentRepositoryImpl) FindByCharacterID(ctx context.Context, characterID string) (*domain.CharacterEquipment, error) {
+	var e entity.CharacterEquipment
+	if err := r.db.WithContext(ctx).Where("character_id = ?", characterID).First(&e).Error; err != nil {
+		return nil, err
+	}
+	return mapper.CharacterEquipmentToDomain(&e), nil
+}
+
+func (r *characterEquipmentRepositoryImpl) Delete(ctx context.Context, characterID string) error {
+	return r.db.WithContext(ctx).Delete(&entity.CharacterEquipment{}, "character_id = ?", characterID).Error
+}
+
+// CharacterStats Repository
+
+type characterStatsRepositoryImpl struct {
+	db *gorm.DB
+}
+
+func NewCharacterStatsRepository(db *gorm.DB) repository.CharacterStatsRepository {
+	return &characterStatsRepositoryImpl{db: db}
+}
+
+func (r *characterStatsRepositoryImpl) CreateOrUpdate(ctx context.Context, stats *domain.CharacterStats) (*domain.CharacterStats, error) {
+	e := mapper.CharacterStatsToEntity(stats)
+
+	// Check if record exists
+	var existing entity.CharacterStats
+	err := r.db.WithContext(ctx).Where("character_id = ?", stats.CharacterID).First(&existing).Error
+
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+
+	if err == gorm.ErrRecordNotFound {
+		// Create new record
+		if err := r.db.WithContext(ctx).Create(e).Error; err != nil {
+			return nil, err
+		}
+	} else {
+		// Update existing record
+		e.ID = existing.ID
+		e.CreatedAt = existing.CreatedAt
+		if err := r.db.WithContext(ctx).Save(e).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	return mapper.CharacterStatsToDomain(e), nil
+}
+
+func (r *characterStatsRepositoryImpl) FindByCharacterID(ctx context.Context, characterID string) (*domain.CharacterStats, error) {
+	var e entity.CharacterStats
+	if err := r.db.WithContext(ctx).Where("character_id = ?", characterID).First(&e).Error; err != nil {
+		return nil, err
+	}
+	return mapper.CharacterStatsToDomain(&e), nil
+}
+
+func (r *characterStatsRepositoryImpl) Delete(ctx context.Context, characterID string) error {
+	return r.db.WithContext(ctx).Delete(&entity.CharacterStats{}, "character_id = ?", characterID).Error
+}
