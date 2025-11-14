@@ -2,6 +2,9 @@ package config
 
 import (
 	"os"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 	sharedConfig "github.com/toxictoast/toxictoastgo/shared/config"
@@ -24,6 +27,15 @@ type Config struct {
 	BlizzardClientID     string
 	BlizzardClientSecret string
 	BlizzardRegion       string
+
+	// Kafka
+	KafkaBrokers []string
+
+	// Background Jobs
+	CharacterSyncEnabled  bool
+	CharacterSyncInterval time.Duration
+	GuildSyncEnabled      bool
+	GuildSyncInterval     time.Duration
 
 	// Embedded shared configs
 	Database sharedConfig.DatabaseConfig
@@ -57,6 +69,15 @@ func Load() (*Config, error) {
 		BlizzardClientSecret: getEnv("BLIZZARD_CLIENT_SECRET", ""),
 		BlizzardRegion:       getEnv("BLIZZARD_REGION", "us"),
 
+		// Kafka
+		KafkaBrokers: getEnvAsSlice("KAFKA_BROKERS", []string{"localhost:19092"}),
+
+		// Background Jobs
+		CharacterSyncEnabled:  getEnvAsBool("CHARACTER_SYNC_ENABLED", true),
+		CharacterSyncInterval: getEnvAsDuration("CHARACTER_SYNC_INTERVAL", 6*time.Hour),
+		GuildSyncEnabled:      getEnvAsBool("GUILD_SYNC_ENABLED", true),
+		GuildSyncInterval:     getEnvAsDuration("GUILD_SYNC_INTERVAL", 12*time.Hour),
+
 		// Embedded shared configs
 		Database: databaseCfg,
 		Server:   serverCfg,
@@ -69,4 +90,42 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func getEnvAsSlice(key string, defaultValue []string) []string {
+	valueStr := getEnv(key, "")
+	if valueStr == "" {
+		return defaultValue
+	}
+	return strings.Split(valueStr, ",")
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+	valueStr := getEnv(key, "")
+	if valueStr == "" {
+		return defaultValue
+	}
+	value, err := strconv.ParseBool(valueStr)
+	if err != nil {
+		return defaultValue
+	}
+	return value
+}
+
+func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
+	valueStr := getEnv(key, "")
+	if valueStr == "" {
+		return defaultValue
+	}
+	// Try parsing as duration string (e.g., "6h", "30m")
+	value, err := time.ParseDuration(valueStr)
+	if err != nil {
+		// Try parsing as hours (e.g., "6" = 6 hours)
+		hours, err := strconv.ParseFloat(valueStr, 64)
+		if err != nil {
+			return defaultValue
+		}
+		return time.Duration(hours * float64(time.Hour))
+	}
+	return value
 }

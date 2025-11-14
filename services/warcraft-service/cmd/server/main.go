@@ -19,12 +19,14 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/toxictoast/toxictoastgo/shared/database"
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
 	pb "toxictoast/services/warcraft-service/api/proto"
 	grpcHandler "toxictoast/services/warcraft-service/internal/handler/grpc"
 	"toxictoast/services/warcraft-service/internal/repository/entity"
 	"toxictoast/services/warcraft-service/internal/repository/impl"
+	"toxictoast/services/warcraft-service/internal/scheduler"
 	"toxictoast/services/warcraft-service/internal/usecase"
 	"toxictoast/services/warcraft-service/pkg/blizzard"
 	"toxictoast/services/warcraft-service/pkg/config"
@@ -95,6 +97,22 @@ func main() {
 		log.Printf("Blizzard API credentials not configured - API calls will fail")
 	}
 
+	// Initialize Kafka producer
+	var kafkaProducer *kafka.Producer
+	if len(cfg.KafkaBrokers) > 0 && cfg.KafkaBrokers[0] != "" {
+		var err error
+		kafkaProducer, err = kafka.NewProducer(cfg.KafkaBrokers)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize Kafka producer: %v", err)
+			log.Printf("Service will continue without event publishing")
+		} else {
+			log.Printf("Kafka producer initialized with brokers: %v", cfg.KafkaBrokers)
+			defer kafkaProducer.Close()
+		}
+	} else {
+		log.Printf("Kafka brokers not configured - event publishing disabled")
+	}
+
 	// Initialize repositories
 	characterRepo := impl.NewCharacterRepository(db)
 	characterDetailsRepo := impl.NewCharacterDetailsRepository(db)
@@ -116,12 +134,30 @@ func main() {
 		factionRepo,
 		guildRepo,
 		blizzardClient,
+		kafkaProducer,
 	)
-	guildUseCase := usecase.NewGuildUseCase(guildRepo, factionRepo, blizzardClient)
+	guildUseCase := usecase.NewGuildUseCase(guildRepo, factionRepo, blizzardClient, kafkaProducer)
 
 	// Initialize gRPC handlers
 	characterHandler := grpcHandler.NewCharacterHandler(characterUseCase)
 	guildHandler := grpcHandler.NewGuildHandler(guildUseCase)
+
+	// Initialize background job schedulers
+	characterSyncScheduler := scheduler.NewCharacterSyncScheduler(
+		characterUseCase,
+		cfg.CharacterSyncInterval,
+		cfg.CharacterSyncEnabled,
+	)
+	guildSyncScheduler := scheduler.NewGuildSyncScheduler(
+		guildUseCase,
+		cfg.GuildSyncInterval,
+		cfg.GuildSyncEnabled,
+	)
+
+	// Start background jobs
+	characterSyncScheduler.Start()
+	guildSyncScheduler.Start()
+	log.Printf("Background jobs initialized")
 
 	// Setup gRPC server
 	grpcServer := setupGRPCServer(characterHandler, guildHandler)
@@ -159,6 +195,11 @@ func main() {
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// Stop background jobs
+	characterSyncScheduler.Stop()
+	guildSyncScheduler.Stop()
+	log.Println("Background jobs stopped")
 
 	// Shutdown HTTP server
 	if err := httpServer.Shutdown(ctx); err != nil {

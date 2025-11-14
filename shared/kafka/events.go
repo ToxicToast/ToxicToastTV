@@ -488,3 +488,77 @@ type FoodfolioShoppinglistItemPurchasedEvent struct {
 	Quantity       int       `json:"quantity"`
 	PurchasedAt    time.Time `json:"purchased_at"`
 }
+
+// Warcraft Service Events
+
+// Character Events
+type WarcraftCharacterCreatedEvent struct {
+	CharacterID string    `json:"character_id"`
+	Name        string    `json:"name"`
+	Realm       string    `json:"realm"`
+	Region      string    `json:"region"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type WarcraftCharacterSyncedEvent struct {
+	CharacterID       string    `json:"character_id"`
+	Name              string    `json:"name"`
+	Realm             string    `json:"realm"`
+	Region            string    `json:"region"`
+	Level             int       `json:"level"`
+	ItemLevel         int       `json:"item_level"`
+	ClassName         string    `json:"class_name"`
+	RaceName          string    `json:"race_name"`
+	FactionName       string    `json:"faction_name"`
+	AchievementPoints int       `json:"achievement_points"`
+	SyncedAt          time.Time `json:"synced_at"`
+}
+
+type WarcraftCharacterDeletedEvent struct {
+	CharacterID string    `json:"character_id"`
+	Name        string    `json:"name"`
+	Realm       string    `json:"realm"`
+	Region      string    `json:"region"`
+	DeletedAt   time.Time `json:"deleted_at"`
+}
+
+type WarcraftCharacterEquipmentUpdatedEvent struct {
+	CharacterID string    `json:"character_id"`
+	Name        string    `json:"name"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type WarcraftCharacterStatsUpdatedEvent struct {
+	CharacterID string    `json:"character_id"`
+	Name        string    `json:"name"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// Guild Events
+type WarcraftGuildCreatedEvent struct {
+	GuildID   string    `json:"guild_id"`
+	Name      string    `json:"name"`
+	Realm     string    `json:"realm"`
+	Region    string    `json:"region"`
+	Faction   string    `json:"faction"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type WarcraftGuildSyncedEvent struct {
+	GuildID           string    `json:"guild_id"`
+	Name              string    `json:"name"`
+	Realm             string    `json:"realm"`
+	Region            string    `json:"region"`
+	Faction           string    `json:"faction"`
+	MemberCount       int       `json:"member_count"`
+	AchievementPoints int       `json:"achievement_points"`
+	SyncedAt          time.Time `json:"synced_at"`
+}
+
+type WarcraftGuildDeletedEvent struct {
+	GuildID   string    `json:"guild_id"`
+	Name      string    `json:"name"`
+	Realm     string    `json:"realm"`
+	Region    string    `json:"region"`
+	DeletedAt time.Time `json:"deleted_at"`
+}

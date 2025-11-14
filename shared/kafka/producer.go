@@ -363,3 +363,37 @@ func (p *Producer) PublishFoodfolioShoppinglistItemRemoved(topic string, event F
 func (p *Producer) PublishFoodfolioShoppinglistItemPurchased(topic string, event FoodfolioShoppinglistItemPurchasedEvent) error {
 	return p.PublishEvent(topic, event.ItemID, event)
 }
+
+// Warcraft Character Event Publishers
+func (p *Producer) PublishWarcraftCharacterCreated(topic string, event WarcraftCharacterCreatedEvent) error {
+	return p.PublishEvent(topic, event.CharacterID, event)
+}
+
+func (p *Producer) PublishWarcraftCharacterSynced(topic string, event WarcraftCharacterSyncedEvent) error {
+	return p.PublishEvent(topic, event.CharacterID, event)
+}
+
+func (p *Producer) PublishWarcraftCharacterDeleted(topic string, event WarcraftCharacterDeletedEvent) error {
+	return p.PublishEvent(topic, event.CharacterID, event)
+}
+
+func (p *Producer) PublishWarcraftCharacterEquipmentUpdated(topic string, event WarcraftCharacterEquipmentUpdatedEvent) error {
+	return p.PublishEvent(topic, event.CharacterID, event)
+}
+
+func (p *Producer) PublishWarcraftCharacterStatsUpdated(topic string, event WarcraftCharacterStatsUpdatedEvent) error {
+	return p.PublishEvent(topic, event.CharacterID, event)
+}
+
+// Warcraft Guild Event Publishers
+func (p *Producer) PublishWarcraftGuildCreated(topic string, event WarcraftGuildCreatedEvent) error {
+	return p.PublishEvent(topic, event.GuildID, event)
+}
+
+func (p *Producer) PublishWarcraftGuildSynced(topic string, event WarcraftGuildSyncedEvent) error {
+	return p.PublishEvent(topic, event.GuildID, event)
+}
+
+func (p *Producer) PublishWarcraftGuildDeleted(topic string, event WarcraftGuildDeletedEvent) error {
+	return p.PublishEvent(topic, event.GuildID, event)
+}

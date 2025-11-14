@@ -184,6 +184,20 @@ Format: `{service}.{domain}.{action}`
 - `foodfolio.shoppinglist.item.purchased` - Item gekauft
 - `foodfolio.shoppinglist.completed` - Alle Items gekauft
 
+## Warcraft Service Topics
+
+### Characters
+- `warcraft.character.created` - Neuer Character erstellt
+- `warcraft.character.synced` - Character-Daten von Blizzard API synchronisiert
+- `warcraft.character.deleted` - Character gelöscht
+- `warcraft.character.equipment.updated` - Character-Equipment aktualisiert
+- `warcraft.character.stats.updated` - Character-Stats aktualisiert
+
+### Guilds
+- `warcraft.guild.created` - Neue Guild erstellt
+- `warcraft.guild.synced` - Guild-Daten von Blizzard API synchronisiert
+- `warcraft.guild.deleted` - Guild gelöscht
+
 ## SSE Service Topics
 
 Das SSE-Service konsumiert alle oben genannten Topics und streamt sie an verbundene Clients.

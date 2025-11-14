@@ -9,26 +9,30 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"toxictoast/services/warcraft-service/internal/domain"
 	"toxictoast/services/warcraft-service/internal/repository"
 	"toxictoast/services/warcraft-service/pkg/blizzard"
 )
 
 type GuildUseCase struct {
-	repo         repository.GuildRepository
-	factionRepo  repository.FactionRepository
+	repo           repository.GuildRepository
+	factionRepo    repository.FactionRepository
 	blizzardClient *blizzard.Client
+	kafkaProducer  *kafka.Producer
 }
 
 func NewGuildUseCase(
 	repo repository.GuildRepository,
 	factionRepo repository.FactionRepository,
 	blizzardClient *blizzard.Client,
+	kafkaProducer *kafka.Producer,
 ) *GuildUseCase {
 	return &GuildUseCase{
-		repo:         repo,
-		factionRepo:  factionRepo,
+		repo:           repo,
+		factionRepo:    factionRepo,
 		blizzardClient: blizzardClient,
+		kafkaProducer:  kafkaProducer,
 	}
 }
 
@@ -80,7 +84,27 @@ func (uc *GuildUseCase) CreateGuild(ctx context.Context, name, realm, region str
 		UpdatedAt:         now,
 	}
 
-	return uc.repo.Create(ctx, guild)
+	guild, err = uc.repo.Create(ctx, guild)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish guild created event
+	if uc.kafkaProducer != nil {
+		event := kafka.WarcraftGuildCreatedEvent{
+			GuildID:   guild.ID,
+			Name:      guild.Name,
+			Realm:     guild.Realm,
+			Region:    guild.Region,
+			Faction:   faction.Name,
+			CreatedAt: guild.CreatedAt,
+		}
+		if err := uc.kafkaProducer.PublishWarcraftGuildCreated("warcraft.guild.created", event); err != nil {
+			fmt.Printf("Warning: Failed to publish guild created event: %v\n", err)
+		}
+	}
+
+	return guild, nil
 }
 
 func (uc *GuildUseCase) GetGuild(ctx context.Context, id string) (*domain.Guild, error) {
@@ -113,7 +137,32 @@ func (uc *GuildUseCase) UpdateGuild(ctx context.Context, id string) (*domain.Gui
 }
 
 func (uc *GuildUseCase) DeleteGuild(ctx context.Context, id string) error {
-	return uc.repo.Delete(ctx, id)
+	// Get guild for event
+	guild, err := uc.repo.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Delete guild
+	if err := uc.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	// Publish guild deleted event
+	if uc.kafkaProducer != nil {
+		event := kafka.WarcraftGuildDeletedEvent{
+			GuildID:   guild.ID,
+			Name:      guild.Name,
+			Realm:     guild.Realm,
+			Region:    guild.Region,
+			DeletedAt: time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishWarcraftGuildDeleted("warcraft.guild.deleted", event); err != nil {
+			fmt.Printf("Warning: Failed to publish guild deleted event: %v\n", err)
+		}
+	}
+
+	return nil
 }
 
 func (uc *GuildUseCase) RefreshGuild(ctx context.Context, id string) (*domain.Guild, error) {
@@ -156,7 +205,29 @@ func (uc *GuildUseCase) RefreshGuild(ctx context.Context, id string) (*domain.Gu
 	guild.LastSyncedAt = &now
 	guild.UpdatedAt = now
 
-	return uc.repo.Update(ctx, guild)
+	guild, err = uc.repo.Update(ctx, guild)
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish guild synced event
+	if uc.kafkaProducer != nil {
+		event := kafka.WarcraftGuildSyncedEvent{
+			GuildID:           guild.ID,
+			Name:              guild.Name,
+			Realm:             guild.Realm,
+			Region:            guild.Region,
+			Faction:           faction.Name,
+			MemberCount:       guild.MemberCount,
+			AchievementPoints: guild.AchievementPoints,
+			SyncedAt:          now,
+		}
+		if err := uc.kafkaProducer.PublishWarcraftGuildSynced("warcraft.guild.synced", event); err != nil {
+			fmt.Printf("Warning: Failed to publish guild synced event: %v\n", err)
+		}
+	}
+
+	return guild, nil
 }
 
 func (uc *GuildUseCase) GetGuildRoster(ctx context.Context, guildID string, page, pageSize int) ([]domain.GuildMember, int, error) {
