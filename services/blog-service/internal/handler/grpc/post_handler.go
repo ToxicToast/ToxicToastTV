@@ -193,9 +193,14 @@ func (h *PostHandler) ListPosts(ctx context.Context, req *pb.ListPostsRequest) (
 	}
 
 	// Calculate total pages
-	totalPages := int32(total) / req.PageSize
-	if int32(total)%req.PageSize > 0 {
-		totalPages++
+	var totalPages int32
+	if req.PageSize > 0 {
+		totalPages = int32(total) / req.PageSize
+		if int32(total)%req.PageSize > 0 {
+			totalPages++
+		}
+	} else {
+		totalPages = 1
 	}
 
 	return &pb.ListPostsResponse{
