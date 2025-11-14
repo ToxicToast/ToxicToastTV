@@ -1,0 +1,96 @@
+groups:
+  - name: service_alerts
+    interval: 30s
+    rules:
+      # Service Down Alert
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been down for more than 2 minutes."
+
+      # High Error Rate
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "{{ $labels.job }} is experiencing {{ $value | humanizePercentage }} error rate."
+
+      # High Response Time
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High response time on {{ $labels.job }}"
+          description: "95th percentile response time is {{ $value }}s on {{ $labels.job }}."
+
+      # Database Connection Pool Exhausted
+      - alert: DatabasePoolExhausted
+        expr: database_connections_in_use / database_connections_max > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool nearly exhausted on {{ $labels.job }}"
+          description: "{{ $labels.job }} is using {{ $value | humanizePercentage }} of database connections."
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes > 1073741824
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.job }}"
+          description: "{{ $labels.job }} is using {{ $value | humanize }}B of memory."
+
+      # Kafka Consumer Lag
+      - alert: KafkaConsumerLag
+        expr: kafka_consumer_lag > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Kafka consumer lag on {{ $labels.job }}"
+          description: "{{ $labels.job }} has {{ $value }} messages in lag."
+
+  - name: background_job_alerts
+    interval: 60s
+    rules:
+      # Background Job Failures
+      - alert: BackgroundJobFailures
+        expr: rate(background_job_failures_total[1h]) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Background job failures on {{ $labels.job }}"
+          description: "{{ $labels.job }} background jobs are failing at {{ $value }} per second."
+
+      # Notification Retry Queue Growing
+      - alert: NotificationRetryQueueGrowing
+        expr: notification_retry_queue_size > 100
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Notification retry queue is growing"
+          description: "Notification service has {{ $value }} notifications pending retry."
+
+      # Webhook Delivery Failures
+      - alert: WebhookDeliveryFailures
+        expr: rate(webhook_delivery_failures_total[1h]) > 0.2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High webhook delivery failure rate"
+          description: "Webhook service is experiencing {{ $value }} delivery failures per second."
