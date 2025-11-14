@@ -1,219 +1,460 @@
 package events
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
 )
 
-// EventType represents the type of event
-type EventType string
-
-const (
-	// Stream events
-	StreamStarted EventType = "twitchbot.stream.started"
-	StreamEnded   EventType = "twitchbot.stream.ended"
-	StreamUpdated EventType = "twitchbot.stream.updated"
-
-	// Message events
-	MessageReceived EventType = "twitchbot.message.received"
-	MessageDeleted  EventType = "twitchbot.message.deleted"
-	MessageTimeout  EventType = "twitchbot.message.timeout"
-
-	// Viewer events
-	ViewerJoined      EventType = "twitchbot.viewer.joined"
-	ViewerLeft        EventType = "twitchbot.viewer.left"
-	ViewerBanned      EventType = "twitchbot.viewer.banned"
-	ViewerUnbanned    EventType = "twitchbot.viewer.unbanned"
-	ViewerModAdded    EventType = "twitchbot.viewer.mod.added"
-	ViewerModRemoved  EventType = "twitchbot.viewer.mod.removed"
-	ViewerVIPAdded    EventType = "twitchbot.viewer.vip.added"
-	ViewerVIPRemoved  EventType = "twitchbot.viewer.vip.removed"
-
-	// Clip events
-	ClipCreated EventType = "twitchbot.clip.created"
-	ClipUpdated EventType = "twitchbot.clip.updated"
-	ClipDeleted EventType = "twitchbot.clip.deleted"
-
-	// Command events
-	CommandCreated  EventType = "twitchbot.command.created"
-	CommandUpdated  EventType = "twitchbot.command.updated"
-	CommandDeleted  EventType = "twitchbot.command.deleted"
-	CommandExecuted EventType = "twitchbot.command.executed"
-)
-
-// BaseEvent contains common event fields
-type BaseEvent struct {
-	Type      EventType `json:"type"`
-	Timestamp time.Time `json:"timestamp"`
-}
-
-// StreamEvent represents a stream-related event
-type StreamEvent struct {
-	BaseEvent
-	StreamID       string `json:"stream_id"`
-	Title          string `json:"title"`
-	GameName       string `json:"game_name"`
-	GameID         string `json:"game_id"`
-	ViewerCount    int    `json:"viewer_count,omitempty"`
-	IsActive       bool   `json:"is_active"`
-	StartedAt      string `json:"started_at,omitempty"`
-	EndedAt        string `json:"ended_at,omitempty"`
-	PeakViewers    int    `json:"peak_viewers,omitempty"`
-	AverageViewers int    `json:"average_viewers,omitempty"`
-	TotalMessages  int    `json:"total_messages,omitempty"`
-}
-
-// MessageEvent represents a message-related event
-type MessageEvent struct {
-	BaseEvent
-	MessageID     string `json:"message_id"`
-	StreamID      string `json:"stream_id"`
-	UserID        string `json:"user_id"`
-	Username      string `json:"username"`
-	DisplayName   string `json:"display_name"`
-	Message       string `json:"message"`
-	IsModerator   bool   `json:"is_moderator"`
-	IsSubscriber  bool   `json:"is_subscriber"`
-	IsVIP         bool   `json:"is_vip"`
-	IsBroadcaster bool   `json:"is_broadcaster"`
-}
-
-// ViewerEvent represents a viewer-related event
-type ViewerEvent struct {
-	BaseEvent
-	ViewerID            string `json:"viewer_id"`
-	TwitchID            string `json:"twitch_id"`
-	Username            string `json:"username"`
-	DisplayName         string `json:"display_name"`
-	TotalMessages       int    `json:"total_messages,omitempty"`
-	TotalStreamsWatched int    `json:"total_streams_watched,omitempty"`
-}
-
-// ClipEvent represents a clip-related event
-type ClipEvent struct {
-	BaseEvent
-	ClipID          string `json:"clip_id"`
-	StreamID        string `json:"stream_id"`
-	TwitchClipID    string `json:"twitch_clip_id"`
-	Title           string `json:"title"`
-	URL             string `json:"url"`
-	CreatorName     string `json:"creator_name"`
-	CreatorID       string `json:"creator_id"`
-	ViewCount       int    `json:"view_count,omitempty"`
-	DurationSeconds int    `json:"duration_seconds"`
-}
-
-// CommandEvent represents a command-related event
-type CommandEvent struct {
-	BaseEvent
-	CommandID      string `json:"command_id"`
-	CommandName    string `json:"command_name"`
-	UserID         string `json:"user_id,omitempty"`
-	Username       string `json:"username,omitempty"`
-	Response       string `json:"response,omitempty"`
-	Success        bool   `json:"success,omitempty"`
-	IsActive       bool   `json:"is_active,omitempty"`
-	ModeratorOnly  bool   `json:"moderator_only,omitempty"`
-	SubscriberOnly bool   `json:"subscriber_only,omitempty"`
-}
-
-// EventPublisher handles publishing events to Kafka
+// EventPublisher handles publishing events to Kafka using shared event types
 type EventPublisher struct {
-	producer *kafka.Producer
-	topics   map[EventType]string
+	producer    *kafka.Producer
+	channelID   string
+	channelName string
 }
 
 // NewEventPublisher creates a new event publisher
 func NewEventPublisher(producer *kafka.Producer) *EventPublisher {
 	return &EventPublisher{
 		producer: producer,
-		topics: map[EventType]string{
-			// Stream events
-			StreamStarted: "twitchbot.stream.started",
-			StreamEnded:   "twitchbot.stream.ended",
-			StreamUpdated: "twitchbot.stream.updated",
-
-			// Message events
-			MessageReceived: "twitchbot.message.received",
-			MessageDeleted:  "twitchbot.message.deleted",
-			MessageTimeout:  "twitchbot.message.timeout",
-
-			// Viewer events
-			ViewerJoined:     "twitchbot.viewer.joined",
-			ViewerLeft:       "twitchbot.viewer.left",
-			ViewerBanned:     "twitchbot.viewer.banned",
-			ViewerUnbanned:   "twitchbot.viewer.unbanned",
-			ViewerModAdded:   "twitchbot.viewer.mod.added",
-			ViewerModRemoved: "twitchbot.viewer.mod.removed",
-			ViewerVIPAdded:   "twitchbot.viewer.vip.added",
-			ViewerVIPRemoved: "twitchbot.viewer.vip.removed",
-
-			// Clip events
-			ClipCreated: "twitchbot.clip.created",
-			ClipUpdated: "twitchbot.clip.updated",
-			ClipDeleted: "twitchbot.clip.deleted",
-
-			// Command events
-			CommandCreated:  "twitchbot.command.created",
-			CommandUpdated:  "twitchbot.command.updated",
-			CommandDeleted:  "twitchbot.command.deleted",
-			CommandExecuted: "twitchbot.command.executed",
-		},
 	}
 }
 
-// PublishStreamEvent publishes a stream event
-func (p *EventPublisher) PublishStreamEvent(event StreamEvent) error {
-	if p.producer == nil {
-		return nil // Silently skip if Kafka is not configured
-	}
-
-	event.Timestamp = time.Now()
-	topic := p.topics[event.Type]
-	return p.producer.PublishEvent(topic, event.StreamID, event)
+// SetChannelInfo sets the channel context for events
+func (p *EventPublisher) SetChannelInfo(channelID, channelName string) {
+	p.channelID = channelID
+	p.channelName = channelName
 }
 
-// PublishMessageEvent publishes a message event
-func (p *EventPublisher) PublishMessageEvent(event MessageEvent) error {
+// PublishStreamStarted publishes a stream started event
+func (p *EventPublisher) PublishStreamStarted(streamID, title, gameName string, viewerCount int) error {
 	if p.producer == nil {
 		return nil
 	}
 
-	event.Timestamp = time.Now()
-	topic := p.topics[event.Type]
-	return p.producer.PublishEvent(topic, event.MessageID, event)
+	event := kafka.TwitchbotStreamStartedEvent{
+		StreamID:    streamID,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		Title:       title,
+		GameName:    gameName,
+		ViewerCount: viewerCount,
+		StartedAt:   time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotStreamStarted("twitchbot.stream.started", event); err != nil {
+		return fmt.Errorf("failed to publish stream started event: %w", err)
+	}
+	return nil
 }
 
-// PublishViewerEvent publishes a viewer event
-func (p *EventPublisher) PublishViewerEvent(event ViewerEvent) error {
+// PublishStreamEnded publishes a stream ended event
+func (p *EventPublisher) PublishStreamEnded(streamID string, duration int) error {
 	if p.producer == nil {
 		return nil
 	}
 
-	event.Timestamp = time.Now()
-	topic := p.topics[event.Type]
-	return p.producer.PublishEvent(topic, event.ViewerID, event)
+	event := kafka.TwitchbotStreamEndedEvent{
+		StreamID:    streamID,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		Duration:    duration,
+		EndedAt:     time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotStreamEnded("twitchbot.stream.ended", event); err != nil {
+		return fmt.Errorf("failed to publish stream ended event: %w", err)
+	}
+	return nil
 }
 
-// PublishClipEvent publishes a clip event
-func (p *EventPublisher) PublishClipEvent(event ClipEvent) error {
+// PublishStreamUpdated publishes a stream updated event
+func (p *EventPublisher) PublishStreamUpdated(streamID, title, gameName string, viewerCount int) error {
 	if p.producer == nil {
 		return nil
 	}
 
-	event.Timestamp = time.Now()
-	topic := p.topics[event.Type]
-	return p.producer.PublishEvent(topic, event.ClipID, event)
+	event := kafka.TwitchbotStreamUpdatedEvent{
+		StreamID:    streamID,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		Title:       title,
+		GameName:    gameName,
+		ViewerCount: viewerCount,
+		UpdatedAt:   time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotStreamUpdated("twitchbot.stream.updated", event); err != nil {
+		return fmt.Errorf("failed to publish stream updated event: %w", err)
+	}
+	return nil
 }
 
-// PublishCommandEvent publishes a command event
-func (p *EventPublisher) PublishCommandEvent(event CommandEvent) error {
+// PublishMessageReceived publishes a message received event
+func (p *EventPublisher) PublishMessageReceived(messageID, userID, username, message string) error {
 	if p.producer == nil {
 		return nil
 	}
 
-	event.Timestamp = time.Now()
-	topic := p.topics[event.Type]
-	return p.producer.PublishEvent(topic, event.CommandID, event)
+	event := kafka.TwitchbotMessageReceivedEvent{
+		MessageID:   messageID,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		UserID:      userID,
+		Username:    username,
+		Message:     message,
+		ReceivedAt:  time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotMessageReceived("twitchbot.message.received", event); err != nil {
+		return fmt.Errorf("failed to publish message received event: %w", err)
+	}
+	return nil
+}
+
+// PublishMessageDeleted publishes a message deleted event
+func (p *EventPublisher) PublishMessageDeleted(messageID, deletedBy string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotMessageDeletedEvent{
+		MessageID:   messageID,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		DeletedBy:   deletedBy,
+		DeletedAt:   time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotMessageDeleted("twitchbot.message.deleted", event); err != nil {
+		return fmt.Errorf("failed to publish message deleted event: %w", err)
+	}
+	return nil
+}
+
+// PublishMessageTimeout publishes a message timeout event
+func (p *EventPublisher) PublishMessageTimeout(userID, username, reason string, duration int) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotMessageTimeoutEvent{
+		UserID:      userID,
+		Username:    username,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		Duration:    duration,
+		Reason:      reason,
+		TimeoutAt:   time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotMessageTimeout("twitchbot.message.timeout", event); err != nil {
+		return fmt.Errorf("failed to publish message timeout event: %w", err)
+	}
+	return nil
+}
+
+// PublishViewerJoined publishes a viewer joined event
+func (p *EventPublisher) PublishViewerJoined(userID, username string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotViewerJoinedEvent{
+		UserID:      userID,
+		Username:    username,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		JoinedAt:    time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotViewerJoined("twitchbot.viewer.joined", event); err != nil {
+		return fmt.Errorf("failed to publish viewer joined event: %w", err)
+	}
+	return nil
+}
+
+// PublishViewerLeft publishes a viewer left event
+func (p *EventPublisher) PublishViewerLeft(userID, username string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotViewerLeftEvent{
+		UserID:      userID,
+		Username:    username,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		LeftAt:      time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotViewerLeft("twitchbot.viewer.left", event); err != nil {
+		return fmt.Errorf("failed to publish viewer left event: %w", err)
+	}
+	return nil
+}
+
+// PublishViewerBanned publishes a viewer banned event
+func (p *EventPublisher) PublishViewerBanned(userID, username, reason, bannedBy string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotViewerBannedEvent{
+		UserID:      userID,
+		Username:    username,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		Reason:      reason,
+		BannedBy:    bannedBy,
+		BannedAt:    time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotViewerBanned("twitchbot.viewer.banned", event); err != nil {
+		return fmt.Errorf("failed to publish viewer banned event: %w", err)
+	}
+	return nil
+}
+
+// PublishViewerUnbanned publishes a viewer unbanned event
+func (p *EventPublisher) PublishViewerUnbanned(userID, username, unbannedBy string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotViewerUnbannedEvent{
+		UserID:      userID,
+		Username:    username,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		UnbannedBy:  unbannedBy,
+		UnbannedAt:  time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotViewerUnbanned("twitchbot.viewer.unbanned", event); err != nil {
+		return fmt.Errorf("failed to publish viewer unbanned event: %w", err)
+	}
+	return nil
+}
+
+// PublishViewerModAdded publishes a viewer mod added event
+func (p *EventPublisher) PublishViewerModAdded(userID, username, addedBy string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotViewerModAddedEvent{
+		UserID:      userID,
+		Username:    username,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		AddedBy:     addedBy,
+		AddedAt:     time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotViewerModAdded("twitchbot.viewer.mod.added", event); err != nil {
+		return fmt.Errorf("failed to publish viewer mod added event: %w", err)
+	}
+	return nil
+}
+
+// PublishViewerModRemoved publishes a viewer mod removed event
+func (p *EventPublisher) PublishViewerModRemoved(userID, username, removedBy string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotViewerModRemovedEvent{
+		UserID:      userID,
+		Username:    username,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		RemovedBy:   removedBy,
+		RemovedAt:   time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotViewerModRemoved("twitchbot.viewer.mod.removed", event); err != nil {
+		return fmt.Errorf("failed to publish viewer mod removed event: %w", err)
+	}
+	return nil
+}
+
+// PublishViewerVipAdded publishes a viewer VIP added event
+func (p *EventPublisher) PublishViewerVipAdded(userID, username, addedBy string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotViewerVipAddedEvent{
+		UserID:      userID,
+		Username:    username,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		AddedBy:     addedBy,
+		AddedAt:     time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotViewerVipAdded("twitchbot.viewer.vip.added", event); err != nil {
+		return fmt.Errorf("failed to publish viewer VIP added event: %w", err)
+	}
+	return nil
+}
+
+// PublishViewerVipRemoved publishes a viewer VIP removed event
+func (p *EventPublisher) PublishViewerVipRemoved(userID, username, removedBy string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotViewerVipRemovedEvent{
+		UserID:      userID,
+		Username:    username,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		RemovedBy:   removedBy,
+		RemovedAt:   time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotViewerVipRemoved("twitchbot.viewer.vip.removed", event); err != nil {
+		return fmt.Errorf("failed to publish viewer VIP removed event: %w", err)
+	}
+	return nil
+}
+
+// PublishClipCreated publishes a clip created event
+func (p *EventPublisher) PublishClipCreated(clipID, title, url, createdBy string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotClipCreatedEvent{
+		ClipID:      clipID,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		Title:       title,
+		URL:         url,
+		CreatedBy:   createdBy,
+		CreatedAt:   time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotClipCreated("twitchbot.clip.created", event); err != nil {
+		return fmt.Errorf("failed to publish clip created event: %w", err)
+	}
+	return nil
+}
+
+// PublishClipUpdated publishes a clip updated event
+func (p *EventPublisher) PublishClipUpdated(clipID, title string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotClipUpdatedEvent{
+		ClipID:    clipID,
+		Title:     title,
+		UpdatedAt: time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotClipUpdated("twitchbot.clip.updated", event); err != nil {
+		return fmt.Errorf("failed to publish clip updated event: %w", err)
+	}
+	return nil
+}
+
+// PublishClipDeleted publishes a clip deleted event
+func (p *EventPublisher) PublishClipDeleted(clipID string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotClipDeletedEvent{
+		ClipID:    clipID,
+		DeletedAt: time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotClipDeleted("twitchbot.clip.deleted", event); err != nil {
+		return fmt.Errorf("failed to publish clip deleted event: %w", err)
+	}
+	return nil
+}
+
+// PublishCommandCreated publishes a command created event
+func (p *EventPublisher) PublishCommandCreated(commandID, name, response string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotCommandCreatedEvent{
+		CommandID:   commandID,
+		Name:        name,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		Response:    response,
+		CreatedAt:   time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotCommandCreated("twitchbot.command.created", event); err != nil {
+		return fmt.Errorf("failed to publish command created event: %w", err)
+	}
+	return nil
+}
+
+// PublishCommandUpdated publishes a command updated event
+func (p *EventPublisher) PublishCommandUpdated(commandID, name, response string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotCommandUpdatedEvent{
+		CommandID: commandID,
+		Name:      name,
+		Response:  response,
+		UpdatedAt: time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotCommandUpdated("twitchbot.command.updated", event); err != nil {
+		return fmt.Errorf("failed to publish command updated event: %w", err)
+	}
+	return nil
+}
+
+// PublishCommandDeleted publishes a command deleted event
+func (p *EventPublisher) PublishCommandDeleted(commandID, name string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotCommandDeletedEvent{
+		CommandID: commandID,
+		Name:      name,
+		DeletedAt: time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotCommandDeleted("twitchbot.command.deleted", event); err != nil {
+		return fmt.Errorf("failed to publish command deleted event: %w", err)
+	}
+	return nil
+}
+
+// PublishCommandExecuted publishes a command executed event
+func (p *EventPublisher) PublishCommandExecuted(commandID, name, userID, username string) error {
+	if p.producer == nil {
+		return nil
+	}
+
+	event := kafka.TwitchbotCommandExecutedEvent{
+		CommandID:   commandID,
+		Name:        name,
+		ChannelID:   p.channelID,
+		ChannelName: p.channelName,
+		UserID:      userID,
+		Username:    username,
+		ExecutedAt:  time.Now(),
+	}
+
+	if err := p.producer.PublishTwitchbotCommandExecuted("twitchbot.command.executed", event); err != nil {
+		return fmt.Errorf("failed to publish command executed event: %w", err)
+	}
+	return nil
 }

@@ -397,3 +397,92 @@ func (p *Producer) PublishWarcraftGuildSynced(topic string, event WarcraftGuildS
 func (p *Producer) PublishWarcraftGuildDeleted(topic string, event WarcraftGuildDeletedEvent) error {
 	return p.PublishEvent(topic, event.GuildID, event)
 }
+
+// Twitchbot Stream Event Publishers
+func (p *Producer) PublishTwitchbotStreamStarted(topic string, event TwitchbotStreamStartedEvent) error {
+	return p.PublishEvent(topic, event.StreamID, event)
+}
+
+func (p *Producer) PublishTwitchbotStreamEnded(topic string, event TwitchbotStreamEndedEvent) error {
+	return p.PublishEvent(topic, event.StreamID, event)
+}
+
+func (p *Producer) PublishTwitchbotStreamUpdated(topic string, event TwitchbotStreamUpdatedEvent) error {
+	return p.PublishEvent(topic, event.StreamID, event)
+}
+
+// Twitchbot Message Event Publishers
+func (p *Producer) PublishTwitchbotMessageReceived(topic string, event TwitchbotMessageReceivedEvent) error {
+	return p.PublishEvent(topic, event.MessageID, event)
+}
+
+func (p *Producer) PublishTwitchbotMessageDeleted(topic string, event TwitchbotMessageDeletedEvent) error {
+	return p.PublishEvent(topic, event.MessageID, event)
+}
+
+func (p *Producer) PublishTwitchbotMessageTimeout(topic string, event TwitchbotMessageTimeoutEvent) error {
+	return p.PublishEvent(topic, event.UserID, event)
+}
+
+// Twitchbot Viewer Event Publishers
+func (p *Producer) PublishTwitchbotViewerJoined(topic string, event TwitchbotViewerJoinedEvent) error {
+	return p.PublishEvent(topic, event.UserID, event)
+}
+
+func (p *Producer) PublishTwitchbotViewerLeft(topic string, event TwitchbotViewerLeftEvent) error {
+	return p.PublishEvent(topic, event.UserID, event)
+}
+
+func (p *Producer) PublishTwitchbotViewerBanned(topic string, event TwitchbotViewerBannedEvent) error {
+	return p.PublishEvent(topic, event.UserID, event)
+}
+
+func (p *Producer) PublishTwitchbotViewerUnbanned(topic string, event TwitchbotViewerUnbannedEvent) error {
+	return p.PublishEvent(topic, event.UserID, event)
+}
+
+func (p *Producer) PublishTwitchbotViewerModAdded(topic string, event TwitchbotViewerModAddedEvent) error {
+	return p.PublishEvent(topic, event.UserID, event)
+}
+
+func (p *Producer) PublishTwitchbotViewerModRemoved(topic string, event TwitchbotViewerModRemovedEvent) error {
+	return p.PublishEvent(topic, event.UserID, event)
+}
+
+func (p *Producer) PublishTwitchbotViewerVipAdded(topic string, event TwitchbotViewerVipAddedEvent) error {
+	return p.PublishEvent(topic, event.UserID, event)
+}
+
+func (p *Producer) PublishTwitchbotViewerVipRemoved(topic string, event TwitchbotViewerVipRemovedEvent) error {
+	return p.PublishEvent(topic, event.UserID, event)
+}
+
+// Twitchbot Clip Event Publishers
+func (p *Producer) PublishTwitchbotClipCreated(topic string, event TwitchbotClipCreatedEvent) error {
+	return p.PublishEvent(topic, event.ClipID, event)
+}
+
+func (p *Producer) PublishTwitchbotClipUpdated(topic string, event TwitchbotClipUpdatedEvent) error {
+	return p.PublishEvent(topic, event.ClipID, event)
+}
+
+func (p *Producer) PublishTwitchbotClipDeleted(topic string, event TwitchbotClipDeletedEvent) error {
+	return p.PublishEvent(topic, event.ClipID, event)
+}
+
+// Twitchbot Command Event Publishers
+func (p *Producer) PublishTwitchbotCommandCreated(topic string, event TwitchbotCommandCreatedEvent) error {
+	return p.PublishEvent(topic, event.CommandID, event)
+}
+
+func (p *Producer) PublishTwitchbotCommandUpdated(topic string, event TwitchbotCommandUpdatedEvent) error {
+	return p.PublishEvent(topic, event.CommandID, event)
+}
+
+func (p *Producer) PublishTwitchbotCommandDeleted(topic string, event TwitchbotCommandDeletedEvent) error {
+	return p.PublishEvent(topic, event.CommandID, event)
+}
+
+func (p *Producer) PublishTwitchbotCommandExecuted(topic string, event TwitchbotCommandExecutedEvent) error {
+	return p.PublishEvent(topic, event.CommandID, event)
+}

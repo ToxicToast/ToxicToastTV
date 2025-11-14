@@ -562,3 +562,190 @@ type WarcraftGuildDeletedEvent struct {
 	Region    string    `json:"region"`
 	DeletedAt time.Time `json:"deleted_at"`
 }
+
+// Twitchbot Service Events
+
+// Stream Events
+type TwitchbotStreamStartedEvent struct {
+	StreamID    string    `json:"stream_id"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	Title       string    `json:"title"`
+	GameName    string    `json:"game_name"`
+	ViewerCount int       `json:"viewer_count"`
+	StartedAt   time.Time `json:"started_at"`
+}
+
+type TwitchbotStreamEndedEvent struct {
+	StreamID    string    `json:"stream_id"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	Duration    int       `json:"duration_seconds"`
+	EndedAt     time.Time `json:"ended_at"`
+}
+
+type TwitchbotStreamUpdatedEvent struct {
+	StreamID    string    `json:"stream_id"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	Title       string    `json:"title"`
+	GameName    string    `json:"game_name"`
+	ViewerCount int       `json:"viewer_count"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// Message Events
+type TwitchbotMessageReceivedEvent struct {
+	MessageID   string    `json:"message_id"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	UserID      string    `json:"user_id"`
+	Username    string    `json:"username"`
+	Message     string    `json:"message"`
+	ReceivedAt  time.Time `json:"received_at"`
+}
+
+type TwitchbotMessageDeletedEvent struct {
+	MessageID   string    `json:"message_id"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	DeletedBy   string    `json:"deleted_by"`
+	DeletedAt   time.Time `json:"deleted_at"`
+}
+
+type TwitchbotMessageTimeoutEvent struct {
+	UserID      string    `json:"user_id"`
+	Username    string    `json:"username"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	Duration    int       `json:"duration_seconds"`
+	Reason      string    `json:"reason"`
+	TimeoutAt   time.Time `json:"timeout_at"`
+}
+
+// Viewer Events
+type TwitchbotViewerJoinedEvent struct {
+	UserID      string    `json:"user_id"`
+	Username    string    `json:"username"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	JoinedAt    time.Time `json:"joined_at"`
+}
+
+type TwitchbotViewerLeftEvent struct {
+	UserID      string    `json:"user_id"`
+	Username    string    `json:"username"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	LeftAt      time.Time `json:"left_at"`
+}
+
+type TwitchbotViewerBannedEvent struct {
+	UserID      string    `json:"user_id"`
+	Username    string    `json:"username"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	Reason      string    `json:"reason"`
+	BannedBy    string    `json:"banned_by"`
+	BannedAt    time.Time `json:"banned_at"`
+}
+
+type TwitchbotViewerUnbannedEvent struct {
+	UserID      string    `json:"user_id"`
+	Username    string    `json:"username"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	UnbannedBy  string    `json:"unbanned_by"`
+	UnbannedAt  time.Time `json:"unbanned_at"`
+}
+
+type TwitchbotViewerModAddedEvent struct {
+	UserID      string    `json:"user_id"`
+	Username    string    `json:"username"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	AddedBy     string    `json:"added_by"`
+	AddedAt     time.Time `json:"added_at"`
+}
+
+type TwitchbotViewerModRemovedEvent struct {
+	UserID      string    `json:"user_id"`
+	Username    string    `json:"username"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	RemovedBy   string    `json:"removed_by"`
+	RemovedAt   time.Time `json:"removed_at"`
+}
+
+type TwitchbotViewerVipAddedEvent struct {
+	UserID      string    `json:"user_id"`
+	Username    string    `json:"username"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	AddedBy     string    `json:"added_by"`
+	AddedAt     time.Time `json:"added_at"`
+}
+
+type TwitchbotViewerVipRemovedEvent struct {
+	UserID      string    `json:"user_id"`
+	Username    string    `json:"username"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	RemovedBy   string    `json:"removed_by"`
+	RemovedAt   time.Time `json:"removed_at"`
+}
+
+// Clip Events
+type TwitchbotClipCreatedEvent struct {
+	ClipID      string    `json:"clip_id"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	Title       string    `json:"title"`
+	URL         string    `json:"url"`
+	CreatedBy   string    `json:"created_by"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type TwitchbotClipUpdatedEvent struct {
+	ClipID    string    `json:"clip_id"`
+	Title     string    `json:"title"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type TwitchbotClipDeletedEvent struct {
+	ClipID    string    `json:"clip_id"`
+	DeletedAt time.Time `json:"deleted_at"`
+}
+
+// Command Events
+type TwitchbotCommandCreatedEvent struct {
+	CommandID   string    `json:"command_id"`
+	Name        string    `json:"name"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	Response    string    `json:"response"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type TwitchbotCommandUpdatedEvent struct {
+	CommandID string    `json:"command_id"`
+	Name      string    `json:"name"`
+	Response  string    `json:"response"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type TwitchbotCommandDeletedEvent struct {
+	CommandID string    `json:"command_id"`
+	Name      string    `json:"name"`
+	DeletedAt time.Time `json:"deleted_at"`
+}
+
+type TwitchbotCommandExecutedEvent struct {
+	CommandID   string    `json:"command_id"`
+	Name        string    `json:"name"`
+	ChannelID   string    `json:"channel_id"`
+	ChannelName string    `json:"channel_name"`
+	UserID      string    `json:"user_id"`
+	Username    string    `json:"username"`
+	ExecutedAt  time.Time `json:"executed_at"`
+}
