@@ -40,25 +40,22 @@ func NewKafkaConsumer(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Note: kafka.ReaderConfig uses Topic (singular) not Topics
-	// We'll subscribe to the first topic, or use a group with multiple topics
-	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     config.Brokers,
-		Topic:       "", // Will be set via Topics below
-		GroupID:     config.GroupID,
-		MinBytes:    10e3,        // 10KB
-		MaxBytes:    10e6,        // 10MB
-		StartOffset: kafka.LastOffset,
-	})
-
-	// Subscribe to multiple topics if provided
+	// Create reader with GroupTopics for multiple topics
+	var reader *kafka.Reader
 	if len(config.Topics) > 0 {
-		// For multiple topics with consumer group, we need to use the GroupTopics field
-		// But kafka-go Reader doesn't support that directly. We'll use the first topic.
-		// For multiple topics, you'd need to create multiple readers or use a different approach
 		reader = kafka.NewReader(kafka.ReaderConfig{
 			Brokers:     config.Brokers,
 			GroupTopics: config.Topics, // Use GroupTopics for consumer groups
+			GroupID:     config.GroupID,
+			MinBytes:    10e3,
+			MaxBytes:    10e6,
+			StartOffset: kafka.LastOffset,
+		})
+	} else {
+		// Fallback to single topic if no topics provided
+		reader = kafka.NewReader(kafka.ReaderConfig{
+			Brokers:     config.Brokers,
+			Topic:       "default-topic",
 			GroupID:     config.GroupID,
 			MinBytes:    10e3,
 			MaxBytes:    10e6,
