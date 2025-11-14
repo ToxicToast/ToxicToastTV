@@ -19,6 +19,7 @@ import (
 	"toxictoast/services/sse-service/internal/consumer"
 	grpcHandler "toxictoast/services/sse-service/internal/handler/grpc"
 	httpHandler "toxictoast/services/sse-service/internal/handler/http"
+	"toxictoast/services/sse-service/internal/scheduler"
 	"toxictoast/services/sse-service/pkg/config"
 	pb "toxictoast/services/sse-service/api/proto"
 )
@@ -50,6 +51,18 @@ func main() {
 		log.Fatalf("Failed to create Kafka consumer: %v", err)
 	}
 	kafkaConsumer.Start(ctx)
+
+	// Initialize background job schedulers
+	clientCleanupScheduler := scheduler.NewClientCleanupScheduler(
+		sseBroker,
+		cfg.SSE.ClientCleanupInterval,
+		cfg.SSE.ClientCleanupInactiveTimeout,
+		cfg.SSE.ClientCleanupEnabled,
+	)
+
+	// Start background jobs
+	clientCleanupScheduler.Start()
+	log.Println("Background jobs initialized")
 
 	// Create HTTP handlers
 	sseHandler := httpHandler.NewSSEHandler(
@@ -127,7 +140,11 @@ func main() {
 	grpcServer.GracefulStop()
 	log.Println("   gRPC server stopped")
 
-	// 5. Stop SSE broker last (this closes all client connections)
+	// 5. Stop background jobs
+	clientCleanupScheduler.Stop()
+	log.Println("   Background jobs stopped")
+
+	// 6. Stop SSE broker last (this closes all client connections)
 	sseBroker.Stop()
 
 	log.Println("✅ All servers stopped gracefully")

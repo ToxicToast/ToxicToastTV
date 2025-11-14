@@ -16,6 +16,17 @@ A Server-Sent Events (SSE) service that consumes events from Kafka and streams t
 - **Scalable Architecture** - Handle up to 1000+ concurrent connections
 - **Automatic Heartbeats** - Keep connections alive with periodic heartbeats
 - **Clean Architecture** - Maintainable and testable codebase
+- **Background Jobs** - Automatic cleanup of inactive client connections
+
+### Background Jobs
+
+The service includes automated background job scheduler:
+
+**Client Cleanup Scheduler** (default: every 5 minutes)
+- Monitors client connection activity
+- Disconnects clients inactive for 30+ minutes
+- Frees up server resources automatically
+- Prevents zombie connections
 
 ## Architecture
 
