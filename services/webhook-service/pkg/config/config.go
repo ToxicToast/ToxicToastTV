@@ -38,6 +38,12 @@ type WebhookConfig struct {
 	MaxRetryDelay      time.Duration
 	WorkerCount        int // Number of concurrent delivery workers
 	QueueSize          int // Size of delivery queue
+	// Background Jobs
+	RetrySchedulerEnabled   bool
+	RetrySchedulerInterval  time.Duration
+	CleanupEnabled          bool
+	CleanupInterval         time.Duration
+	CleanupRetentionDays    int
 }
 
 // Load loads configuration from environment variables
@@ -100,12 +106,18 @@ func Load() *Config {
 		AuthEnabled: getEnvAsBool("AUTH_ENABLED", false),
 		Server:      sharedConfig.LoadServerConfig(),
 		Webhook: WebhookConfig{
-			DeliveryTimeout:   time.Duration(getEnvAsInt("WEBHOOK_DELIVERY_TIMEOUT", 30)) * time.Second,
-			MaxRetries:        getEnvAsInt("WEBHOOK_MAX_RETRIES", 3),
-			InitialRetryDelay: time.Duration(getEnvAsInt("WEBHOOK_INITIAL_RETRY_DELAY", 5)) * time.Second,
-			MaxRetryDelay:     time.Duration(getEnvAsInt("WEBHOOK_MAX_RETRY_DELAY", 300)) * time.Second,
-			WorkerCount:       getEnvAsInt("WEBHOOK_WORKER_COUNT", 10),
-			QueueSize:         getEnvAsInt("WEBHOOK_QUEUE_SIZE", 1000),
+			DeliveryTimeout:         time.Duration(getEnvAsInt("WEBHOOK_DELIVERY_TIMEOUT", 30)) * time.Second,
+			MaxRetries:              getEnvAsInt("WEBHOOK_MAX_RETRIES", 3),
+			InitialRetryDelay:       time.Duration(getEnvAsInt("WEBHOOK_INITIAL_RETRY_DELAY", 5)) * time.Second,
+			MaxRetryDelay:           time.Duration(getEnvAsInt("WEBHOOK_MAX_RETRY_DELAY", 300)) * time.Second,
+			WorkerCount:             getEnvAsInt("WEBHOOK_WORKER_COUNT", 10),
+			QueueSize:               getEnvAsInt("WEBHOOK_QUEUE_SIZE", 1000),
+			// Background Jobs
+			RetrySchedulerEnabled:   sharedConfig.GetEnvAsBool("WEBHOOK_RETRY_SCHEDULER_ENABLED", true),
+			RetrySchedulerInterval:  sharedConfig.GetEnvAsDuration("WEBHOOK_RETRY_SCHEDULER_INTERVAL", "5m"),
+			CleanupEnabled:          sharedConfig.GetEnvAsBool("WEBHOOK_CLEANUP_ENABLED", true),
+			CleanupInterval:         sharedConfig.GetEnvAsDuration("WEBHOOK_CLEANUP_INTERVAL", "24h"),
+			CleanupRetentionDays:    getEnvAsInt("WEBHOOK_CLEANUP_RETENTION_DAYS", 30),
 		},
 	}
 }

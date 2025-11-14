@@ -26,6 +26,7 @@ import (
 	grpcHandler "toxictoast/services/webhook-service/internal/handler/grpc"
 	"toxictoast/services/webhook-service/internal/repository/entity"
 	"toxictoast/services/webhook-service/internal/repository/impl"
+	"toxictoast/services/webhook-service/internal/scheduler"
 	"toxictoast/services/webhook-service/internal/usecase"
 	"toxictoast/services/webhook-service/pkg/config"
 )
@@ -134,6 +135,26 @@ func main() {
 	}
 	logger.Info("Kafka consumer started")
 
+	// Initialize background job schedulers
+	retryScheduler := scheduler.NewWebhookRetryScheduler(
+		deliveryRepo,
+		cfg.Webhook.RetrySchedulerInterval,
+		cfg.Webhook.MaxRetries,
+		cfg.Webhook.RetrySchedulerEnabled,
+	)
+
+	cleanupScheduler := scheduler.NewWebhookCleanupScheduler(
+		deliveryRepo,
+		cfg.Webhook.CleanupInterval,
+		cfg.Webhook.CleanupRetentionDays,
+		cfg.Webhook.CleanupEnabled,
+	)
+
+	// Start background jobs
+	retryScheduler.Start()
+	cleanupScheduler.Start()
+	logger.Info("Background jobs initialized")
+
 	// Initialize gRPC handlers
 	webhookHandler := grpcHandler.NewWebhookHandler(webhookUC, deliveryUC)
 	deliveryHandler := grpcHandler.NewDeliveryHandler(deliveryUC)
@@ -194,6 +215,11 @@ func main() {
 	if err := kafkaConsumer.Stop(); err != nil {
 		logger.Error(fmt.Sprintf("Error stopping Kafka consumer: %v", err))
 	}
+
+	// Stop background jobs
+	retryScheduler.Stop()
+	cleanupScheduler.Stop()
+	logger.Info("Background jobs stopped")
 
 	// Stop delivery pool
 	deliveryPool.Stop()
