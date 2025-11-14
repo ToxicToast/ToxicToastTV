@@ -31,6 +31,8 @@ type ItemDetailUseCase interface {
 	MoveItems(ctx context.Context, itemIDs []string, newLocationID string) ([]*domain.ItemDetail, error)
 	UpdateItemDetail(ctx context.Context, id, locationID string, articleNumber *string, purchasePrice float64, expiryDate *time.Time, hasDeposit, isFrozen bool) (*domain.ItemDetail, error)
 	DeleteItemDetail(ctx context.Context, id string) error
+	NotifyItemExpired(ctx context.Context, detail *domain.ItemDetail) error
+	NotifyItemExpiringSoon(ctx context.Context, detail *domain.ItemDetail) error
 }
 
 type itemDetailUseCase struct {
@@ -491,6 +493,52 @@ func (uc *itemDetailUseCase) DeleteItemDetail(ctx context.Context, id string) er
 		if err := uc.kafkaProducer.PublishFoodfolioDetailConsumed("foodfolio.detail.consumed", event); err != nil {
 			log.Printf("Warning: Failed to publish detail consumed event: %v", err)
 		}
+	}
+
+	return nil
+}
+
+// NotifyItemExpired publishes an event when an item has expired
+func (uc *itemDetailUseCase) NotifyItemExpired(ctx context.Context, detail *domain.ItemDetail) error {
+	if uc.kafkaProducer == nil {
+		return nil
+	}
+
+	event := kafka.FoodfolioDetailExpiredEvent{
+		DetailID:   detail.ID,
+		VariantID:  detail.ItemVariantID,
+		ExpiryDate: detail.ExpiryDate,
+		DetectedAt: time.Now(),
+	}
+
+	if err := uc.kafkaProducer.PublishFoodfolioDetailExpired("foodfolio.detail.expired", event); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// NotifyItemExpiringSoon publishes an event when an item is expiring soon
+func (uc *itemDetailUseCase) NotifyItemExpiringSoon(ctx context.Context, detail *domain.ItemDetail) error {
+	if uc.kafkaProducer == nil {
+		return nil
+	}
+
+	var daysLeft int
+	if detail.ExpiryDate != nil {
+		daysLeft = int(time.Until(*detail.ExpiryDate).Hours() / 24)
+	}
+
+	event := kafka.FoodfolioDetailExpiringSoonEvent{
+		DetailID:   detail.ID,
+		VariantID:  detail.ItemVariantID,
+		ExpiryDate: detail.ExpiryDate,
+		DaysLeft:   daysLeft,
+		DetectedAt: time.Now(),
+	}
+
+	if err := uc.kafkaProducer.PublishFoodfolioDetailExpiringSoon("foodfolio.detail.expiring.soon", event); err != nil {
+		return err
 	}
 
 	return nil

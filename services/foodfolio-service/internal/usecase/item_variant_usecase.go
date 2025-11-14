@@ -28,6 +28,8 @@ type ItemVariantUseCase interface {
 	GetCurrentStock(ctx context.Context, variantID string) (int, bool, bool, error)
 	UpdateItemVariant(ctx context.Context, id, variantName string, barcode *string, minSKU, maxSKU int, isNormallyFrozen bool) (*domain.ItemVariant, error)
 	DeleteItemVariant(ctx context.Context, id string) error
+	NotifyStockLow(ctx context.Context, variant *domain.ItemVariant, currentStock int) error
+	NotifyStockEmpty(ctx context.Context, variant *domain.ItemVariant) error
 }
 
 type itemVariantUseCase struct {
@@ -336,6 +338,48 @@ func (uc *itemVariantUseCase) DeleteItemVariant(ctx context.Context, id string) 
 		if err := uc.kafkaProducer.PublishFoodfolioVariantDeleted("foodfolio.variant.deleted", event); err != nil {
 			log.Printf("Warning: Failed to publish variant deleted event: %v", err)
 		}
+	}
+
+	return nil
+}
+
+// NotifyStockLow publishes an event when stock is below minimum threshold
+func (uc *itemVariantUseCase) NotifyStockLow(ctx context.Context, variant *domain.ItemVariant, currentStock int) error {
+	if uc.kafkaProducer == nil {
+		return nil
+	}
+
+	event := kafka.FoodfolioVariantStockLowEvent{
+		VariantID:    variant.ID,
+		ItemID:       variant.ItemID,
+		VariantName:  variant.VariantName,
+		CurrentStock: currentStock,
+		MinSKU:       variant.MinSKU,
+		DetectedAt:   time.Now(),
+	}
+
+	if err := uc.kafkaProducer.PublishFoodfolioVariantStockLow("foodfolio.variant.stock.low", event); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// NotifyStockEmpty publishes an event when stock is empty
+func (uc *itemVariantUseCase) NotifyStockEmpty(ctx context.Context, variant *domain.ItemVariant) error {
+	if uc.kafkaProducer == nil {
+		return nil
+	}
+
+	event := kafka.FoodfolioVariantStockEmptyEvent{
+		VariantID:   variant.ID,
+		ItemID:      variant.ItemID,
+		VariantName: variant.VariantName,
+		DetectedAt:  time.Now(),
+	}
+
+	if err := uc.kafkaProducer.PublishFoodfolioVariantStockEmpty("foodfolio.variant.stock.empty", event); err != nil {
+		return err
 	}
 
 	return nil

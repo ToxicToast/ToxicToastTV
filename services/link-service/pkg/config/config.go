@@ -1,6 +1,8 @@
 package config
 
 import (
+	"time"
+
 	sharedConfig "github.com/toxictoast/toxictoastgo/shared/config"
 )
 
@@ -21,6 +23,10 @@ type Config struct {
 
 	// Service-specific config
 	Redis RedisConfig
+
+	// Background Jobs
+	LinkExpirationEnabled  bool
+	LinkExpirationInterval time.Duration
 }
 
 // KafkaConfig extends shared Kafka config with service-specific topics
@@ -70,5 +76,9 @@ func Load() *Config {
 			DB:       sharedConfig.GetEnvAsInt("REDIS_DB", 0),
 			TTL:      sharedConfig.GetEnvAsInt("REDIS_TTL", 3600),
 		},
+
+		// Background Jobs
+		LinkExpirationEnabled:  sharedConfig.GetEnvAsBool("LINK_EXPIRATION_ENABLED", true),
+		LinkExpirationInterval: sharedConfig.GetEnvAsDuration("LINK_EXPIRATION_INTERVAL", "1h"),
 	}
 }

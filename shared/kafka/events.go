@@ -749,3 +749,12 @@ type TwitchbotCommandExecutedEvent struct {
 	Username    string    `json:"username"`
 	ExecutedAt  time.Time `json:"executed_at"`
 }
+
+// Blog Service Events
+type BlogPostScheduledPublishedEvent struct {
+	PostID      string     `json:"post_id"`
+	Title       string     `json:"title"`
+	Slug        string     `json:"slug"`
+	ScheduledAt *time.Time `json:"scheduled_at,omitempty"`
+	PublishedAt time.Time  `json:"published_at"`
+}

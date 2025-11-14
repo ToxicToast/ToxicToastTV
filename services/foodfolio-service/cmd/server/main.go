@@ -30,6 +30,9 @@ import (
 	// Use case layer
 	"toxictoast/services/foodfolio-service/internal/usecase"
 
+	// Scheduler layer
+	"toxictoast/services/foodfolio-service/internal/scheduler"
+
 	// Handler layer
 	grpcHandler "toxictoast/services/foodfolio-service/internal/handler/grpc"
 
@@ -141,6 +144,25 @@ func main() {
 	receiptUC := usecase.NewReceiptUseCase(receiptRepo, warehouseRepo, itemVariantRepo, itemDetailRepo, locationRepo, kafkaProducer)
 	log.Println("Use cases initialized")
 
+	// Initialize background job schedulers
+	itemExpirationScheduler := scheduler.NewItemExpirationScheduler(
+		itemDetailUC,
+		itemDetailRepo,
+		cfg.ItemExpirationInterval,
+		cfg.ItemExpirationEnabled,
+	)
+	stockLevelScheduler := scheduler.NewStockLevelScheduler(
+		itemVariantUC,
+		itemVariantRepo,
+		cfg.StockLevelInterval,
+		cfg.StockLevelEnabled,
+	)
+
+	// Start background jobs
+	itemExpirationScheduler.Start()
+	stockLevelScheduler.Start()
+	log.Printf("Background jobs initialized")
+
 	// Initialize gRPC handlers
 	log.Println("Initializing gRPC handlers...")
 	categoryHandler := grpcHandler.NewCategoryHandler(categoryUC)
@@ -206,6 +228,11 @@ func main() {
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// Stop background jobs
+	itemExpirationScheduler.Stop()
+	stockLevelScheduler.Stop()
+	log.Println("Background jobs stopped")
 
 	// Shutdown HTTP server
 	if err := httpServer.Shutdown(ctx); err != nil {

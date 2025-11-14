@@ -27,6 +27,7 @@ import (
 	grpcHandler "toxictoast/services/blog-service/internal/handler/grpc"
 	"toxictoast/services/blog-service/internal/repository"
 	"toxictoast/services/blog-service/internal/repository/entity"
+	"toxictoast/services/blog-service/internal/scheduler"
 	"toxictoast/services/blog-service/internal/usecase"
 	"toxictoast/services/blog-service/pkg/config"
 )
@@ -122,6 +123,18 @@ func main() {
 		log.Fatalf("Failed to initialize media use case: %v", err)
 	}
 
+	// Initialize background job schedulers
+	postPublisherScheduler := scheduler.NewPostPublisherScheduler(
+		postUseCase,
+		postRepo,
+		cfg.PostPublisherInterval,
+		cfg.PostPublisherEnabled,
+	)
+
+	// Start background jobs
+	postPublisherScheduler.Start()
+	log.Printf("Background jobs initialized")
+
 	// Initialize gRPC handlers
 	postHandler := grpcHandler.NewPostHandler(postUseCase, cfg.AuthEnabled)
 	categoryHandler := grpcHandler.NewCategoryHandler(categoryUseCase, cfg.AuthEnabled)
@@ -168,6 +181,10 @@ func main() {
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// Stop background jobs
+	postPublisherScheduler.Stop()
+	log.Println("Background jobs stopped")
 
 	// Shutdown HTTP server
 	if err := httpServer.Shutdown(ctx); err != nil {
