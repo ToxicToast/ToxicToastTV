@@ -498,7 +498,6 @@ services:
       BLIZZARD_REGION: eu
       CACHE_TTL: 3600
     ports:
-      - "79993:9090"
       - "80993:9090"
     depends_on:
       redpanda:
