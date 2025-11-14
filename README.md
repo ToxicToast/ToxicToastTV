@@ -356,9 +356,9 @@ go get -u ./...
 **All Services Implemented!** 🎉
 
 ### Service Enhancements
-- [ ] Warcraft: Implement full Blizzard OAuth2 integration
-- [ ] Warcraft: Add character equipment and stats endpoints
-- [ ] Warcraft: Add guild roster sync
+- [x] Warcraft: Implement full Blizzard OAuth2 integration
+- [x] Warcraft: Add character equipment and stats endpoints
+- [x] Warcraft: Add guild roster sync
 - [ ] All Services: Add Kafka event publishing
 - [ ] All Services: Add integration tests
 

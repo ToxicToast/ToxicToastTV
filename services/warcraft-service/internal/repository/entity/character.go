@@ -41,3 +41,27 @@ type CharacterDetails struct {
 func (CharacterDetails) TableName() string {
 	return "character_details"
 }
+
+type CharacterEquipment struct {
+	ID            string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	CharacterID   string    `gorm:"type:uuid;not null;unique;index"`
+	EquipmentJSON []byte    `gorm:"type:jsonb"`
+	CreatedAt     time.Time `gorm:"autoCreateTime"`
+	UpdatedAt     time.Time `gorm:"autoUpdateTime"`
+}
+
+func (CharacterEquipment) TableName() string {
+	return "character_equipment"
+}
+
+type CharacterStats struct {
+	ID          string    `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	CharacterID string    `gorm:"type:uuid;not null;unique;index"`
+	StatsJSON   []byte    `gorm:"type:jsonb"`
+	CreatedAt   time.Time `gorm:"autoCreateTime"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+}
+
+func (CharacterStats) TableName() string {
+	return "character_stats"
+}

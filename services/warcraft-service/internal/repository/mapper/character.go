@@ -134,3 +134,59 @@ func GuildToEntity(d *domain.Guild) *entity.Guild {
 		UpdatedAt:         d.UpdatedAt,
 	}
 }
+
+func CharacterEquipmentToDomain(e *entity.CharacterEquipment) *domain.CharacterEquipment {
+	if e == nil {
+		return nil
+	}
+
+	return &domain.CharacterEquipment{
+		ID:            e.ID,
+		CharacterID:   e.CharacterID,
+		EquipmentJSON: e.EquipmentJSON,
+		CreatedAt:     e.CreatedAt,
+		UpdatedAt:     e.UpdatedAt,
+	}
+}
+
+func CharacterEquipmentToEntity(d *domain.CharacterEquipment) *entity.CharacterEquipment {
+	if d == nil {
+		return nil
+	}
+
+	return &entity.CharacterEquipment{
+		ID:            d.ID,
+		CharacterID:   d.CharacterID,
+		EquipmentJSON: d.EquipmentJSON,
+		CreatedAt:     d.CreatedAt,
+		UpdatedAt:     d.UpdatedAt,
+	}
+}
+
+func CharacterStatsToDomain(e *entity.CharacterStats) *domain.CharacterStats {
+	if e == nil {
+		return nil
+	}
+
+	return &domain.CharacterStats{
+		ID:          e.ID,
+		CharacterID: e.CharacterID,
+		StatsJSON:   e.StatsJSON,
+		CreatedAt:   e.CreatedAt,
+		UpdatedAt:   e.UpdatedAt,
+	}
+}
+
+func CharacterStatsToEntity(d *domain.CharacterStats) *entity.CharacterStats {
+	if d == nil {
+		return nil
+	}
+
+	return &entity.CharacterStats{
+		ID:          d.ID,
+		CharacterID: d.CharacterID,
+		StatsJSON:   d.StatsJSON,
+		CreatedAt:   d.CreatedAt,
+		UpdatedAt:   d.UpdatedAt,
+	}
+}

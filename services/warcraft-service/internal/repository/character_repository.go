@@ -21,6 +21,18 @@ type CharacterDetailsRepository interface {
 	Delete(ctx context.Context, characterID string) error
 }
 
+type CharacterEquipmentRepository interface {
+	CreateOrUpdate(ctx context.Context, equipment *domain.CharacterEquipment) (*domain.CharacterEquipment, error)
+	FindByCharacterID(ctx context.Context, characterID string) (*domain.CharacterEquipment, error)
+	Delete(ctx context.Context, characterID string) error
+}
+
+type CharacterStatsRepository interface {
+	CreateOrUpdate(ctx context.Context, stats *domain.CharacterStats) (*domain.CharacterStats, error)
+	FindByCharacterID(ctx context.Context, characterID string) (*domain.CharacterStats, error)
+	Delete(ctx context.Context, characterID string) error
+}
+
 type GuildRepository interface {
 	Create(ctx context.Context, guild *domain.Guild) (*domain.Guild, error)
 	FindByID(ctx context.Context, id string) (*domain.Guild, error)
