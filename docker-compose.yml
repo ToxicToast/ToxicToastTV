@@ -449,10 +449,14 @@ services:
       DB_SSL_MODE: disable
       KAFKA_BROKERS: redpanda:29092
       KAFKA_GROUP_ID: twitchbot-service
-      TWITCH_CLIENT_ID: your_client_id_here
-      TWITCH_CLIENT_SECRET: your_client_secret_here
-      TWITCH_BOT_USERNAME: your_bot_username
-      TWITCH_BOT_OAUTH_TOKEN: oauth:your_token_here
+      TWITCH_CHANNEL: toxictoast
+      TWITCH_CLIENT_ID: nuqcxagchzgjkpdkx5nc2kzh4ikvoa
+      TWITCH_CLIENT_SECRET: eh19j3razt9yonbsn0lm6iojmtp9qu
+      TWITCH_ACCESS_TOKEN: 50b7g5umjvkx6xdrvkm0y9hz0ze8p4
+      TWITCH_REFRESH_TOKEN: 0fbtzzbud6flak2gmzl7qjzixs9qcyfj6kr31rcqmawa5n8bwi
+      TWITCH_BOT_USERNAME: codemechanicus
+      TWITCH_IRC_SERVER: irc.chat.twitch.tv
+      TWITCH_IRC_PORT: 6667
       MESSAGE_CLEANUP_ENABLED: "true"
       MESSAGE_CLEANUP_INTERVAL: 24h
       MESSAGE_CLEANUP_RETENTION_DAYS: 90
@@ -518,14 +522,14 @@ services:
       ENABLE_CORS: "true"
       RATE_LIMIT_RPS: 100
       RATE_LIMIT_BURST: 200
-      BLOG_SERVICE_URL: blog-service:11000
-      LINK_SERVICE_URL: link-service:11002
-      FOODFOLIO_SERVICE_URL: foodfolio-service:11001
-      NOTIFICATION_SERVICE_URL: notification-service:11003
-      SSE_SERVICE_URL: sse-service:11004
-      TWITCHBOT_SERVICE_URL: twitchbot-service:11006
-      WEBHOOK_SERVICE_URL: webhook-service:11005
-      WARCRAFT_SERVICE_URL: warcraft-service:11007
+      BLOG_SERVICE_URL: blog-service:9090
+      LINK_SERVICE_URL: link-service:9090
+      FOODFOLIO_SERVICE_URL: foodfolio-service:9090
+      NOTIFICATION_SERVICE_URL: notification-service:9090
+      SSE_SERVICE_URL: sse-service:9090
+      TWITCHBOT_SERVICE_URL: twitchbot-service:9090
+      WEBHOOK_SERVICE_URL: webhook-service:9090
+      WARCRAFT_SERVICE_URL: warcraft-service:9090
       KAFKA_BROKERS: redpanda:29092
     ports:
       - "10008:8080"
