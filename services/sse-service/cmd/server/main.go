@@ -164,7 +164,7 @@ func setupHTTPServer(cfg *config.Config, sseHandler *httpHandler.SSEHandler, rat
 		Addr:         ":" + cfg.Port,
 		Handler:      router,
 		ReadTimeout:  cfg.Server.ReadTimeout,
-		WriteTimeout: cfg.Server.WriteTimeout,
+		WriteTimeout: 0, // Disable WriteTimeout for SSE (persistent connections)
 		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 }
