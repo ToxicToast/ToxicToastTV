@@ -27,6 +27,7 @@ import (
 	grpcHandler "toxictoast/services/link-service/internal/handler/grpc"
 	"toxictoast/services/link-service/internal/repository/entity"
 	"toxictoast/services/link-service/internal/repository/impl"
+	"toxictoast/services/link-service/internal/scheduler"
 	"toxictoast/services/link-service/internal/usecase"
 	"toxictoast/services/link-service/pkg/config"
 )
@@ -110,6 +111,18 @@ func main() {
 	linkUseCase := usecase.NewLinkUseCase(linkRepo, kafkaProducer, cfg)
 	clickUseCase := usecase.NewClickUseCase(clickRepo, linkRepo, kafkaProducer)
 
+	// Initialize background job schedulers
+	linkExpirationScheduler := scheduler.NewLinkExpirationScheduler(
+		linkUseCase,
+		linkRepo,
+		cfg.LinkExpirationInterval,
+		cfg.LinkExpirationEnabled,
+	)
+
+	// Start background jobs
+	linkExpirationScheduler.Start()
+	log.Printf("Background jobs initialized")
+
 	// Initialize gRPC handler
 	linkHandler := grpcHandler.NewLinkHandler(linkUseCase, clickUseCase)
 
@@ -149,6 +162,10 @@ func main() {
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// Stop background jobs
+	linkExpirationScheduler.Stop()
+	log.Println("Background jobs stopped")
 
 	// Shutdown HTTP server
 	if err := httpServer.Shutdown(ctx); err != nil {

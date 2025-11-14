@@ -486,3 +486,8 @@ func (p *Producer) PublishTwitchbotCommandDeleted(topic string, event TwitchbotC
 func (p *Producer) PublishTwitchbotCommandExecuted(topic string, event TwitchbotCommandExecutedEvent) error {
 	return p.PublishEvent(topic, event.CommandID, event)
 }
+
+// Blog Service Publishers
+func (p *Producer) PublishBlogPostScheduledPublished(topic string, event BlogPostScheduledPublishedEvent) error {
+	return p.PublishEvent(topic, event.PostID, event)
+}

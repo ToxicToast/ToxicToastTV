@@ -1,6 +1,8 @@
 package config
 
 import (
+	"time"
+
 	sharedConfig "github.com/toxictoast/toxictoastgo/shared/config"
 )
 
@@ -20,6 +22,12 @@ type Config struct {
 
 	// Service-specific config
 	OCR OCRConfig
+
+	// Background Jobs
+	ItemExpirationEnabled   bool
+	ItemExpirationInterval  time.Duration
+	StockLevelEnabled       bool
+	StockLevelInterval      time.Duration
 }
 
 // KafkaConfig extends shared Kafka config with service-specific topics
@@ -68,5 +76,11 @@ func Load() *Config {
 			AllowedTypes: sharedConfig.GetEnvAsSlice("OCR_ALLOWED_TYPES", "image/jpeg,image/png,application/pdf"),
 			OCRProvider:  sharedConfig.GetEnv("OCR_PROVIDER", "tesseract"),
 		},
+
+		// Background Jobs
+		ItemExpirationEnabled:  sharedConfig.GetEnvAsBool("ITEM_EXPIRATION_ENABLED", true),
+		ItemExpirationInterval: sharedConfig.GetEnvAsDuration("ITEM_EXPIRATION_INTERVAL", "24h"),
+		StockLevelEnabled:      sharedConfig.GetEnvAsBool("STOCK_LEVEL_ENABLED", true),
+		StockLevelInterval:     sharedConfig.GetEnvAsDuration("STOCK_LEVEL_INTERVAL", "6h"),
 	}
 }

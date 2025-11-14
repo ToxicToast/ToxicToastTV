@@ -227,6 +227,16 @@ Individual items from a receipt.
 - Track current frozen state
 - Track opened dates for frozen items
 
+### 9. Background Jobs
+- **Item Expiration Scheduler**: Automatically checks for expired and expiring items (default: every 24h)
+  - Publishes `foodfolio.detail.expired` events for items past their expiry date
+  - Publishes `foodfolio.detail.expiring.soon` events for items expiring within 7 days
+- **Stock Level Scheduler**: Monitors stock levels for all variants (default: every 6h)
+  - Publishes `foodfolio.variant.stock.low` events when stock falls below MinSKU
+  - Publishes `foodfolio.variant.stock.empty` events when stock reaches zero
+- Both schedulers can be enabled/disabled via environment variables
+- Configurable check intervals (e.g., `24h`, `6h`, `30m`)
+
 ## Configuration
 
 ### Environment Variables
@@ -268,6 +278,12 @@ OCR_STORAGE_PATH=./receipts
 OCR_MAX_SIZE=10485760       # 10MB
 OCR_ALLOWED_TYPES=image/jpeg,image/png,application/pdf
 OCR_PROVIDER=tesseract
+
+# Background Jobs Configuration
+ITEM_EXPIRATION_ENABLED=true     # Enable item expiration checker
+ITEM_EXPIRATION_INTERVAL=24h     # How often to check for expired items
+STOCK_LEVEL_ENABLED=true         # Enable stock level monitoring
+STOCK_LEVEL_INTERVAL=6h          # How often to check stock levels
 ```
 
 ## Event Publishing

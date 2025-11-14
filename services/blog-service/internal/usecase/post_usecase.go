@@ -23,6 +23,7 @@ type PostUseCase interface {
 	ListPosts(ctx context.Context, filters repository.PostFilters) ([]domain.Post, int64, error)
 	PublishPost(ctx context.Context, id string) (*domain.Post, error)
 	IncrementViewCount(ctx context.Context, id string) error
+	PublishScheduledPost(ctx context.Context, post *domain.Post) error
 }
 
 type CreatePostInput struct {
@@ -329,6 +330,35 @@ func (uc *postUseCase) PublishPost(ctx context.Context, id string) (*domain.Post
 
 func (uc *postUseCase) IncrementViewCount(ctx context.Context, id string) error {
 	return uc.postRepo.IncrementViewCount(ctx, id)
+}
+
+// PublishScheduledPost publishes a post that was scheduled for publishing
+func (uc *postUseCase) PublishScheduledPost(ctx context.Context, post *domain.Post) error {
+	// Change status to published
+	post.Status = domain.PostStatusPublished
+	post.UpdatedAt = time.Now()
+
+	// Update in database
+	if err := uc.postRepo.Update(ctx, post); err != nil {
+		return fmt.Errorf("failed to publish scheduled post: %w", err)
+	}
+
+	// Publish Kafka event
+	if uc.kafkaProducer != nil {
+		event := kafka.BlogPostScheduledPublishedEvent{
+			PostID:      post.ID,
+			Title:       post.Title,
+			Slug:        post.Slug,
+			ScheduledAt: post.PublishedAt,
+			PublishedAt: time.Now(),
+		}
+		if err := uc.kafkaProducer.PublishBlogPostScheduledPublished("blog.post.scheduled.published", event); err != nil {
+			// Log error but don't fail the operation
+			fmt.Printf("Warning: Failed to publish scheduled post event: %v\n", err)
+		}
+	}
+
+	return nil
 }
 
 // Helper methods

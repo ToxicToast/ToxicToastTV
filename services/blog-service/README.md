@@ -11,6 +11,7 @@ A modern, scalable blog CMS backend built with Go, gRPC, and Clean Architecture.
 - **Media Management** - File upload with streaming, automatic thumbnail generation, and image resizing
 - **Authentication** - Optional Keycloak JWT authentication with role-based access control
 - **Event Publishing** - Kafka/Redpanda integration for event-driven architecture
+- **Background Jobs** - Automatic scheduled post publishing (default: every 5 minutes)
 
 ### Technical Highlights
 - **gRPC API** - High-performance RPC with Protocol Buffers
@@ -151,6 +152,10 @@ KEYCLOAK_URL=http://localhost:8080
 KEYCLOAK_REALM=your-realm
 KEYCLOAK_CLIENT_ID=blog-service
 KEYCLOAK_CLIENT_SECRET=your-secret
+
+# Background Jobs Configuration
+POST_PUBLISHER_ENABLED=true        # Enable scheduled post publisher
+POST_PUBLISHER_INTERVAL=5m         # How often to check for scheduled posts
 ```
 
 ## 🔌 API Endpoints

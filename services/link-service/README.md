@@ -16,6 +16,8 @@ A production-ready URL shortener service built with Go, gRPC, and Clean Architec
 - **gRPC API**: High-performance API with Protocol Buffers
 - **Health Checks**: Built-in health check endpoints
 - **Docker Support**: Easy deployment with Docker and Docker Compose
+- **Background Jobs**: Automatic expiration checking and link deactivation
+- **Event Publishing**: Kafka/Redpanda events for all link operations
 
 ## Architecture
 
@@ -39,6 +41,8 @@ link-service/
 │   ├── usecase/            # Business logic
 │   │   ├── link_usecase.go
 │   │   └── click_usecase.go
+│   ├── scheduler/          # Background jobs
+│   │   └── link_expiration.go
 │   └── handler/            # gRPC handlers
 │       ├── grpc/
 │       │   └── link_handler.go
@@ -308,6 +312,19 @@ All configuration is done via environment variables. See `.env.example` for all 
 | `DB_NAME` | Database name | `link-service` |
 | `REDIS_ENABLED` | Enable Redis caching | `false` |
 | `AUTH_ENABLED` | Enable authentication | `false` |
+| `LINK_EXPIRATION_ENABLED` | Enable link expiration checker | `true` |
+| `LINK_EXPIRATION_INTERVAL` | Expiration check interval | `1h` |
+
+### Background Jobs
+
+The service includes a background job scheduler that automatically checks for and deactivates expired links:
+
+- **Link Expiration Scheduler**: Runs periodically (default: every hour) to check for links that have passed their expiration date
+- **Automatic Deactivation**: When an expired link is found, it is automatically deactivated and a `link.expired` event is published to Kafka
+- **Configurable Interval**: The check interval can be adjusted via `LINK_EXPIRATION_INTERVAL` (supports formats like `30m`, `1h`, `2h`)
+- **Graceful Operation**: The scheduler starts automatically with the service and stops gracefully during shutdown
+
+To disable the expiration checker, set `LINK_EXPIRATION_ENABLED=false` in your environment configuration.
 
 ## Development
 

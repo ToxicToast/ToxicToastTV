@@ -1,6 +1,8 @@
 package config
 
 import (
+	"time"
+
 	sharedConfig "github.com/toxictoast/toxictoastgo/shared/config"
 )
 
@@ -20,6 +22,10 @@ type Config struct {
 
 	// Service-specific config
 	Media MediaConfig
+
+	// Background Jobs
+	PostPublisherEnabled  bool
+	PostPublisherInterval time.Duration
 }
 
 // KafkaConfig extends shared Kafka config with service-specific topics
@@ -74,5 +80,9 @@ func Load() *Config {
 			MaxImageWidth:        sharedConfig.GetEnvAsInt("MEDIA_MAX_IMAGE_WIDTH", 3840),
 			MaxImageHeight:       sharedConfig.GetEnvAsInt("MEDIA_MAX_IMAGE_HEIGHT", 2160),
 		},
+
+		// Background Jobs
+		PostPublisherEnabled:  sharedConfig.GetEnvAsBool("POST_PUBLISHER_ENABLED", true),
+		PostPublisherInterval: sharedConfig.GetEnvAsDuration("POST_PUBLISHER_INTERVAL", "5m"),
 	}
 }

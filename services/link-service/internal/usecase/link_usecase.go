@@ -31,6 +31,7 @@ type LinkUseCase interface {
 	ListLinks(ctx context.Context, filters repository.LinkFilters) ([]domain.Link, int64, error)
 	IncrementClick(ctx context.Context, shortCode string) (int, error)
 	GetLinkStats(ctx context.Context, linkID string) (*repository.LinkStats, error)
+	DeactivateExpiredLink(ctx context.Context, link *domain.Link) error
 }
 
 // CreateLinkInput defines the input for creating a new link
@@ -367,6 +368,38 @@ func validateURL(rawURL string) error {
 
 	if parsedURL.Host == "" {
 		return fmt.Errorf("URL must have a valid host")
+	}
+
+	return nil
+}
+
+// DeactivateExpiredLink deactivates an expired link and publishes the appropriate event
+func (uc *linkUseCase) DeactivateExpiredLink(ctx context.Context, link *domain.Link) error {
+	// Mark as inactive
+	link.IsActive = false
+	link.UpdatedAt = time.Now()
+
+	// Save to database
+	if err := uc.linkRepo.Update(ctx, link); err != nil {
+		return fmt.Errorf("failed to deactivate expired link: %w", err)
+	}
+
+	// Publish link expired event
+	if uc.kafkaProducer != nil {
+		var expiresAt time.Time
+		if link.ExpiresAt != nil {
+			expiresAt = *link.ExpiresAt
+		}
+
+		event := kafka.LinkExpiredEvent{
+			LinkID:    link.ID,
+			ShortCode: link.ShortCode,
+			ExpiresAt: expiresAt,
+		}
+		topic := "link.expired"
+		if err := uc.kafkaProducer.PublishLinkExpired(topic, event); err != nil {
+			log.Printf("Warning: Failed to publish link expired event: %v", err)
+		}
 	}
 
 	return nil
