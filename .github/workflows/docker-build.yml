@@ -32,6 +32,7 @@ jobs:
       notification-service: ${{ steps.filter.outputs.notification-service }}
       sse-service: ${{ steps.filter.outputs.sse-service }}
       webhook-service: ${{ steps.filter.outputs.webhook-service }}
+      warcraft-service: ${{ steps.filter.outputs.warcraft-service }}
       gateway-service: ${{ steps.filter.outputs.gateway-service }}
       shared: ${{ steps.filter.outputs.shared }}
     steps:
@@ -61,6 +62,9 @@ jobs:
               - 'shared/**'
             webhook-service:
               - 'services/webhook-service/**'
+              - 'shared/**'
+            warcraft-service:
+              - 'services/warcraft-service/**'
               - 'shared/**'
             gateway-service:
               - 'services/gateway-service/**'
@@ -384,6 +388,52 @@ jobs:
         with:
           context: .
           file: ./services/webhook-service/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-warcraft-service:
+    name: Build Warcraft Service
+    needs: detect-changes
+    if: needs.detect-changes.outputs.warcraft-service == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/warcraft-service
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./services/warcraft-service/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
