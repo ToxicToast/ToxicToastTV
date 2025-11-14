@@ -64,7 +64,7 @@ proto-install: ## Install protoc dependencies
 proto-gen: ## Generate gRPC code from proto files
 	protoc --go_out=. --go_opt=paths=source_relative \
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
-		api/proto/webhook/v1/*.proto
+		api/proto/webhook.proto
 
 proto-clean: ## Clean generated proto files
 	find api/proto -name "*.pb.go" -delete
