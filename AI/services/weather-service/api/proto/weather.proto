@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package weather;
+
+option go_package = "toxictoast/services/weather-service/api/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// WeatherService provides weather information
+service WeatherService {
+  // GetCurrentWeather returns current weather for a location
+  rpc GetCurrentWeather(WeatherRequest) returns (CurrentWeatherResponse);
+
+  // GetForecast returns weather forecast for a location
+  rpc GetForecast(ForecastRequest) returns (ForecastResponse);
+
+  // Health check
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// WeatherRequest for current weather
+message WeatherRequest {
+  double latitude = 1;
+  double longitude = 2;
+  string timezone = 3; // e.g. "Europe/Berlin" (optional, defaults to UTC)
+}
+
+// ForecastRequest for weather forecast
+message ForecastRequest {
+  double latitude = 1;
+  double longitude = 2;
+  int32 days = 3; // Number of days to forecast (1-16)
+  string timezone = 4; // e.g. "Europe/Berlin" (optional, defaults to UTC)
+}
+
+// CurrentWeatherResponse
+message CurrentWeatherResponse {
+  double latitude = 1;
+  double longitude = 2;
+  google.protobuf.Timestamp time = 3;
+  double temperature = 4; // Celsius
+  double apparent_temperature = 5; // Feels like temperature
+  int32 weather_code = 6; // WMO Weather interpretation code
+  string weather_description = 7; // Human-readable description
+  double wind_speed = 8; // km/h
+  int32 wind_direction = 9; // degrees
+  int32 humidity = 10; // percentage
+  double precipitation = 11; // mm
+  int32 cloud_cover = 12; // percentage
+  double pressure = 13; // hPa
+  double visibility = 14; // meters
+}
+
+// ForecastResponse
+message ForecastResponse {
+  double latitude = 1;
+  double longitude = 2;
+  repeated DailyForecast daily = 3;
+}
+
+// DailyForecast for one day
+message DailyForecast {
+  google.protobuf.Timestamp date = 1;
+  double temperature_max = 2; // Celsius
+  double temperature_min = 3; // Celsius
+  int32 weather_code = 4; // WMO Weather interpretation code
+  string weather_description = 5; // Human-readable description
+  double precipitation_sum = 6; // mm
+  double precipitation_probability = 7; // percentage
+  double wind_speed_max = 8; // km/h
+  google.protobuf.Timestamp sunrise = 9;
+  google.protobuf.Timestamp sunset = 10;
+}
+
+// Health check messages
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  string status = 1;
+  string version = 2;
+}
