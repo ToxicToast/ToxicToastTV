@@ -92,6 +92,35 @@ Authentication and authorization service providing JWT-based auth with Role-Base
 - Role-to-permission mapping
 - Permission validation in JWT claims
 
+### Admin UI
+**Status:** ✅ Production Ready
+**Location:** `web/admin-ui/`
+
+Web-based administration panel for user and authentication management.
+
+**Features:**
+- User Management (List, View, Activate/Deactivate users)
+- Role Management (Create, Update, Delete roles)
+- Permission Management (Create, Update, Delete permissions)
+- RBAC Administration (Assign roles to users, permissions to roles)
+- JWT Token Viewer & Decoder
+- Auth Testing Dashboard (Test public, protected, and admin endpoints)
+- Modern responsive UI with no build system required
+
+**Quick Start:**
+```bash
+# Serve with any HTTP server
+cd web/admin-ui
+python -m http.server 8000
+# Open http://localhost:8000 in browser
+```
+
+**Default Test Credentials:**
+- Create account via Register button
+- First user can be promoted to admin via gRPC/API
+
+**API Endpoint:** Connects to Gateway Service at `http://localhost:8080/api`
+
 ### Blog Service
 **Status:** ✅ Production Ready
 

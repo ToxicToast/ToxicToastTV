@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ToxicToast Admin - User & Auth Management</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">ToxicToast Admin</div>
+            <div class="nav-menu">
+                <button class="nav-link active" data-view="dashboard">Dashboard</button>
+                <button class="nav-link" data-view="users">Users</button>
+                <button class="nav-link" data-view="roles">Roles</button>
+                <button class="nav-link" data-view="permissions">Permissions</button>
+                <button class="nav-link" data-view="test-auth">Test Auth</button>
+            </div>
+            <div class="nav-user">
+                <span id="username-display">Not logged in</span>
+                <button id="logout-btn" class="btn btn-danger" style="display:none;">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Login Screen -->
+    <div id="login-screen" class="container">
+        <div class="login-card">
+            <h2>Login to Admin Panel</h2>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" required placeholder="admin@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required placeholder="Password">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Login</button>
+            </form>
+            <div id="login-error" class="error-message" style="display:none;"></div>
+
+            <div class="divider">or</div>
+
+            <button id="show-register-btn" class="btn btn-secondary btn-block">Create New Account</button>
+        </div>
+
+        <div id="register-card" class="login-card" style="display:none;">
+            <h2>Register New User</h2>
+            <form id="register-form">
+                <div class="form-group">
+                    <label for="register-email">Email</label>
+                    <input type="email" id="register-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-username">Username</label>
+                    <input type="text" id="register-username" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-password">Password</label>
+                    <input type="password" id="register-password" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-firstname">First Name</label>
+                    <input type="text" id="register-firstname">
+                </div>
+                <div class="form-group">
+                    <label for="register-lastname">Last Name</label>
+                    <input type="text" id="register-lastname">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Register</button>
+                <button type="button" id="back-to-login-btn" class="btn btn-secondary btn-block">Back to Login</button>
+            </form>
+            <div id="register-error" class="error-message" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div id="main-content" class="container" style="display:none;">
+
+        <!-- Dashboard View -->
+        <div id="dashboard-view" class="view active">
+            <h1>Dashboard</h1>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3 id="total-users">0</h3>
+                    <p>Total Users</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="total-roles">0</h3>
+                    <p>Total Roles</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="total-permissions">0</h3>
+                    <p>Total Permissions</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="my-roles">0</h3>
+                    <p>My Roles</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>My Profile</h2>
+                <div id="profile-info">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Users View -->
+        <div id="users-view" class="view">
+            <h1>User Management</h1>
+            <button class="btn btn-primary" id="refresh-users-btn">Refresh</button>
+            <div id="users-table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Email</th>
+                            <th>Username</th>
+                            <th>Status</th>
+                            <th>Created At</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table-body">
+                        <tr><td colspan="6">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Roles View -->
+        <div id="roles-view" class="view">
+            <h1>Role Management</h1>
+            <button class="btn btn-primary" id="create-role-btn">Create Role</button>
+            <button class="btn btn-secondary" id="refresh-roles-btn">Refresh</button>
+            <div id="roles-list-container">Loading...</div>
+        </div>
+
+        <!-- Permissions View -->
+        <div id="permissions-view" class="view">
+            <h1>Permission Management</h1>
+            <button class="btn btn-primary" id="create-permission-btn">Create Permission</button>
+            <button class="btn btn-secondary" id="refresh-permissions-btn">Refresh</button>
+            <div id="permissions-list-container">Loading...</div>
+        </div>
+
+        <!-- Test Auth View -->
+        <div id="test-auth-view" class="view">
+            <h1>Test Authentication</h1>
+            <div class="card">
+                <h2>JWT Token Viewer</h2>
+                <div class="form-group">
+                    <label>Access Token</label>
+                    <textarea id="access-token-display" rows="3" readonly></textarea>
+                    <button class="btn btn-secondary" id="copy-token-btn">Copy Token</button>
+                </div>
+                <div class="form-group">
+                    <label>Decoded Claims</label>
+                    <pre id="decoded-claims"></pre>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Test Endpoints</h2>
+                <button class="btn btn-primary" id="test-public-btn">Test Public Endpoint</button>
+                <button class="btn btn-primary" id="test-protected-btn">Test Protected Endpoint</button>
+                <button class="btn btn-primary" id="test-admin-btn">Test Admin Endpoint</button>
+                <div id="test-results" class="test-results"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="modal-overlay" style="display:none;">
+        <div id="modal-content" class="modal-content"></div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="assets/js/api.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/users.js"></script>
+    <script src="assets/js/roles.js"></script>
+    <script src="assets/js/permissions.js"></script>
+    <script src="assets/js/app.js"></script>
+</body>
+</html>
