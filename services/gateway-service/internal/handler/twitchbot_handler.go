@@ -7,6 +7,8 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
+	"github.com/toxictoast/toxictoastgo/shared/middleware"
 	pb "toxictoast/services/twitchbot-service/api/proto"
 	"google.golang.org/grpc"
 )
@@ -35,64 +37,74 @@ func NewTwitchBotHandler(conn *grpc.ClientConn) *TwitchBotHandler {
 	}
 }
 
+// getContextWithAuth extracts JWT claims from HTTP request and injects them into gRPC metadata
+func (h *TwitchBotHandler) getContextWithAuth(r *http.Request) context.Context {
+	ctx := r.Context()
+	claims := middleware.GetClaims(ctx)
+	if claims != nil {
+		ctx = sharedgrpc.InjectClaimsIntoMetadata(ctx, claims)
+	}
+	return ctx
+}
+
 // RegisterRoutes registers all twitchbot routes
-func (h *TwitchBotHandler) RegisterRoutes(router *mux.Router) {
-	// Stream routes
+func (h *TwitchBotHandler) RegisterRoutes(router *mux.Router, authMiddleware *middleware.AuthMiddleware) {
+	// Stream routes (read-public, write-protected)
 	router.HandleFunc("/streams", h.ListStreams).Methods("GET")
-	router.HandleFunc("/streams", h.CreateStream).Methods("POST")
+	router.Handle("/streams", authMiddleware.Authenticate(http.HandlerFunc(h.CreateStream))).Methods("POST")
 	router.HandleFunc("/streams/active", h.GetActiveStream).Methods("GET")
 	router.HandleFunc("/streams/{id}", h.GetStream).Methods("GET")
-	router.HandleFunc("/streams/{id}", h.UpdateStream).Methods("PUT")
-	router.HandleFunc("/streams/{id}", h.DeleteStream).Methods("DELETE")
-	router.HandleFunc("/streams/{id}/end", h.EndStream).Methods("POST")
+	router.Handle("/streams/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateStream))).Methods("PUT")
+	router.Handle("/streams/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteStream))).Methods("DELETE")
+	router.Handle("/streams/{id}/end", authMiddleware.Authenticate(http.HandlerFunc(h.EndStream))).Methods("POST")
 	router.HandleFunc("/streams/{id}/stats", h.GetStreamStats).Methods("GET")
 
-	// Message routes
+	// Message routes (read-public, write-protected)
 	router.HandleFunc("/messages", h.ListMessages).Methods("GET")
-	router.HandleFunc("/messages", h.CreateMessage).Methods("POST")
+	router.Handle("/messages", authMiddleware.Authenticate(http.HandlerFunc(h.CreateMessage))).Methods("POST")
 	router.HandleFunc("/messages/search", h.SearchMessages).Methods("GET")
 	router.HandleFunc("/messages/stats", h.GetMessageStats).Methods("GET")
 	router.HandleFunc("/messages/{id}", h.GetMessage).Methods("GET")
-	router.HandleFunc("/messages/{id}", h.DeleteMessage).Methods("DELETE")
+	router.Handle("/messages/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteMessage))).Methods("DELETE")
 
-	// Viewer routes
+	// Viewer routes (read-public, write-protected)
 	router.HandleFunc("/viewers", h.ListViewers).Methods("GET")
-	router.HandleFunc("/viewers", h.CreateViewer).Methods("POST")
+	router.Handle("/viewers", authMiddleware.Authenticate(http.HandlerFunc(h.CreateViewer))).Methods("POST")
 	router.HandleFunc("/viewers/twitch/{twitch_id}", h.GetViewerByTwitchId).Methods("GET")
 	router.HandleFunc("/viewers/{id}", h.GetViewer).Methods("GET")
-	router.HandleFunc("/viewers/{id}", h.UpdateViewer).Methods("PUT")
-	router.HandleFunc("/viewers/{id}", h.DeleteViewer).Methods("DELETE")
+	router.Handle("/viewers/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateViewer))).Methods("PUT")
+	router.Handle("/viewers/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteViewer))).Methods("DELETE")
 	router.HandleFunc("/viewers/{id}/stats", h.GetViewerStats).Methods("GET")
 
-	// Clip routes
+	// Clip routes (read-public, write-protected)
 	router.HandleFunc("/clips", h.ListClips).Methods("GET")
-	router.HandleFunc("/clips", h.CreateClip).Methods("POST")
+	router.Handle("/clips", authMiddleware.Authenticate(http.HandlerFunc(h.CreateClip))).Methods("POST")
 	router.HandleFunc("/clips/twitch/{twitch_clip_id}", h.GetClipByTwitchId).Methods("GET")
 	router.HandleFunc("/clips/{id}", h.GetClip).Methods("GET")
-	router.HandleFunc("/clips/{id}", h.UpdateClip).Methods("PUT")
-	router.HandleFunc("/clips/{id}", h.DeleteClip).Methods("DELETE")
+	router.Handle("/clips/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateClip))).Methods("PUT")
+	router.Handle("/clips/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteClip))).Methods("DELETE")
 
-	// Command routes
+	// Command routes (read-public, write-protected)
 	router.HandleFunc("/commands", h.ListCommands).Methods("GET")
-	router.HandleFunc("/commands", h.CreateCommand).Methods("POST")
+	router.Handle("/commands", authMiddleware.Authenticate(http.HandlerFunc(h.CreateCommand))).Methods("POST")
 	router.HandleFunc("/commands/name/{name}", h.GetCommandByName).Methods("GET")
 	router.HandleFunc("/commands/{id}", h.GetCommand).Methods("GET")
-	router.HandleFunc("/commands/{id}", h.UpdateCommand).Methods("PUT")
-	router.HandleFunc("/commands/{id}", h.DeleteCommand).Methods("DELETE")
-	router.HandleFunc("/commands/{name}/execute", h.ExecuteCommand).Methods("POST")
+	router.Handle("/commands/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateCommand))).Methods("PUT")
+	router.Handle("/commands/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteCommand))).Methods("DELETE")
+	router.Handle("/commands/{name}/execute", authMiddleware.Authenticate(http.HandlerFunc(h.ExecuteCommand))).Methods("POST")
 
-	// Bot management routes
+	// Bot management routes (read-public, write-protected)
 	router.HandleFunc("/bot/status", h.GetBotStatus).Methods("GET")
 	router.HandleFunc("/bot/channels", h.ListChannels).Methods("GET")
-	router.HandleFunc("/bot/channels/join", h.JoinChannel).Methods("POST")
-	router.HandleFunc("/bot/channels/leave", h.LeaveChannel).Methods("POST")
-	router.HandleFunc("/bot/send", h.SendMessage).Methods("POST")
+	router.Handle("/bot/channels/join", authMiddleware.Authenticate(http.HandlerFunc(h.JoinChannel))).Methods("POST")
+	router.Handle("/bot/channels/leave", authMiddleware.Authenticate(http.HandlerFunc(h.LeaveChannel))).Methods("POST")
+	router.Handle("/bot/send", authMiddleware.Authenticate(http.HandlerFunc(h.SendMessage))).Methods("POST")
 
-	// Channel viewer routes
+	// Channel viewer routes (read-public, write-protected)
 	router.HandleFunc("/channel-viewers", h.ListChannelViewers).Methods("GET")
 	router.HandleFunc("/channel-viewers/count", h.CountChannelViewers).Methods("GET")
 	router.HandleFunc("/channel-viewers/{channel}/{twitch_id}", h.GetChannelViewer).Methods("GET")
-	router.HandleFunc("/channel-viewers/{channel}/{twitch_id}", h.RemoveChannelViewer).Methods("DELETE")
+	router.Handle("/channel-viewers/{channel}/{twitch_id}", authMiddleware.Authenticate(http.HandlerFunc(h.RemoveChannelViewer))).Methods("DELETE")
 }
 
 // Stream handlers
@@ -113,7 +125,7 @@ func (h *TwitchBotHandler) ListStreams(w http.ResponseWriter, r *http.Request) {
 		req.GameName = gameName
 	}
 
-	resp, err := h.streamClient.ListStreams(context.Background(), req)
+	resp, err := h.streamClient.ListStreams(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list streams: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -130,7 +142,7 @@ func (h *TwitchBotHandler) CreateStream(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	resp, err := h.streamClient.CreateStream(context.Background(), &req)
+	resp, err := h.streamClient.CreateStream(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create stream: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -144,7 +156,7 @@ func (h *TwitchBotHandler) CreateStream(w http.ResponseWriter, r *http.Request) 
 func (h *TwitchBotHandler) GetStream(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.streamClient.GetStream(context.Background(), req)
+	resp, err := h.streamClient.GetStream(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get stream: "+err.Error(), http.StatusNotFound)
 		return
@@ -162,7 +174,7 @@ func (h *TwitchBotHandler) UpdateStream(w http.ResponseWriter, r *http.Request) 
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.streamClient.UpdateStream(context.Background(), &req)
+	resp, err := h.streamClient.UpdateStream(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update stream: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -174,7 +186,7 @@ func (h *TwitchBotHandler) UpdateStream(w http.ResponseWriter, r *http.Request) 
 func (h *TwitchBotHandler) DeleteStream(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.streamClient.DeleteStream(context.Background(), req)
+	resp, err := h.streamClient.DeleteStream(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete stream: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -186,7 +198,7 @@ func (h *TwitchBotHandler) DeleteStream(w http.ResponseWriter, r *http.Request) 
 func (h *TwitchBotHandler) EndStream(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.EndStreamRequest{Id: vars["id"]}
-	resp, err := h.streamClient.EndStream(context.Background(), req)
+	resp, err := h.streamClient.EndStream(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to end stream: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -197,7 +209,7 @@ func (h *TwitchBotHandler) EndStream(w http.ResponseWriter, r *http.Request) {
 
 func (h *TwitchBotHandler) GetActiveStream(w http.ResponseWriter, r *http.Request) {
 	req := &pb.GetActiveStreamRequest{}
-	resp, err := h.streamClient.GetActiveStream(context.Background(), req)
+	resp, err := h.streamClient.GetActiveStream(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get active stream: "+err.Error(), http.StatusNotFound)
 		return
@@ -209,7 +221,7 @@ func (h *TwitchBotHandler) GetActiveStream(w http.ResponseWriter, r *http.Reques
 func (h *TwitchBotHandler) GetStreamStats(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.streamClient.GetStreamStats(context.Background(), req)
+	resp, err := h.streamClient.GetStreamStats(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get stream stats: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -238,7 +250,7 @@ func (h *TwitchBotHandler) ListMessages(w http.ResponseWriter, r *http.Request) 
 		req.UserId = userID
 	}
 
-	resp, err := h.messageClient.ListMessages(context.Background(), req)
+	resp, err := h.messageClient.ListMessages(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list messages: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -255,7 +267,7 @@ func (h *TwitchBotHandler) CreateMessage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	resp, err := h.messageClient.CreateMessage(context.Background(), &req)
+	resp, err := h.messageClient.CreateMessage(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create message: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -269,7 +281,7 @@ func (h *TwitchBotHandler) CreateMessage(w http.ResponseWriter, r *http.Request)
 func (h *TwitchBotHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.messageClient.GetMessage(context.Background(), req)
+	resp, err := h.messageClient.GetMessage(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get message: "+err.Error(), http.StatusNotFound)
 		return
@@ -281,7 +293,7 @@ func (h *TwitchBotHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 func (h *TwitchBotHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.messageClient.DeleteMessage(context.Background(), req)
+	resp, err := h.messageClient.DeleteMessage(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete message: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -310,7 +322,7 @@ func (h *TwitchBotHandler) SearchMessages(w http.ResponseWriter, r *http.Request
 		req.UserId = userID
 	}
 
-	resp, err := h.messageClient.SearchMessages(context.Background(), req)
+	resp, err := h.messageClient.SearchMessages(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to search messages: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -326,7 +338,7 @@ func (h *TwitchBotHandler) GetMessageStats(w http.ResponseWriter, r *http.Reques
 		req.StreamId = streamID
 	}
 
-	resp, err := h.messageClient.GetMessageStats(context.Background(), req)
+	resp, err := h.messageClient.GetMessageStats(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get message stats: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -339,7 +351,7 @@ func (h *TwitchBotHandler) GetMessageStats(w http.ResponseWriter, r *http.Reques
 // Bot management handlers
 func (h *TwitchBotHandler) GetBotStatus(w http.ResponseWriter, r *http.Request) {
 	req := &pb.GetBotStatusRequest{}
-	resp, err := h.botClient.GetBotStatus(context.Background(), req)
+	resp, err := h.botClient.GetBotStatus(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get bot status: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -350,7 +362,7 @@ func (h *TwitchBotHandler) GetBotStatus(w http.ResponseWriter, r *http.Request) 
 
 func (h *TwitchBotHandler) ListChannels(w http.ResponseWriter, r *http.Request) {
 	req := &pb.ListChannelsRequest{}
-	resp, err := h.botClient.ListChannels(context.Background(), req)
+	resp, err := h.botClient.ListChannels(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list channels: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -369,7 +381,7 @@ func (h *TwitchBotHandler) JoinChannel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := &pb.JoinChannelRequest{Channel: reqBody.Channel}
-	resp, err := h.botClient.JoinChannel(context.Background(), req)
+	resp, err := h.botClient.JoinChannel(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to join channel: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -389,7 +401,7 @@ func (h *TwitchBotHandler) LeaveChannel(w http.ResponseWriter, r *http.Request) 
 	}
 
 	req := &pb.LeaveChannelRequest{Channel: reqBody.Channel}
-	resp, err := h.botClient.LeaveChannel(context.Background(), req)
+	resp, err := h.botClient.LeaveChannel(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to leave channel: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -406,7 +418,7 @@ func (h *TwitchBotHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.botClient.SendMessage(context.Background(), &req)
+	resp, err := h.botClient.SendMessage(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to send message: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -429,7 +441,7 @@ func (h *TwitchBotHandler) ListViewers(w http.ResponseWriter, r *http.Request) {
 		Offset: int32(offset),
 	}
 
-	resp, err := h.viewerClient.ListViewers(context.Background(), req)
+	resp, err := h.viewerClient.ListViewers(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list viewers: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -446,7 +458,7 @@ func (h *TwitchBotHandler) CreateViewer(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	resp, err := h.viewerClient.CreateViewer(context.Background(), &req)
+	resp, err := h.viewerClient.CreateViewer(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create viewer: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -460,7 +472,7 @@ func (h *TwitchBotHandler) CreateViewer(w http.ResponseWriter, r *http.Request) 
 func (h *TwitchBotHandler) GetViewer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.viewerClient.GetViewer(context.Background(), req)
+	resp, err := h.viewerClient.GetViewer(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get viewer: "+err.Error(), http.StatusNotFound)
 		return
@@ -478,7 +490,7 @@ func (h *TwitchBotHandler) UpdateViewer(w http.ResponseWriter, r *http.Request) 
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.viewerClient.UpdateViewer(context.Background(), &req)
+	resp, err := h.viewerClient.UpdateViewer(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update viewer: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -490,7 +502,7 @@ func (h *TwitchBotHandler) UpdateViewer(w http.ResponseWriter, r *http.Request) 
 func (h *TwitchBotHandler) DeleteViewer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.viewerClient.DeleteViewer(context.Background(), req)
+	resp, err := h.viewerClient.DeleteViewer(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete viewer: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -502,7 +514,7 @@ func (h *TwitchBotHandler) DeleteViewer(w http.ResponseWriter, r *http.Request) 
 func (h *TwitchBotHandler) GetViewerByTwitchId(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.GetViewerByTwitchIdRequest{TwitchId: vars["twitch_id"]}
-	resp, err := h.viewerClient.GetViewerByTwitchId(context.Background(), req)
+	resp, err := h.viewerClient.GetViewerByTwitchId(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get viewer by twitch id: "+err.Error(), http.StatusNotFound)
 		return
@@ -514,7 +526,7 @@ func (h *TwitchBotHandler) GetViewerByTwitchId(w http.ResponseWriter, r *http.Re
 func (h *TwitchBotHandler) GetViewerStats(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.viewerClient.GetViewerStats(context.Background(), req)
+	resp, err := h.viewerClient.GetViewerStats(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get viewer stats: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -539,7 +551,7 @@ func (h *TwitchBotHandler) ListClips(w http.ResponseWriter, r *http.Request) {
 		req.StreamId = streamID
 	}
 
-	resp, err := h.clipClient.ListClips(context.Background(), req)
+	resp, err := h.clipClient.ListClips(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list clips: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -556,7 +568,7 @@ func (h *TwitchBotHandler) CreateClip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.clipClient.CreateClip(context.Background(), &req)
+	resp, err := h.clipClient.CreateClip(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create clip: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -570,7 +582,7 @@ func (h *TwitchBotHandler) CreateClip(w http.ResponseWriter, r *http.Request) {
 func (h *TwitchBotHandler) GetClip(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.clipClient.GetClip(context.Background(), req)
+	resp, err := h.clipClient.GetClip(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get clip: "+err.Error(), http.StatusNotFound)
 		return
@@ -588,7 +600,7 @@ func (h *TwitchBotHandler) UpdateClip(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.clipClient.UpdateClip(context.Background(), &req)
+	resp, err := h.clipClient.UpdateClip(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update clip: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -600,7 +612,7 @@ func (h *TwitchBotHandler) UpdateClip(w http.ResponseWriter, r *http.Request) {
 func (h *TwitchBotHandler) DeleteClip(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.clipClient.DeleteClip(context.Background(), req)
+	resp, err := h.clipClient.DeleteClip(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete clip: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -612,7 +624,7 @@ func (h *TwitchBotHandler) DeleteClip(w http.ResponseWriter, r *http.Request) {
 func (h *TwitchBotHandler) GetClipByTwitchId(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.GetClipByTwitchIdRequest{TwitchClipId: vars["twitch_clip_id"]}
-	resp, err := h.clipClient.GetClipByTwitchId(context.Background(), req)
+	resp, err := h.clipClient.GetClipByTwitchId(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get clip by twitch id: "+err.Error(), http.StatusNotFound)
 		return
@@ -634,7 +646,7 @@ func (h *TwitchBotHandler) ListCommands(w http.ResponseWriter, r *http.Request) 
 		OnlyActive: r.URL.Query().Get("only_active") == "true",
 	}
 
-	resp, err := h.commandClient.ListCommands(context.Background(), req)
+	resp, err := h.commandClient.ListCommands(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list commands: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -651,7 +663,7 @@ func (h *TwitchBotHandler) CreateCommand(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	resp, err := h.commandClient.CreateCommand(context.Background(), &req)
+	resp, err := h.commandClient.CreateCommand(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create command: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -665,7 +677,7 @@ func (h *TwitchBotHandler) CreateCommand(w http.ResponseWriter, r *http.Request)
 func (h *TwitchBotHandler) GetCommand(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.commandClient.GetCommand(context.Background(), req)
+	resp, err := h.commandClient.GetCommand(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get command: "+err.Error(), http.StatusNotFound)
 		return
@@ -683,7 +695,7 @@ func (h *TwitchBotHandler) UpdateCommand(w http.ResponseWriter, r *http.Request)
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.commandClient.UpdateCommand(context.Background(), &req)
+	resp, err := h.commandClient.UpdateCommand(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update command: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -695,7 +707,7 @@ func (h *TwitchBotHandler) UpdateCommand(w http.ResponseWriter, r *http.Request)
 func (h *TwitchBotHandler) DeleteCommand(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.commandClient.DeleteCommand(context.Background(), req)
+	resp, err := h.commandClient.DeleteCommand(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete command: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -707,7 +719,7 @@ func (h *TwitchBotHandler) DeleteCommand(w http.ResponseWriter, r *http.Request)
 func (h *TwitchBotHandler) GetCommandByName(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.GetCommandByNameRequest{Name: vars["name"]}
-	resp, err := h.commandClient.GetCommandByName(context.Background(), req)
+	resp, err := h.commandClient.GetCommandByName(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get command by name: "+err.Error(), http.StatusNotFound)
 		return
@@ -737,7 +749,7 @@ func (h *TwitchBotHandler) ExecuteCommand(w http.ResponseWriter, r *http.Request
 		IsSubscriber: reqBody.IsSubscriber,
 	}
 
-	resp, err := h.commandClient.ExecuteCommand(context.Background(), req)
+	resp, err := h.commandClient.ExecuteCommand(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to execute command: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -754,7 +766,7 @@ func (h *TwitchBotHandler) ListChannelViewers(w http.ResponseWriter, r *http.Req
 	}
 
 	req := &pb.ListChannelViewersRequest{Channel: channel}
-	resp, err := h.channelViewerClient.ListChannelViewers(context.Background(), req)
+	resp, err := h.channelViewerClient.ListChannelViewers(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list channel viewers: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -770,7 +782,7 @@ func (h *TwitchBotHandler) GetChannelViewer(w http.ResponseWriter, r *http.Reque
 		Channel:  vars["channel"],
 		TwitchId: vars["twitch_id"],
 	}
-	resp, err := h.channelViewerClient.GetChannelViewer(context.Background(), req)
+	resp, err := h.channelViewerClient.GetChannelViewer(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get channel viewer: "+err.Error(), http.StatusNotFound)
 		return
@@ -787,7 +799,7 @@ func (h *TwitchBotHandler) CountChannelViewers(w http.ResponseWriter, r *http.Re
 	}
 
 	req := &pb.CountChannelViewersRequest{Channel: channel}
-	resp, err := h.channelViewerClient.CountChannelViewers(context.Background(), req)
+	resp, err := h.channelViewerClient.CountChannelViewers(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to count channel viewers: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -803,7 +815,7 @@ func (h *TwitchBotHandler) RemoveChannelViewer(w http.ResponseWriter, r *http.Re
 		Channel:  vars["channel"],
 		TwitchId: vars["twitch_id"],
 	}
-	resp, err := h.channelViewerClient.RemoveChannelViewer(context.Background(), req)
+	resp, err := h.channelViewerClient.RemoveChannelViewer(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to remove channel viewer: "+err.Error(), http.StatusInternalServerError)
 		return

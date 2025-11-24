@@ -77,6 +77,23 @@ func CheckHealth(db *gorm.DB) error {
 	return sqlDB.PingContext(ctx)
 }
 
+// NewPostgresConnection creates a new PostgreSQL connection with individual parameters
+func NewPostgresConnection(host, port, user, password, dbname string) (*gorm.DB, error) {
+	cfg := config.DatabaseConfig{
+		Host:         host,
+		Port:         port,
+		User:         user,
+		Password:     password,
+		Name:         dbname,
+		SSLMode:      "disable",
+		MaxOpenConns: 25,
+		MaxIdleConns: 25,
+		MaxLifetime:  5 * time.Minute,
+	}
+
+	return Connect(cfg)
+}
+
 // AutoMigrate runs GORM auto-migrations for provided entities
 func AutoMigrate(db *gorm.DB, entities ...interface{}) error {
 	if db == nil {

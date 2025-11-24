@@ -55,6 +55,11 @@ func ShoppinglistItemToDomain(e *entity.ShoppinglistItemEntity) *domain.Shopping
 		item.DeletedAt = &deletedAt
 	}
 
+	// Convert ItemVariant
+	if e.ItemVariant != nil {
+		item.ItemVariant = ItemVariantToDomain(e.ItemVariant)
+	}
+
 	return item
 }
 

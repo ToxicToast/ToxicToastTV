@@ -9,6 +9,7 @@ import (
 
 	pb "toxictoast/services/blog-service/api/proto"
 	"github.com/toxictoast/toxictoastgo/shared/auth"
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 
 	"toxictoast/services/blog-service/internal/domain"
 	"toxictoast/services/blog-service/internal/repository"
@@ -363,8 +364,26 @@ func splitString(s, sep string) []string {
 
 // requireAuth checks authentication if enabled, returns user context or error
 func (h *PostHandler) requireAuth(ctx context.Context) (*auth.UserContext, error) {
+	// Try to get user from shared gRPC metadata (from gateway) - FIRST PRIORITY
+	if user, ok := sharedgrpc.GetUserFromContext(ctx); ok {
+		return &auth.UserContext{
+			UserID:   user.UserID,
+			Username: user.Username,
+			Email:    user.Email,
+			Roles:    user.Roles,
+		}, nil
+	}
+
+	// Try Keycloak auth context (direct gRPC calls) - SECOND PRIORITY
+	if h.authEnabled {
+		user, err := auth.GetUserContext(ctx)
+		if err == nil {
+			return user, nil
+		}
+	}
+
+	// Fallback to dummy user when auth is disabled and no metadata present
 	if !h.authEnabled {
-		// Return a dummy user context when auth is disabled
 		return &auth.UserContext{
 			UserID:   "test-user",
 			Username: "test",
@@ -373,9 +392,6 @@ func (h *PostHandler) requireAuth(ctx context.Context) (*auth.UserContext, error
 		}, nil
 	}
 
-	user, err := auth.GetUserContext(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Unauthenticated, "authentication required")
-	}
-	return user, nil
+	// No auth available
+	return nil, status.Error(codes.Unauthenticated, "authentication required")
 }

@@ -7,6 +7,8 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
+	"github.com/toxictoast/toxictoastgo/shared/middleware"
 	pb "toxictoast/services/warcraft-service/api/proto"
 	"google.golang.org/grpc"
 )
@@ -31,28 +33,38 @@ func NewWarcraftHandler(conn *grpc.ClientConn) *WarcraftHandler {
 	}
 }
 
+// getContextWithAuth extracts JWT claims from HTTP request and injects them into gRPC metadata
+func (h *WarcraftHandler) getContextWithAuth(r *http.Request) context.Context {
+	ctx := r.Context()
+	claims := middleware.GetClaims(ctx)
+	if claims != nil {
+		ctx = sharedgrpc.InjectClaimsIntoMetadata(ctx, claims)
+	}
+	return ctx
+}
+
 // RegisterRoutes registers all warcraft routes
-func (h *WarcraftHandler) RegisterRoutes(router *mux.Router) {
+func (h *WarcraftHandler) RegisterRoutes(router *mux.Router, authMiddleware *middleware.AuthMiddleware) {
 	// Character routes
 	router.HandleFunc("/characters", h.ListCharacters).Methods("GET")
-	router.HandleFunc("/characters", h.CreateCharacter).Methods("POST")
+	router.Handle("/characters", authMiddleware.Authenticate(http.HandlerFunc(h.CreateCharacter))).Methods("POST")
 	router.HandleFunc("/characters/{id}", h.GetCharacter).Methods("GET")
-	router.HandleFunc("/characters/{id}", h.UpdateCharacter).Methods("PUT")
-	router.HandleFunc("/characters/{id}", h.DeleteCharacter).Methods("DELETE")
-	router.HandleFunc("/characters/{id}/refresh", h.RefreshCharacter).Methods("POST")
+	router.Handle("/characters/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateCharacter))).Methods("PUT")
+	router.Handle("/characters/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteCharacter))).Methods("DELETE")
+	router.Handle("/characters/{id}/refresh", authMiddleware.Authenticate(http.HandlerFunc(h.RefreshCharacter))).Methods("POST")
 	router.HandleFunc("/characters/{id}/equipment", h.GetCharacterEquipment).Methods("GET")
 	router.HandleFunc("/characters/{id}/stats", h.GetCharacterStats).Methods("GET")
 
 	// Guild routes
 	router.HandleFunc("/guilds", h.ListGuilds).Methods("GET")
-	router.HandleFunc("/guilds", h.CreateGuild).Methods("POST")
+	router.Handle("/guilds", authMiddleware.Authenticate(http.HandlerFunc(h.CreateGuild))).Methods("POST")
 	router.HandleFunc("/guilds/{id}", h.GetGuild).Methods("GET")
-	router.HandleFunc("/guilds/{id}", h.UpdateGuild).Methods("PUT")
-	router.HandleFunc("/guilds/{id}", h.DeleteGuild).Methods("DELETE")
-	router.HandleFunc("/guilds/{id}/refresh", h.RefreshGuild).Methods("POST")
+	router.Handle("/guilds/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateGuild))).Methods("PUT")
+	router.Handle("/guilds/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteGuild))).Methods("DELETE")
+	router.Handle("/guilds/{id}/refresh", authMiddleware.Authenticate(http.HandlerFunc(h.RefreshGuild))).Methods("POST")
 	router.HandleFunc("/guilds/{id}/roster", h.GetGuildRoster).Methods("GET")
 
-	// Reference data routes
+	// Reference data routes (all public)
 	router.HandleFunc("/races", h.ListRaces).Methods("GET")
 	router.HandleFunc("/races/{id}", h.GetRace).Methods("GET")
 	router.HandleFunc("/classes", h.ListClasses).Methods("GET")
@@ -90,7 +102,7 @@ func (h *WarcraftHandler) ListCharacters(w http.ResponseWriter, r *http.Request)
 		req.Faction = &faction
 	}
 
-	resp, err := h.characterClient.ListCharacters(context.Background(), req)
+	resp, err := h.characterClient.ListCharacters(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -107,7 +119,7 @@ func (h *WarcraftHandler) CreateCharacter(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	resp, err := h.characterClient.CreateCharacter(context.Background(), &req)
+	resp, err := h.characterClient.CreateCharacter(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -122,7 +134,7 @@ func (h *WarcraftHandler) GetCharacter(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.GetCharacterRequest{Id: vars["id"]}
 
-	resp, err := h.characterClient.GetCharacter(context.Background(), req)
+	resp, err := h.characterClient.GetCharacter(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -141,7 +153,7 @@ func (h *WarcraftHandler) UpdateCharacter(w http.ResponseWriter, r *http.Request
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.characterClient.UpdateCharacter(context.Background(), &req)
+	resp, err := h.characterClient.UpdateCharacter(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -155,7 +167,7 @@ func (h *WarcraftHandler) DeleteCharacter(w http.ResponseWriter, r *http.Request
 	vars := mux.Vars(r)
 	req := &pb.DeleteCharacterRequest{Id: vars["id"]}
 
-	resp, err := h.characterClient.DeleteCharacter(context.Background(), req)
+	resp, err := h.characterClient.DeleteCharacter(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -169,7 +181,7 @@ func (h *WarcraftHandler) RefreshCharacter(w http.ResponseWriter, r *http.Reques
 	vars := mux.Vars(r)
 	req := &pb.RefreshCharacterRequest{Id: vars["id"]}
 
-	resp, err := h.characterClient.RefreshCharacter(context.Background(), req)
+	resp, err := h.characterClient.RefreshCharacter(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -183,7 +195,7 @@ func (h *WarcraftHandler) GetCharacterEquipment(w http.ResponseWriter, r *http.R
 	vars := mux.Vars(r)
 	req := &pb.GetCharacterEquipmentRequest{CharacterId: vars["id"]}
 
-	resp, err := h.characterClient.GetCharacterEquipment(context.Background(), req)
+	resp, err := h.characterClient.GetCharacterEquipment(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -197,7 +209,7 @@ func (h *WarcraftHandler) GetCharacterStats(w http.ResponseWriter, r *http.Reque
 	vars := mux.Vars(r)
 	req := &pb.GetCharacterStatsRequest{CharacterId: vars["id"]}
 
-	resp, err := h.characterClient.GetCharacterStats(context.Background(), req)
+	resp, err := h.characterClient.GetCharacterStats(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -236,7 +248,7 @@ func (h *WarcraftHandler) ListGuilds(w http.ResponseWriter, r *http.Request) {
 		req.Faction = &faction
 	}
 
-	resp, err := h.guildClient.ListGuilds(context.Background(), req)
+	resp, err := h.guildClient.ListGuilds(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -253,7 +265,7 @@ func (h *WarcraftHandler) CreateGuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.guildClient.CreateGuild(context.Background(), &req)
+	resp, err := h.guildClient.CreateGuild(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -268,7 +280,7 @@ func (h *WarcraftHandler) GetGuild(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.GetGuildRequest{Id: vars["id"]}
 
-	resp, err := h.guildClient.GetGuild(context.Background(), req)
+	resp, err := h.guildClient.GetGuild(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -287,7 +299,7 @@ func (h *WarcraftHandler) UpdateGuild(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.guildClient.UpdateGuild(context.Background(), &req)
+	resp, err := h.guildClient.UpdateGuild(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -301,7 +313,7 @@ func (h *WarcraftHandler) DeleteGuild(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.DeleteGuildRequest{Id: vars["id"]}
 
-	resp, err := h.guildClient.DeleteGuild(context.Background(), req)
+	resp, err := h.guildClient.DeleteGuild(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -315,7 +327,7 @@ func (h *WarcraftHandler) RefreshGuild(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.RefreshGuildRequest{Id: vars["id"]}
 
-	resp, err := h.guildClient.RefreshGuild(context.Background(), req)
+	resp, err := h.guildClient.RefreshGuild(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -342,7 +354,7 @@ func (h *WarcraftHandler) GetGuildRoster(w http.ResponseWriter, r *http.Request)
 		PageSize: int32(pageSize),
 	}
 
-	resp, err := h.guildClient.GetGuildRoster(context.Background(), req)
+	resp, err := h.guildClient.GetGuildRoster(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -359,7 +371,7 @@ func (h *WarcraftHandler) GetGuildRoster(w http.ResponseWriter, r *http.Request)
 func (h *WarcraftHandler) ListRaces(w http.ResponseWriter, r *http.Request) {
 	req := &pb.ListRacesRequest{}
 
-	resp, err := h.raceClient.ListRaces(context.Background(), req)
+	resp, err := h.raceClient.ListRaces(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -373,7 +385,7 @@ func (h *WarcraftHandler) GetRace(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.GetRaceRequest{Id: vars["id"]}
 
-	resp, err := h.raceClient.GetRace(context.Background(), req)
+	resp, err := h.raceClient.GetRace(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -386,7 +398,7 @@ func (h *WarcraftHandler) GetRace(w http.ResponseWriter, r *http.Request) {
 func (h *WarcraftHandler) ListClasses(w http.ResponseWriter, r *http.Request) {
 	req := &pb.ListClassesRequest{}
 
-	resp, err := h.classClient.ListClasses(context.Background(), req)
+	resp, err := h.classClient.ListClasses(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -400,7 +412,7 @@ func (h *WarcraftHandler) GetClass(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.GetClassRequest{Id: vars["id"]}
 
-	resp, err := h.classClient.GetClass(context.Background(), req)
+	resp, err := h.classClient.GetClass(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -413,7 +425,7 @@ func (h *WarcraftHandler) GetClass(w http.ResponseWriter, r *http.Request) {
 func (h *WarcraftHandler) ListFactions(w http.ResponseWriter, r *http.Request) {
 	req := &pb.ListFactionsRequest{}
 
-	resp, err := h.factionClient.ListFactions(context.Background(), req)
+	resp, err := h.factionClient.ListFactions(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -427,7 +439,7 @@ func (h *WarcraftHandler) GetFaction(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.GetFactionRequest{Id: vars["id"]}
 
-	resp, err := h.factionClient.GetFaction(context.Background(), req)
+	resp, err := h.factionClient.GetFaction(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return

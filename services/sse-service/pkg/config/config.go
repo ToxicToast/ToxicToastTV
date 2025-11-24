@@ -83,6 +83,11 @@ func Load() *Config {
 			Brokers: getEnvAsSlice("KAFKA_BROKERS", []string{"localhost:19092"}),
 			GroupID: getEnv("KAFKA_GROUP_ID", "sse-service"),
 			Topics: getEnvAsSlice("KAFKA_TOPICS", []string{
+				// User Service Topics (6)
+				"user.created", "user.updated", "user.deleted",
+				"user.activated", "user.deactivated", "user.password.changed",
+				// Auth Service Topics (3)
+				"auth.registered", "auth.login", "auth.token.refreshed",
 				// Blog Service Topics (19)
 				"blog.post.created", "blog.post.updated", "blog.post.published", "blog.post.deleted",
 				"blog.category.created", "blog.category.updated", "blog.category.deleted",

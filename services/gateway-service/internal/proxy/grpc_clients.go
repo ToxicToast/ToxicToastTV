@@ -19,6 +19,8 @@ type ServiceClients struct {
 	WebhookConn      *grpc.ClientConn
 	WarcraftConn     *grpc.ClientConn
 	WeatherConn      *grpc.ClientConn
+	AuthConn         *grpc.ClientConn
+	UserConn         *grpc.ClientConn
 }
 
 // NewServiceClients creates gRPC connections to all backend services
@@ -126,6 +128,28 @@ func NewServiceClients(ctx context.Context, config ServiceURLs) (*ServiceClients
 		}
 	}
 
+	// Connect to Auth service
+	if config.AuthURL != "" {
+		clients.AuthConn, err = grpc.NewClient(
+			config.AuthURL,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to auth service: %w", err)
+		}
+	}
+
+	// Connect to User service
+	if config.UserURL != "" {
+		clients.UserConn, err = grpc.NewClient(
+			config.UserURL,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to user service: %w", err)
+		}
+	}
+
 	return clients, nil
 }
 
@@ -158,6 +182,12 @@ func (sc *ServiceClients) Close() error {
 	if sc.WeatherConn != nil {
 		sc.WeatherConn.Close()
 	}
+	if sc.AuthConn != nil {
+		sc.AuthConn.Close()
+	}
+	if sc.UserConn != nil {
+		sc.UserConn.Close()
+	}
 	return nil
 }
 
@@ -172,4 +202,6 @@ type ServiceURLs struct {
 	WebhookURL      string
 	WarcraftURL     string
 	WeatherURL      string
+	AuthURL         string
+	UserURL         string
 }

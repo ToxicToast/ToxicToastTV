@@ -49,6 +49,11 @@ func ShoppinglistToDomain(e *entity.ShoppinglistEntity) *domain.Shoppinglist {
 		list.DeletedAt = &deletedAt
 	}
 
+	// Convert Items
+	if len(e.Items) > 0 {
+		list.Items = ShoppinglistItemsToDomain(e.Items)
+	}
+
 	return list
 }
 

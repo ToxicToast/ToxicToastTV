@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/toxictoast/toxictoastgo/shared/database"
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
 	pb "toxictoast/services/webhook-service/api/proto"
@@ -160,8 +161,20 @@ func main() {
 	deliveryHandler := grpcHandler.NewDeliveryHandler(deliveryUC)
 	logger.Info("gRPC handlers initialized")
 
-	// Create gRPC server
-	grpcServer := grpc.NewServer()
+	// Create gRPC server with auth interceptors
+	unaryInterceptors := []grpc.UnaryServerInterceptor{
+		sharedgrpc.AuthInterceptor,
+	}
+	streamInterceptors := []grpc.StreamServerInterceptor{
+		sharedgrpc.StreamAuthInterceptor,
+	}
+
+	opts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamInterceptors...),
+	}
+
+	grpcServer := grpc.NewServer(opts...)
 	pb.RegisterWebhookManagementServiceServer(grpcServer, webhookHandler)
 	pb.RegisterDeliveryServiceServer(grpcServer, deliveryHandler)
 	reflection.Register(grpcServer)

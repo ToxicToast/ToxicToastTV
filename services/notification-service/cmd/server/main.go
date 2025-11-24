@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/toxictoast/toxictoastgo/shared/database"
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
 	pb "toxictoast/services/notification-service/api/proto"
@@ -205,8 +206,21 @@ func main() {
 }
 
 func setupGRPCServer(channelHandler *grpcHandler.ChannelHandler, notificationHandler *grpcHandler.NotificationHandler) *grpc.Server {
-	// Create gRPC server
-	server := grpc.NewServer()
+	// Setup auth interceptors
+	unaryInterceptors := []grpc.UnaryServerInterceptor{
+		sharedgrpc.AuthInterceptor,
+	}
+	streamInterceptors := []grpc.StreamServerInterceptor{
+		sharedgrpc.StreamAuthInterceptor,
+	}
+
+	opts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamInterceptors...),
+	}
+
+	// Create gRPC server with auth interceptors
+	server := grpc.NewServer(opts...)
 
 	// Register services
 	pb.RegisterChannelManagementServiceServer(server, channelHandler)

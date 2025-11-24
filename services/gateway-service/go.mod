@@ -8,7 +8,9 @@ require (
 	github.com/toxictoast/toxictoastgo/shared v0.0.0
 	golang.org/x/time v0.14.0
 	google.golang.org/grpc v1.76.0
+	toxictoast/services/auth-service v0.0.0
 	toxictoast/services/blog-service v0.0.0
+	toxictoast/services/user-service v0.0.0
 )
 
 require (
@@ -39,7 +41,7 @@ require (
 	golang.org/x/text v0.30.0 // indirect
 	golang.org/x/tools v0.37.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250804133106-a7a43d27e69b // indirect
-	google.golang.org/protobuf v1.36.10 // indirect
+	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	toxictoast/services/foodfolio-service v0.0.0
 	toxictoast/services/link-service v0.0.0
@@ -67,3 +69,7 @@ replace toxictoast/services/twitchbot-service => ../twitchbot-service
 replace toxictoast/services/warcraft-service => ../warcraft-service
 
 replace toxictoast/services/webhook-service => ../webhook-service
+
+replace toxictoast/services/auth-service => ../auth-service
+
+replace toxictoast/services/user-service => ../user-service

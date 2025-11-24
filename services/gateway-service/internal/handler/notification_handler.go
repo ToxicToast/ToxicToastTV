@@ -7,6 +7,8 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
+	"github.com/toxictoast/toxictoastgo/shared/middleware"
 	pb "toxictoast/services/notification-service/api/proto"
 	"google.golang.org/grpc"
 )
@@ -25,22 +27,32 @@ func NewNotificationHandler(conn *grpc.ClientConn) *NotificationHandler {
 	}
 }
 
+// getContextWithAuth extracts JWT claims from HTTP request and injects them into gRPC metadata
+func (h *NotificationHandler) getContextWithAuth(r *http.Request) context.Context {
+	ctx := r.Context()
+	claims := middleware.GetClaims(ctx)
+	if claims != nil {
+		ctx = sharedgrpc.InjectClaimsIntoMetadata(ctx, claims)
+	}
+	return ctx
+}
+
 // RegisterRoutes registers all notification routes
-func (h *NotificationHandler) RegisterRoutes(router *mux.Router) {
+func (h *NotificationHandler) RegisterRoutes(router *mux.Router, authMiddleware *middleware.AuthMiddleware) {
 	// Channel Management routes
 	router.HandleFunc("/channels", h.ListChannels).Methods("GET")
-	router.HandleFunc("/channels", h.CreateChannel).Methods("POST")
+	router.Handle("/channels", authMiddleware.Authenticate(http.HandlerFunc(h.CreateChannel))).Methods("POST")
 	router.HandleFunc("/channels/{id}", h.GetChannel).Methods("GET")
-	router.HandleFunc("/channels/{id}", h.UpdateChannel).Methods("PUT")
-	router.HandleFunc("/channels/{id}", h.DeleteChannel).Methods("DELETE")
-	router.HandleFunc("/channels/{id}/toggle", h.ToggleChannel).Methods("POST")
-	router.HandleFunc("/channels/{id}/test", h.TestChannel).Methods("POST")
+	router.Handle("/channels/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateChannel))).Methods("PUT")
+	router.Handle("/channels/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteChannel))).Methods("DELETE")
+	router.Handle("/channels/{id}/toggle", authMiddleware.Authenticate(http.HandlerFunc(h.ToggleChannel))).Methods("POST")
+	router.Handle("/channels/{id}/test", authMiddleware.Authenticate(http.HandlerFunc(h.TestChannel))).Methods("POST")
 
 	// Notification History routes
 	router.HandleFunc("/notifications", h.ListNotifications).Methods("GET")
-	router.HandleFunc("/notifications/cleanup", h.CleanupOldNotifications).Methods("POST")
+	router.Handle("/notifications/cleanup", authMiddleware.Authenticate(http.HandlerFunc(h.CleanupOldNotifications))).Methods("POST")
 	router.HandleFunc("/notifications/{id}", h.GetNotification).Methods("GET")
-	router.HandleFunc("/notifications/{id}", h.DeleteNotification).Methods("DELETE")
+	router.Handle("/notifications/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteNotification))).Methods("DELETE")
 }
 
 // Channel Management Handlers
@@ -60,7 +72,7 @@ func (h *NotificationHandler) ListChannels(w http.ResponseWriter, r *http.Reques
 		ActiveOnly: r.URL.Query().Get("active_only") == "true",
 	}
 
-	resp, err := h.channelClient.ListChannels(context.Background(), req)
+	resp, err := h.channelClient.ListChannels(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list channels: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -78,7 +90,7 @@ func (h *NotificationHandler) CreateChannel(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	resp, err := h.channelClient.CreateChannel(context.Background(), &req)
+	resp, err := h.channelClient.CreateChannel(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create channel: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -95,7 +107,7 @@ func (h *NotificationHandler) GetChannel(w http.ResponseWriter, r *http.Request)
 	id := vars["id"]
 
 	req := &pb.GetChannelRequest{Id: id}
-	resp, err := h.channelClient.GetChannel(context.Background(), req)
+	resp, err := h.channelClient.GetChannel(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get channel: "+err.Error(), http.StatusNotFound)
 		return
@@ -117,7 +129,7 @@ func (h *NotificationHandler) UpdateChannel(w http.ResponseWriter, r *http.Reque
 	}
 	req.Id = id
 
-	resp, err := h.channelClient.UpdateChannel(context.Background(), &req)
+	resp, err := h.channelClient.UpdateChannel(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update channel: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -133,7 +145,7 @@ func (h *NotificationHandler) DeleteChannel(w http.ResponseWriter, r *http.Reque
 	id := vars["id"]
 
 	req := &pb.DeleteChannelRequest{Id: id}
-	resp, err := h.channelClient.DeleteChannel(context.Background(), req)
+	resp, err := h.channelClient.DeleteChannel(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete channel: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -161,7 +173,7 @@ func (h *NotificationHandler) ToggleChannel(w http.ResponseWriter, r *http.Reque
 		Active: reqBody.Active,
 	}
 
-	resp, err := h.channelClient.ToggleChannel(context.Background(), req)
+	resp, err := h.channelClient.ToggleChannel(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to toggle channel: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -177,7 +189,7 @@ func (h *NotificationHandler) TestChannel(w http.ResponseWriter, r *http.Request
 	id := vars["id"]
 
 	req := &pb.TestChannelRequest{Id: id}
-	resp, err := h.channelClient.TestChannel(context.Background(), req)
+	resp, err := h.channelClient.TestChannel(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to test channel: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -211,7 +223,7 @@ func (h *NotificationHandler) ListNotifications(w http.ResponseWriter, r *http.R
 		req.Status = parseNotificationStatus(status)
 	}
 
-	resp, err := h.notificationClient.ListNotifications(context.Background(), req)
+	resp, err := h.notificationClient.ListNotifications(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list notifications: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -227,7 +239,7 @@ func (h *NotificationHandler) GetNotification(w http.ResponseWriter, r *http.Req
 	id := vars["id"]
 
 	req := &pb.GetNotificationRequest{Id: id}
-	resp, err := h.notificationClient.GetNotification(context.Background(), req)
+	resp, err := h.notificationClient.GetNotification(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get notification: "+err.Error(), http.StatusNotFound)
 		return
@@ -243,7 +255,7 @@ func (h *NotificationHandler) DeleteNotification(w http.ResponseWriter, r *http.
 	id := vars["id"]
 
 	req := &pb.DeleteNotificationRequest{Id: id}
-	resp, err := h.notificationClient.DeleteNotification(context.Background(), req)
+	resp, err := h.notificationClient.DeleteNotification(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete notification: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -272,7 +284,7 @@ func (h *NotificationHandler) CleanupOldNotifications(w http.ResponseWriter, r *
 		OlderThanDays: reqBody.OlderThanDays,
 	}
 
-	resp, err := h.notificationClient.CleanupOldNotifications(context.Background(), req)
+	resp, err := h.notificationClient.CleanupOldNotifications(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to cleanup old notifications: "+err.Error(), http.StatusInternalServerError)
 		return

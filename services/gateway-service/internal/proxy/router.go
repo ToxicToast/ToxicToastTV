@@ -8,22 +8,27 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
+	"github.com/toxictoast/toxictoastgo/shared/middleware"
 	"toxictoast/services/gateway-service/internal/handler"
 )
 
 // Router handles HTTP routing to gRPC backends
 type Router struct {
-	clients *ServiceClients
-	router  *mux.Router
-	devMode bool
+	clients        *ServiceClients
+	router         *mux.Router
+	devMode        bool
+	authMiddleware *middleware.AuthMiddleware
+	rateLimiter    *middleware.RateLimiter
 }
 
 // NewRouter creates a new HTTP to gRPC router
-func NewRouter(clients *ServiceClients, devMode bool) *Router {
+func NewRouter(clients *ServiceClients, devMode bool, authMiddleware *middleware.AuthMiddleware, rateLimiter *middleware.RateLimiter) *Router {
 	r := &Router{
-		clients: clients,
-		router:  mux.NewRouter(),
-		devMode: devMode,
+		clients:        clients,
+		router:         mux.NewRouter(),
+		devMode:        devMode,
+		authMiddleware: authMiddleware,
+		rateLimiter:    rateLimiter,
 	}
 
 	r.setupRoutes()
@@ -52,62 +57,80 @@ func (r *Router) setupRoutes() {
 	if r.clients.BlogConn != nil {
 		blogHandler := handler.NewBlogHandler(r.clients.BlogConn)
 		blogRouter := r.router.PathPrefix("/api/blog").Subrouter()
-		blogHandler.RegisterRoutes(blogRouter)
+		blogHandler.RegisterRoutes(blogRouter, r.authMiddleware)
 	}
 
 	// Link service routes - /api/links/*
 	if r.clients.LinkConn != nil {
 		linkHandler := handler.NewLinkHandler(r.clients.LinkConn)
 		linkRouter := r.router.PathPrefix("/api/links").Subrouter()
-		linkHandler.RegisterRoutes(linkRouter)
+		linkHandler.RegisterRoutes(linkRouter, r.authMiddleware)
 	}
 
 	// Foodfolio service routes - /api/foodfolio/*
 	if r.clients.FoodfolioConn != nil {
 		foodfolioHandler := handler.NewFoodFolioHandler(r.clients.FoodfolioConn)
 		foodfolioRouter := r.router.PathPrefix("/api/foodfolio").Subrouter()
-		foodfolioHandler.RegisterRoutes(foodfolioRouter)
+		foodfolioHandler.RegisterRoutes(foodfolioRouter, r.authMiddleware)
 	}
 
 	// Notification service routes - /api/notifications/*
 	if r.clients.NotificationConn != nil {
 		notificationHandler := handler.NewNotificationHandler(r.clients.NotificationConn)
 		notificationRouter := r.router.PathPrefix("/api/notifications").Subrouter()
-		notificationHandler.RegisterRoutes(notificationRouter)
+		notificationHandler.RegisterRoutes(notificationRouter, r.authMiddleware)
 	}
 
 	// SSE service routes - /api/events/*
 	if r.clients.SSEConn != nil {
 		sseHandler := handler.NewSSEHandler(r.clients.SSEConn)
 		sseRouter := r.router.PathPrefix("/api/events").Subrouter()
-		sseHandler.RegisterRoutes(sseRouter)
+		sseHandler.RegisterRoutes(sseRouter, r.authMiddleware)
 	}
 
 	// TwitchBot service routes - /api/twitch/*
 	if r.clients.TwitchBotConn != nil {
 		twitchbotHandler := handler.NewTwitchBotHandler(r.clients.TwitchBotConn)
 		twitchRouter := r.router.PathPrefix("/api/twitch").Subrouter()
-		twitchbotHandler.RegisterRoutes(twitchRouter)
+		twitchbotHandler.RegisterRoutes(twitchRouter, r.authMiddleware)
 	}
 
 	// Webhook service routes - /api/webhooks/*
 	if r.clients.WebhookConn != nil {
 		webhookHandler := handler.NewWebhookHandler(r.clients.WebhookConn)
 		webhookRouter := r.router.PathPrefix("/api/webhooks").Subrouter()
-		webhookHandler.RegisterRoutes(webhookRouter)
+		webhookHandler.RegisterRoutes(webhookRouter, r.authMiddleware)
 	}
 
 	// Warcraft service routes - /api/warcraft/*
 	if r.clients.WarcraftConn != nil {
 		warcraftHandler := handler.NewWarcraftHandler(r.clients.WarcraftConn)
 		warcraftRouter := r.router.PathPrefix("/api/warcraft").Subrouter()
-		warcraftHandler.RegisterRoutes(warcraftRouter)
+		warcraftHandler.RegisterRoutes(warcraftRouter, r.authMiddleware)
+	}
+
+	// Auth service routes - /api/auth/*
+	if r.clients.AuthConn != nil && r.clients.UserConn != nil {
+		authHandler := handler.NewAuthHandler(r.clients.AuthConn, r.clients.UserConn, r.authMiddleware)
+		authRouter := r.router.PathPrefix("/api/auth").Subrouter()
+		authHandler.RegisterRoutes(authRouter, r.rateLimiter)
+	}
+
+	// Protected test routes - /api/test/*
+	if r.authMiddleware != nil {
+		protectedHandler := handler.NewProtectedHandler()
+		testRouter := r.router.PathPrefix("/api/test").Subrouter()
+		protectedHandler.RegisterRoutes(testRouter, r.authMiddleware)
 	}
 
 	// Mirror dashboard endpoint - /api/mirror/dashboard
 	// This is a special endpoint that aggregates data from multiple services
-	if r.clients.WeatherConn != nil {
-		mirrorHandler := handler.NewMirrorHandler(r.clients.WeatherConn)
+	if r.clients.WeatherConn != nil && r.clients.FoodfolioConn != nil && r.clients.BlogConn != nil {
+		mirrorHandler := handler.NewMirrorHandler(
+			r.clients.WeatherConn,
+			r.clients.FoodfolioConn,
+			r.clients.BlogConn,
+		)
 		r.router.HandleFunc("/api/mirror/dashboard", mirrorHandler.GetDashboard).Methods("GET")
 	}
 }
@@ -141,6 +164,8 @@ func (r *Router) readinessCheck(w http.ResponseWriter, req *http.Request) {
 			"webhook":      r.clients.WebhookConn != nil,
 			"warcraft":     r.clients.WarcraftConn != nil,
 			"weather":      r.clients.WeatherConn != nil,
+			"auth":         r.clients.AuthConn != nil,
+			"user":         r.clients.UserConn != nil,
 		},
 	}
 

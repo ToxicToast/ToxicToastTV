@@ -18,6 +18,8 @@ jobs:
     strategy:
       matrix:
         service:
+          - user-service
+          - auth-service
           - blog-service
           - foodfolio-service
           - link-service
@@ -72,6 +74,8 @@ jobs:
     strategy:
       matrix:
         service:
+          - user-service
+          - auth-service
           - blog-service
           - foodfolio-service
           - link-service
@@ -106,6 +110,8 @@ jobs:
     strategy:
       matrix:
         service:
+          - user-service
+          - auth-service
           - blog-service
           - foodfolio-service
           - link-service

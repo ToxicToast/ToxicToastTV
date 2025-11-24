@@ -60,6 +60,10 @@ func (r *shoppinglistRepository) List(ctx context.Context, offset, limit int, in
 
 	if err := query.
 		Preload("Items").
+		Preload("Items.ItemVariant").
+		Preload("Items.ItemVariant.Item").
+		Preload("Items.ItemVariant.Item.Category").
+		Preload("Items.ItemVariant.Size").
 		Offset(offset).
 		Limit(limit).
 		Order("created_at DESC").

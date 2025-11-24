@@ -533,6 +533,74 @@ services:
     networks:
       - toxictoast-network
 
+  auth-service:
+    build:
+      context: .
+      dockerfile: ./services/auth-service/Dockerfile
+    container_name: auth-service
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: auth-service
+      PORT: 8080
+      GRPC_PORT: 9090
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: toxictoast
+      DB_SSLMODE: disable
+      JWT_SECRET: your-secret-key-please-change-in-production
+      JWT_ACCESS_DURATION: 15m
+      JWT_REFRESH_DURATION: 168h
+      USER_SERVICE_ADDR: user-service:9090
+    ports:
+      - "10011:8080"
+      - "11011:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:9090"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - toxictoast-network
+
+  user-service:
+    build:
+      context: .
+      dockerfile: ./services/user-service/Dockerfile
+    container_name: user-service
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: user-service
+      PORT: 8080
+      GRPC_PORT: 9090
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: toxictoast
+      DB_SSLMODE: disable
+    ports:
+      - "10012:8080"
+      - "11012:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:9090"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - toxictoast-network
+
   gateway-service:
     build:
       context: .
@@ -555,6 +623,8 @@ services:
       WEBHOOK_SERVICE_URL: webhook-service:9090
       WARCRAFT_SERVICE_URL: warcraft-service:9090
       WEATHER_SERVICE_URL: weather-service:9090
+      AUTH_SERVICE_URL: auth-service:9090
+      USER_SERVICE_URL: user-service:9090
       KAFKA_BROKERS: redpanda:29092
     ports:
       - "10008:8080"
@@ -569,6 +639,8 @@ services:
       - twitchbot-service
       - warcraft-service
       - weather-service
+      - auth-service
+      - user-service
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s

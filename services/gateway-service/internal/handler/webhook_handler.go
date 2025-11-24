@@ -7,6 +7,8 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
+	"github.com/toxictoast/toxictoastgo/shared/middleware"
 	pb "toxictoast/services/webhook-service/api/proto"
 	"google.golang.org/grpc"
 )
@@ -25,25 +27,35 @@ func NewWebhookHandler(conn *grpc.ClientConn) *WebhookHandler {
 	}
 }
 
+// getContextWithAuth extracts JWT claims from HTTP request and injects them into gRPC metadata
+func (h *WebhookHandler) getContextWithAuth(r *http.Request) context.Context {
+	ctx := r.Context()
+	claims := middleware.GetClaims(ctx)
+	if claims != nil {
+		ctx = sharedgrpc.InjectClaimsIntoMetadata(ctx, claims)
+	}
+	return ctx
+}
+
 // RegisterRoutes registers all webhook routes
-func (h *WebhookHandler) RegisterRoutes(router *mux.Router) {
+func (h *WebhookHandler) RegisterRoutes(router *mux.Router, authMiddleware *middleware.AuthMiddleware) {
 	// Webhook Management routes
 	router.HandleFunc("/webhooks", h.ListWebhooks).Methods("GET")
-	router.HandleFunc("/webhooks", h.CreateWebhook).Methods("POST")
+	router.Handle("/webhooks", authMiddleware.Authenticate(http.HandlerFunc(h.CreateWebhook))).Methods("POST")
 	router.HandleFunc("/webhooks/{id}", h.GetWebhook).Methods("GET")
-	router.HandleFunc("/webhooks/{id}", h.UpdateWebhook).Methods("PUT")
-	router.HandleFunc("/webhooks/{id}", h.DeleteWebhook).Methods("DELETE")
-	router.HandleFunc("/webhooks/{id}/toggle", h.ToggleWebhook).Methods("POST")
-	router.HandleFunc("/webhooks/{id}/regenerate-secret", h.RegenerateSecret).Methods("POST")
-	router.HandleFunc("/webhooks/{id}/test", h.TestWebhook).Methods("POST")
+	router.Handle("/webhooks/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateWebhook))).Methods("PUT")
+	router.Handle("/webhooks/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteWebhook))).Methods("DELETE")
+	router.Handle("/webhooks/{id}/toggle", authMiddleware.Authenticate(http.HandlerFunc(h.ToggleWebhook))).Methods("POST")
+	router.Handle("/webhooks/{id}/regenerate-secret", authMiddleware.Authenticate(http.HandlerFunc(h.RegenerateSecret))).Methods("POST")
+	router.Handle("/webhooks/{id}/test", authMiddleware.Authenticate(http.HandlerFunc(h.TestWebhook))).Methods("POST")
 
 	// Delivery routes
 	router.HandleFunc("/deliveries", h.ListDeliveries).Methods("GET")
 	router.HandleFunc("/deliveries/queue-status", h.GetQueueStatus).Methods("GET")
-	router.HandleFunc("/deliveries/cleanup", h.CleanupOldDeliveries).Methods("POST")
+	router.Handle("/deliveries/cleanup", authMiddleware.Authenticate(http.HandlerFunc(h.CleanupOldDeliveries))).Methods("POST")
 	router.HandleFunc("/deliveries/{id}", h.GetDelivery).Methods("GET")
-	router.HandleFunc("/deliveries/{id}", h.DeleteDelivery).Methods("DELETE")
-	router.HandleFunc("/deliveries/{id}/retry", h.RetryDelivery).Methods("POST")
+	router.Handle("/deliveries/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteDelivery))).Methods("DELETE")
+	router.Handle("/deliveries/{id}/retry", authMiddleware.Authenticate(http.HandlerFunc(h.RetryDelivery))).Methods("POST")
 }
 
 // Webhook Management Handlers
@@ -62,7 +74,7 @@ func (h *WebhookHandler) ListWebhooks(w http.ResponseWriter, r *http.Request) {
 		ActiveOnly: r.URL.Query().Get("active_only") == "true",
 	}
 
-	resp, err := h.managementClient.ListWebhooks(context.Background(), req)
+	resp, err := h.managementClient.ListWebhooks(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list webhooks: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -79,7 +91,7 @@ func (h *WebhookHandler) CreateWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.managementClient.CreateWebhook(context.Background(), &req)
+	resp, err := h.managementClient.CreateWebhook(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create webhook: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -95,7 +107,7 @@ func (h *WebhookHandler) GetWebhook(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	req := &pb.GetWebhookRequest{Id: id}
-	resp, err := h.managementClient.GetWebhook(context.Background(), req)
+	resp, err := h.managementClient.GetWebhook(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get webhook: "+err.Error(), http.StatusNotFound)
 		return
@@ -116,7 +128,7 @@ func (h *WebhookHandler) UpdateWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Id = id
 
-	resp, err := h.managementClient.UpdateWebhook(context.Background(), &req)
+	resp, err := h.managementClient.UpdateWebhook(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update webhook: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -131,7 +143,7 @@ func (h *WebhookHandler) DeleteWebhook(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	req := &pb.DeleteWebhookRequest{Id: id}
-	resp, err := h.managementClient.DeleteWebhook(context.Background(), req)
+	resp, err := h.managementClient.DeleteWebhook(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete webhook: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -158,7 +170,7 @@ func (h *WebhookHandler) ToggleWebhook(w http.ResponseWriter, r *http.Request) {
 		Active: reqBody.Active,
 	}
 
-	resp, err := h.managementClient.ToggleWebhook(context.Background(), req)
+	resp, err := h.managementClient.ToggleWebhook(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to toggle webhook: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -173,7 +185,7 @@ func (h *WebhookHandler) RegenerateSecret(w http.ResponseWriter, r *http.Request
 	id := vars["id"]
 
 	req := &pb.RegenerateSecretRequest{Id: id}
-	resp, err := h.managementClient.RegenerateSecret(context.Background(), req)
+	resp, err := h.managementClient.RegenerateSecret(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to regenerate secret: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -188,7 +200,7 @@ func (h *WebhookHandler) TestWebhook(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	req := &pb.TestWebhookRequest{Id: id}
-	resp, err := h.managementClient.TestWebhook(context.Background(), req)
+	resp, err := h.managementClient.TestWebhook(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to test webhook: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -221,7 +233,7 @@ func (h *WebhookHandler) ListDeliveries(w http.ResponseWriter, r *http.Request) 
 		req.Status = parseDeliveryStatus(status)
 	}
 
-	resp, err := h.deliveryClient.ListDeliveries(context.Background(), req)
+	resp, err := h.deliveryClient.ListDeliveries(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list deliveries: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -236,7 +248,7 @@ func (h *WebhookHandler) GetDelivery(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	req := &pb.GetDeliveryRequest{Id: id}
-	resp, err := h.deliveryClient.GetDelivery(context.Background(), req)
+	resp, err := h.deliveryClient.GetDelivery(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get delivery: "+err.Error(), http.StatusNotFound)
 		return
@@ -251,7 +263,7 @@ func (h *WebhookHandler) RetryDelivery(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	req := &pb.RetryDeliveryRequest{Id: id}
-	resp, err := h.deliveryClient.RetryDelivery(context.Background(), req)
+	resp, err := h.deliveryClient.RetryDelivery(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to retry delivery: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -266,7 +278,7 @@ func (h *WebhookHandler) DeleteDelivery(w http.ResponseWriter, r *http.Request) 
 	id := vars["id"]
 
 	req := &pb.DeleteDeliveryRequest{Id: id}
-	resp, err := h.deliveryClient.DeleteDelivery(context.Background(), req)
+	resp, err := h.deliveryClient.DeleteDelivery(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete delivery: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -294,7 +306,7 @@ func (h *WebhookHandler) CleanupOldDeliveries(w http.ResponseWriter, r *http.Req
 		OlderThanDays: reqBody.OlderThanDays,
 	}
 
-	resp, err := h.deliveryClient.CleanupOldDeliveries(context.Background(), req)
+	resp, err := h.deliveryClient.CleanupOldDeliveries(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to cleanup old deliveries: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -306,7 +318,7 @@ func (h *WebhookHandler) CleanupOldDeliveries(w http.ResponseWriter, r *http.Req
 
 func (h *WebhookHandler) GetQueueStatus(w http.ResponseWriter, r *http.Request) {
 	req := &pb.GetQueueStatusRequest{}
-	resp, err := h.deliveryClient.GetQueueStatus(context.Background(), req)
+	resp, err := h.deliveryClient.GetQueueStatus(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get queue status: "+err.Error(), http.StatusInternalServerError)
 		return

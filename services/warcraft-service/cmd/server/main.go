@@ -19,6 +19,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/toxictoast/toxictoastgo/shared/database"
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
@@ -213,8 +214,22 @@ func main() {
 }
 
 func setupGRPCServer(characterHandler *grpcHandler.CharacterHandler, guildHandler *grpcHandler.GuildHandler) *grpc.Server {
-	// Create gRPC server
-	server := grpc.NewServer()
+	// Setup interceptors
+	unaryInterceptors := []grpc.UnaryServerInterceptor{
+		sharedgrpc.AuthInterceptor,
+	}
+	streamInterceptors := []grpc.StreamServerInterceptor{
+		sharedgrpc.StreamAuthInterceptor,
+	}
+
+	// Create server options with chained interceptors
+	opts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamInterceptors...),
+	}
+
+	// Create gRPC server with interceptors
+	server := grpc.NewServer(opts...)
 
 	// Register services
 	pb.RegisterCharacterServiceServer(server, characterHandler)

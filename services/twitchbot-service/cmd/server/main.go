@@ -18,6 +18,7 @@ import (
 
 	"github.com/toxictoast/toxictoastgo/shared/auth"
 	"github.com/toxictoast/toxictoastgo/shared/database"
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
@@ -262,17 +263,27 @@ func setupGRPCServer(
 	botHandler *grpcHandler.BotHandler,
 	channelViewerHandler *grpcHandler.ChannelViewerHandler,
 ) *grpc.Server {
-	// Setup interceptors
-	var opts []grpc.ServerOption
-
-	if keycloakAuth != nil {
-		opts = append(opts,
-			grpc.UnaryInterceptor(keycloakAuth.UnaryInterceptor()),
-			grpc.StreamInterceptor(keycloakAuth.StreamInterceptor()),
-		)
+	// Setup interceptors - always add auth interceptor to extract user from metadata
+	unaryInterceptors := []grpc.UnaryServerInterceptor{
+		sharedgrpc.AuthInterceptor,
+	}
+	streamInterceptors := []grpc.StreamServerInterceptor{
+		sharedgrpc.StreamAuthInterceptor,
 	}
 
-	// Create gRPC server
+	// Add Keycloak interceptor if enabled
+	if keycloakAuth != nil {
+		unaryInterceptors = append(unaryInterceptors, keycloakAuth.UnaryInterceptor())
+		streamInterceptors = append(streamInterceptors, keycloakAuth.StreamInterceptor())
+	}
+
+	// Create server options with chained interceptors
+	opts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamInterceptors...),
+	}
+
+	// Create gRPC server with interceptors
 	server := grpc.NewServer(opts...)
 
 	// Register all services

@@ -1,6 +1,7 @@
 go 1.24.4
 
 use (
+	./services/auth-service
 	./services/blog-service
 	./services/foodfolio-service
 	./services/gateway-service
@@ -8,6 +9,7 @@ use (
 	./services/notification-service
 	./services/sse-service
 	./services/twitchbot-service
+	./services/user-service
 	./services/warcraft-service
 	./services/weather-service
 	./services/webhook-service

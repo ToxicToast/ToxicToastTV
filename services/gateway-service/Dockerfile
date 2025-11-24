@@ -15,6 +15,8 @@ COPY services/sse-service/ ./services/sse-service/
 COPY services/twitchbot-service/ ./services/twitchbot-service/
 COPY services/warcraft-service/ ./services/warcraft-service/
 COPY services/webhook-service/ ./services/webhook-service/
+COPY services/auth-service/ ./services/auth-service/
+COPY services/user-service/ ./services/user-service/
 
 # Copy gateway service
 COPY services/gateway-service/ ./services/gateway-service/

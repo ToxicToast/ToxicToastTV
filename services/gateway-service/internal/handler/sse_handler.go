@@ -7,6 +7,8 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
+	"github.com/toxictoast/toxictoastgo/shared/middleware"
 	pb "toxictoast/services/sse-service/api/proto"
 	"google.golang.org/grpc"
 )
@@ -23,13 +25,25 @@ func NewSSEHandler(conn *grpc.ClientConn) *SSEHandler {
 	}
 }
 
+// getContextWithAuth extracts JWT claims from HTTP request and injects them into gRPC metadata
+func (h *SSEHandler) getContextWithAuth(r *http.Request) context.Context {
+	ctx := r.Context()
+	claims := middleware.GetClaims(ctx)
+	if claims != nil {
+		ctx = sharedgrpc.InjectClaimsIntoMetadata(ctx, claims)
+	}
+	return ctx
+}
+
 // RegisterRoutes registers all SSE routes
-func (h *SSEHandler) RegisterRoutes(router *mux.Router) {
-	// Management routes
+func (h *SSEHandler) RegisterRoutes(router *mux.Router, authMiddleware *middleware.AuthMiddleware) {
+	// Management routes (public read)
 	router.HandleFunc("/stats", h.GetStats).Methods("GET")
 	router.HandleFunc("/health", h.GetHealth).Methods("GET")
 	router.HandleFunc("/clients", h.GetClients).Methods("GET")
-	router.HandleFunc("/clients/{id}/disconnect", h.DisconnectClient).Methods("POST")
+
+	// Protected operations (admin only)
+	router.Handle("/clients/{id}/disconnect", authMiddleware.Authenticate(http.HandlerFunc(h.DisconnectClient))).Methods("POST")
 }
 
 // Management Handlers
@@ -37,7 +51,7 @@ func (h *SSEHandler) RegisterRoutes(router *mux.Router) {
 // GetStats handles GET /api/events/stats
 func (h *SSEHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	req := &pb.GetStatsRequest{}
-	resp, err := h.client.GetStats(context.Background(), req)
+	resp, err := h.client.GetStats(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get stats: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -50,7 +64,7 @@ func (h *SSEHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 // GetHealth handles GET /api/events/health
 func (h *SSEHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	req := &pb.GetHealthRequest{}
-	resp, err := h.client.GetHealth(context.Background(), req)
+	resp, err := h.client.GetHealth(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get health: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -74,7 +88,7 @@ func (h *SSEHandler) GetClients(w http.ResponseWriter, r *http.Request) {
 		Offset: int32(offset),
 	}
 
-	resp, err := h.client.GetClients(context.Background(), req)
+	resp, err := h.client.GetClients(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get clients: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -93,7 +107,7 @@ func (h *SSEHandler) DisconnectClient(w http.ResponseWriter, r *http.Request) {
 		ClientId: clientID,
 	}
 
-	resp, err := h.client.DisconnectClient(context.Background(), req)
+	resp, err := h.client.DisconnectClient(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to disconnect client: "+err.Error(), http.StatusInternalServerError)
 		return

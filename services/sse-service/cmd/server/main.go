@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 	"toxictoast/services/sse-service/internal/broker"
 	"toxictoast/services/sse-service/internal/consumer"
 	grpcHandler "toxictoast/services/sse-service/internal/handler/grpc"
@@ -170,9 +171,20 @@ func setupHTTPServer(cfg *config.Config, sseHandler *httpHandler.SSEHandler, rat
 }
 
 func setupGRPCServer(cfg *config.Config, managementHandler *grpcHandler.ManagementHandler) *grpc.Server {
-	var opts []grpc.ServerOption
+	// Setup auth interceptors
+	unaryInterceptors := []grpc.UnaryServerInterceptor{
+		sharedgrpc.AuthInterceptor,
+	}
+	streamInterceptors := []grpc.StreamServerInterceptor{
+		sharedgrpc.StreamAuthInterceptor,
+	}
 
-	// Create gRPC server
+	opts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamInterceptors...),
+	}
+
+	// Create gRPC server with auth interceptors
 	server := grpc.NewServer(opts...)
 
 	// Register services

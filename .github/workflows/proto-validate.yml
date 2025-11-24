@@ -23,6 +23,8 @@ jobs:
     strategy:
       matrix:
         service:
+          - user-service
+          - auth-service
           - blog-service
           - foodfolio-service
           - link-service
@@ -31,6 +33,7 @@ jobs:
           - webhook-service
           - twitchbot-service
           - warcraft-service
+          - gateway-service
       fail-fast: false
     steps:
       - name: Checkout

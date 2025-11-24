@@ -11,7 +11,9 @@ import (
 
 	"github.com/toxictoast/toxictoastgo/shared/auth"
 	"github.com/toxictoast/toxictoastgo/shared/config"
+	"github.com/toxictoast/toxictoastgo/shared/jwt"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
+	sharedmiddleware "github.com/toxictoast/toxictoastgo/shared/middleware"
 
 	"toxictoast/services/gateway-service/internal/metrics"
 	"toxictoast/services/gateway-service/internal/middleware"
@@ -33,6 +35,15 @@ func main() {
 	// Initialize metrics
 	m := metrics.NewMetrics()
 	logger.Info("Prometheus metrics initialized")
+
+	// Initialize JWT helper and auth middleware
+	jwtHelper := jwt.NewJWTHelper(cfg.JWTSecret, 15*time.Minute, 7*24*time.Hour)
+	authMiddleware := sharedmiddleware.NewAuthMiddleware(jwtHelper)
+	logger.Info("JWT authentication middleware initialized")
+
+	// Initialize rate limiter (5 requests per minute for auth endpoints)
+	rateLimiter := sharedmiddleware.NewRateLimiter(5, 1*time.Minute)
+	logger.Info("Rate limiter initialized (5 req/min for auth endpoints)")
 
 	// Initialize Keycloak auth (optional - only if configured)
 	if cfg.KeycloakURL != "" && cfg.KeycloakRealm != "" {
@@ -65,6 +76,8 @@ func main() {
 		WebhookURL:      cfg.WebhookServiceURL,
 		WarcraftURL:     cfg.WarcraftServiceURL,
 		WeatherURL:      cfg.WeatherServiceURL,
+		AuthURL:         cfg.AuthServiceURL,
+		UserURL:         cfg.UserServiceURL,
 	}
 
 	clients, err := proxy.NewServiceClients(ctx, serviceURLs)
@@ -86,9 +99,11 @@ func main() {
 	m.SetBackendHealthStatus("webhook", clients.WebhookConn != nil)
 	m.SetBackendHealthStatus("warcraft", clients.WarcraftConn != nil)
 	m.SetBackendHealthStatus("weather", clients.WeatherConn != nil)
+	m.SetBackendHealthStatus("auth", clients.AuthConn != nil)
+	m.SetBackendHealthStatus("user", clients.UserConn != nil)
 
 	// Create router
-	router := proxy.NewRouter(clients, cfg.DevMode)
+	router := proxy.NewRouter(clients, cfg.DevMode, authMiddleware, rateLimiter)
 	handler := router.GetRouter()
 
 	if cfg.DevMode {
@@ -106,11 +121,6 @@ func main() {
 		finalHandler = middleware.CORS(finalHandler)
 		logger.Info("CORS middleware enabled")
 	}
-
-	// Rate limiting (with metrics)
-	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst, m)
-	finalHandler = rateLimiter.Middleware(finalHandler)
-	logger.Info(fmt.Sprintf("Rate limiting enabled - RPS: %d, Burst: %d", cfg.RateLimitRPS, cfg.RateLimitBurst))
 
 	// Logging middleware (should be outermost)
 	finalHandler = middleware.Logging(finalHandler)
