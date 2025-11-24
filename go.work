@@ -14,4 +14,5 @@ use (
 	./services/weather-service
 	./services/webhook-service
 	./shared
+	./tests/integration
 )
