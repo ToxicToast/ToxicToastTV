@@ -8,6 +8,8 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
+	"github.com/toxictoast/toxictoastgo/shared/middleware"
 	pb "toxictoast/services/foodfolio-service/api/proto"
 	"google.golang.org/grpc"
 )
@@ -44,114 +46,124 @@ func NewFoodFolioHandler(conn *grpc.ClientConn) *FoodFolioHandler {
 	}
 }
 
+// getContextWithAuth extracts JWT claims from HTTP request and injects them into gRPC metadata
+func (h *FoodFolioHandler) getContextWithAuth(r *http.Request) context.Context {
+	ctx := r.Context()
+	claims := middleware.GetClaims(ctx)
+	if claims != nil {
+		ctx = sharedgrpc.InjectClaimsIntoMetadata(ctx, claims)
+	}
+	return ctx
+}
+
 // RegisterRoutes registers all foodfolio routes
-func (h *FoodFolioHandler) RegisterRoutes(router *mux.Router) {
+func (h *FoodFolioHandler) RegisterRoutes(router *mux.Router, authMiddleware *middleware.AuthMiddleware) {
 	// Category routes
 	router.HandleFunc("/categories", h.ListCategories).Methods("GET")
-	router.HandleFunc("/categories", h.CreateCategory).Methods("POST")
+	router.Handle("/categories", authMiddleware.Authenticate(http.HandlerFunc(h.CreateCategory))).Methods("POST")
 	router.HandleFunc("/categories/tree", h.GetCategoryTree).Methods("GET")
 	router.HandleFunc("/categories/{id}", h.GetCategory).Methods("GET")
-	router.HandleFunc("/categories/{id}", h.UpdateCategory).Methods("PUT")
-	router.HandleFunc("/categories/{id}", h.DeleteCategory).Methods("DELETE")
+	router.Handle("/categories/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateCategory))).Methods("PUT")
+	router.Handle("/categories/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteCategory))).Methods("DELETE")
 
 	// Company routes
 	router.HandleFunc("/companies", h.ListCompanies).Methods("GET")
-	router.HandleFunc("/companies", h.CreateCompany).Methods("POST")
+	router.Handle("/companies", authMiddleware.Authenticate(http.HandlerFunc(h.CreateCompany))).Methods("POST")
 	router.HandleFunc("/companies/{id}", h.GetCompany).Methods("GET")
-	router.HandleFunc("/companies/{id}", h.UpdateCompany).Methods("PUT")
-	router.HandleFunc("/companies/{id}", h.DeleteCompany).Methods("DELETE")
+	router.Handle("/companies/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateCompany))).Methods("PUT")
+	router.Handle("/companies/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteCompany))).Methods("DELETE")
 
 	// Type routes
 	router.HandleFunc("/types", h.ListTypes).Methods("GET")
-	router.HandleFunc("/types", h.CreateType).Methods("POST")
+	router.Handle("/types", authMiddleware.Authenticate(http.HandlerFunc(h.CreateType))).Methods("POST")
 	router.HandleFunc("/types/{id}", h.GetType).Methods("GET")
-	router.HandleFunc("/types/{id}", h.UpdateType).Methods("PUT")
-	router.HandleFunc("/types/{id}", h.DeleteType).Methods("DELETE")
+	router.Handle("/types/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateType))).Methods("PUT")
+	router.Handle("/types/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteType))).Methods("DELETE")
 
 	// Size routes
 	router.HandleFunc("/sizes", h.ListSizes).Methods("GET")
-	router.HandleFunc("/sizes", h.CreateSize).Methods("POST")
+	router.Handle("/sizes", authMiddleware.Authenticate(http.HandlerFunc(h.CreateSize))).Methods("POST")
 	router.HandleFunc("/sizes/{id}", h.GetSize).Methods("GET")
-	router.HandleFunc("/sizes/{id}", h.UpdateSize).Methods("PUT")
-	router.HandleFunc("/sizes/{id}", h.DeleteSize).Methods("DELETE")
+	router.Handle("/sizes/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateSize))).Methods("PUT")
+	router.Handle("/sizes/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteSize))).Methods("DELETE")
 
 	// Warehouse routes
 	router.HandleFunc("/warehouses", h.ListWarehouses).Methods("GET")
-	router.HandleFunc("/warehouses", h.CreateWarehouse).Methods("POST")
+	router.Handle("/warehouses", authMiddleware.Authenticate(http.HandlerFunc(h.CreateWarehouse))).Methods("POST")
 	router.HandleFunc("/warehouses/{id}", h.GetWarehouse).Methods("GET")
-	router.HandleFunc("/warehouses/{id}", h.UpdateWarehouse).Methods("PUT")
-	router.HandleFunc("/warehouses/{id}", h.DeleteWarehouse).Methods("DELETE")
+	router.Handle("/warehouses/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateWarehouse))).Methods("PUT")
+	router.Handle("/warehouses/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteWarehouse))).Methods("DELETE")
 
 	// Location routes
 	router.HandleFunc("/locations", h.ListLocations).Methods("GET")
-	router.HandleFunc("/locations", h.CreateLocation).Methods("POST")
+	router.Handle("/locations", authMiddleware.Authenticate(http.HandlerFunc(h.CreateLocation))).Methods("POST")
 	router.HandleFunc("/locations/tree", h.GetLocationTree).Methods("GET")
 	router.HandleFunc("/locations/{id}", h.GetLocation).Methods("GET")
-	router.HandleFunc("/locations/{id}", h.UpdateLocation).Methods("PUT")
-	router.HandleFunc("/locations/{id}", h.DeleteLocation).Methods("DELETE")
+	router.Handle("/locations/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateLocation))).Methods("PUT")
+	router.Handle("/locations/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteLocation))).Methods("DELETE")
 
 	// Item routes
 	router.HandleFunc("/items", h.ListItems).Methods("GET")
-	router.HandleFunc("/items", h.CreateItem).Methods("POST")
+	router.Handle("/items", authMiddleware.Authenticate(http.HandlerFunc(h.CreateItem))).Methods("POST")
 	router.HandleFunc("/items/search", h.SearchItems).Methods("GET")
 	router.HandleFunc("/items/{id}", h.GetItem).Methods("GET")
-	router.HandleFunc("/items/{id}", h.UpdateItem).Methods("PUT")
-	router.HandleFunc("/items/{id}", h.DeleteItem).Methods("DELETE")
+	router.Handle("/items/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateItem))).Methods("PUT")
+	router.Handle("/items/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteItem))).Methods("DELETE")
 
 	// ItemVariant routes
 	router.HandleFunc("/item-variants", h.ListItemVariants).Methods("GET")
-	router.HandleFunc("/item-variants", h.CreateItemVariant).Methods("POST")
+	router.Handle("/item-variants", authMiddleware.Authenticate(http.HandlerFunc(h.CreateItemVariant))).Methods("POST")
 	router.HandleFunc("/item-variants/low-stock", h.GetLowStockVariants).Methods("GET")
 	router.HandleFunc("/item-variants/overstocked", h.GetOverstockedVariants).Methods("GET")
 	router.HandleFunc("/item-variants/barcode", h.ScanBarcode).Methods("GET")
 	router.HandleFunc("/item-variants/{id}", h.GetItemVariant).Methods("GET")
-	router.HandleFunc("/item-variants/{id}", h.UpdateItemVariant).Methods("PUT")
-	router.HandleFunc("/item-variants/{id}", h.DeleteItemVariant).Methods("DELETE")
+	router.Handle("/item-variants/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateItemVariant))).Methods("PUT")
+	router.Handle("/item-variants/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteItemVariant))).Methods("DELETE")
 	router.HandleFunc("/item-variants/{id}/stock", h.GetCurrentStock).Methods("GET")
 	router.HandleFunc("/item-variants/{id}/with-details", h.GetItemWithVariants).Methods("GET")
 
 	// ItemDetail routes
 	router.HandleFunc("/item-details", h.ListItemDetails).Methods("GET")
-	router.HandleFunc("/item-details", h.CreateItemDetail).Methods("POST")
-	router.HandleFunc("/item-details/batch", h.BatchCreateItemDetails).Methods("POST")
+	router.Handle("/item-details", authMiddleware.Authenticate(http.HandlerFunc(h.CreateItemDetail))).Methods("POST")
+	router.Handle("/item-details/batch", authMiddleware.Authenticate(http.HandlerFunc(h.BatchCreateItemDetails))).Methods("POST")
 	router.HandleFunc("/item-details/expiring", h.GetExpiringItems).Methods("GET")
 	router.HandleFunc("/item-details/expired", h.GetExpiredItems).Methods("GET")
 	router.HandleFunc("/item-details/deposit", h.GetItemsWithDeposit).Methods("GET")
 	router.HandleFunc("/item-details/by-location/{location_id}", h.GetItemsByLocation).Methods("GET")
 	router.HandleFunc("/item-details/{id}", h.GetItemDetail).Methods("GET")
-	router.HandleFunc("/item-details/{id}", h.UpdateItemDetail).Methods("PUT")
-	router.HandleFunc("/item-details/{id}", h.DeleteItemDetail).Methods("DELETE")
-	router.HandleFunc("/item-details/{id}/open", h.OpenItem).Methods("POST")
-	router.HandleFunc("/item-details/move", h.MoveItems).Methods("POST")
+	router.Handle("/item-details/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateItemDetail))).Methods("PUT")
+	router.Handle("/item-details/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteItemDetail))).Methods("DELETE")
+	router.Handle("/item-details/{id}/open", authMiddleware.Authenticate(http.HandlerFunc(h.OpenItem))).Methods("POST")
+	router.Handle("/item-details/move", authMiddleware.Authenticate(http.HandlerFunc(h.MoveItems))).Methods("POST")
 
 	// Shoppinglist routes
 	router.HandleFunc("/shoppinglists", h.ListShoppinglists).Methods("GET")
-	router.HandleFunc("/shoppinglists", h.CreateShoppinglist).Methods("POST")
-	router.HandleFunc("/shoppinglists/generate-low-stock", h.GenerateFromLowStock).Methods("POST")
+	router.Handle("/shoppinglists", authMiddleware.Authenticate(http.HandlerFunc(h.CreateShoppinglist))).Methods("POST")
+	router.Handle("/shoppinglists/generate-low-stock", authMiddleware.Authenticate(http.HandlerFunc(h.GenerateFromLowStock))).Methods("POST")
 	router.HandleFunc("/shoppinglists/{id}", h.GetShoppinglist).Methods("GET")
-	router.HandleFunc("/shoppinglists/{id}", h.UpdateShoppinglist).Methods("PUT")
-	router.HandleFunc("/shoppinglists/{id}", h.DeleteShoppinglist).Methods("DELETE")
-	router.HandleFunc("/shoppinglists/{id}/items", h.AddItemToShoppinglist).Methods("POST")
-	router.HandleFunc("/shoppinglists/{id}/items/{item_id}", h.UpdateShoppinglistItem).Methods("PUT")
-	router.HandleFunc("/shoppinglists/{id}/items/{item_id}", h.RemoveItemFromShoppinglist).Methods("DELETE")
-	router.HandleFunc("/shoppinglists/{id}/items/{item_id}/purchase", h.MarkItemPurchased).Methods("POST")
-	router.HandleFunc("/shoppinglists/{id}/purchase-all", h.MarkAllItemsPurchased).Methods("POST")
-	router.HandleFunc("/shoppinglists/{id}/clear-purchased", h.ClearPurchasedItems).Methods("POST")
+	router.Handle("/shoppinglists/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateShoppinglist))).Methods("PUT")
+	router.Handle("/shoppinglists/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteShoppinglist))).Methods("DELETE")
+	router.Handle("/shoppinglists/{id}/items", authMiddleware.Authenticate(http.HandlerFunc(h.AddItemToShoppinglist))).Methods("POST")
+	router.Handle("/shoppinglists/{id}/items/{item_id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateShoppinglistItem))).Methods("PUT")
+	router.Handle("/shoppinglists/{id}/items/{item_id}", authMiddleware.Authenticate(http.HandlerFunc(h.RemoveItemFromShoppinglist))).Methods("DELETE")
+	router.Handle("/shoppinglists/{id}/items/{item_id}/purchase", authMiddleware.Authenticate(http.HandlerFunc(h.MarkItemPurchased))).Methods("POST")
+	router.Handle("/shoppinglists/{id}/purchase-all", authMiddleware.Authenticate(http.HandlerFunc(h.MarkAllItemsPurchased))).Methods("POST")
+	router.Handle("/shoppinglists/{id}/clear-purchased", authMiddleware.Authenticate(http.HandlerFunc(h.ClearPurchasedItems))).Methods("POST")
 
 	// Receipt routes
 	router.HandleFunc("/receipts", h.ListReceipts).Methods("GET")
-	router.HandleFunc("/receipts", h.CreateReceipt).Methods("POST")
-	router.HandleFunc("/receipts/upload", h.UploadReceipt).Methods("POST")
+	router.Handle("/receipts", authMiddleware.Authenticate(http.HandlerFunc(h.CreateReceipt))).Methods("POST")
+	router.Handle("/receipts/upload", authMiddleware.Authenticate(http.HandlerFunc(h.UploadReceipt))).Methods("POST")
 	router.HandleFunc("/receipts/statistics", h.GetReceiptStatistics).Methods("GET")
 	router.HandleFunc("/receipts/{id}", h.GetReceipt).Methods("GET")
-	router.HandleFunc("/receipts/{id}", h.UpdateReceipt).Methods("PUT")
-	router.HandleFunc("/receipts/{id}", h.DeleteReceipt).Methods("DELETE")
-	router.HandleFunc("/receipts/{id}/process", h.ProcessReceipt).Methods("POST")
-	router.HandleFunc("/receipts/{id}/items", h.AddItemToReceipt).Methods("POST")
-	router.HandleFunc("/receipts/{id}/items/{item_id}", h.UpdateReceiptItem).Methods("PUT")
-	router.HandleFunc("/receipts/{id}/items/{item_id}/match", h.MatchReceiptItem).Methods("POST")
-	router.HandleFunc("/receipts/{id}/auto-match", h.AutoMatchReceiptItems).Methods("POST")
-	router.HandleFunc("/receipts/{id}/create-inventory", h.CreateInventoryFromReceipt).Methods("POST")
+	router.Handle("/receipts/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateReceipt))).Methods("PUT")
+	router.Handle("/receipts/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteReceipt))).Methods("DELETE")
+	router.Handle("/receipts/{id}/process", authMiddleware.Authenticate(http.HandlerFunc(h.ProcessReceipt))).Methods("POST")
+	router.Handle("/receipts/{id}/items", authMiddleware.Authenticate(http.HandlerFunc(h.AddItemToReceipt))).Methods("POST")
+	router.Handle("/receipts/{id}/items/{item_id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateReceiptItem))).Methods("PUT")
+	router.Handle("/receipts/{id}/items/{item_id}/match", authMiddleware.Authenticate(http.HandlerFunc(h.MatchReceiptItem))).Methods("POST")
+	router.Handle("/receipts/{id}/auto-match", authMiddleware.Authenticate(http.HandlerFunc(h.AutoMatchReceiptItems))).Methods("POST")
+	router.Handle("/receipts/{id}/create-inventory", authMiddleware.Authenticate(http.HandlerFunc(h.CreateInventoryFromReceipt))).Methods("POST")
 }
 
 // Category handlers
@@ -175,7 +187,7 @@ func (h *FoodFolioHandler) ListCategories(w http.ResponseWriter, r *http.Request
 		req.ParentId = &parentID
 	}
 
-	resp, err := h.categoryClient.ListCategories(context.Background(), req)
+	resp, err := h.categoryClient.ListCategories(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list categories: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -192,7 +204,7 @@ func (h *FoodFolioHandler) CreateCategory(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	resp, err := h.categoryClient.CreateCategory(context.Background(), &req)
+	resp, err := h.categoryClient.CreateCategory(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create category: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -208,7 +220,7 @@ func (h *FoodFolioHandler) GetCategory(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	req := &pb.IdRequest{Id: id}
-	resp, err := h.categoryClient.GetCategory(context.Background(), req)
+	resp, err := h.categoryClient.GetCategory(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get category: "+err.Error(), http.StatusNotFound)
 		return
@@ -229,7 +241,7 @@ func (h *FoodFolioHandler) UpdateCategory(w http.ResponseWriter, r *http.Request
 	}
 	req.Id = id
 
-	resp, err := h.categoryClient.UpdateCategory(context.Background(), &req)
+	resp, err := h.categoryClient.UpdateCategory(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update category: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -244,7 +256,7 @@ func (h *FoodFolioHandler) DeleteCategory(w http.ResponseWriter, r *http.Request
 	id := vars["id"]
 
 	req := &pb.IdRequest{Id: id}
-	resp, err := h.categoryClient.DeleteCategory(context.Background(), req)
+	resp, err := h.categoryClient.DeleteCategory(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete category: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -265,7 +277,7 @@ func (h *FoodFolioHandler) GetCategoryTree(w http.ResponseWriter, r *http.Reques
 		req.RootId = &rootID
 	}
 
-	resp, err := h.categoryClient.GetCategoryTree(context.Background(), req)
+	resp, err := h.categoryClient.GetCategoryTree(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get category tree: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -295,7 +307,7 @@ func (h *FoodFolioHandler) ListCompanies(w http.ResponseWriter, r *http.Request)
 		req.Search = &search
 	}
 
-	resp, err := h.companyClient.ListCompanies(context.Background(), req)
+	resp, err := h.companyClient.ListCompanies(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list companies: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -312,7 +324,7 @@ func (h *FoodFolioHandler) CreateCompany(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	resp, err := h.companyClient.CreateCompany(context.Background(), &req)
+	resp, err := h.companyClient.CreateCompany(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create company: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -328,7 +340,7 @@ func (h *FoodFolioHandler) GetCompany(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	req := &pb.IdRequest{Id: id}
-	resp, err := h.companyClient.GetCompany(context.Background(), req)
+	resp, err := h.companyClient.GetCompany(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get company: "+err.Error(), http.StatusNotFound)
 		return
@@ -349,7 +361,7 @@ func (h *FoodFolioHandler) UpdateCompany(w http.ResponseWriter, r *http.Request)
 	}
 	req.Id = id
 
-	resp, err := h.companyClient.UpdateCompany(context.Background(), &req)
+	resp, err := h.companyClient.UpdateCompany(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update company: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -364,7 +376,7 @@ func (h *FoodFolioHandler) DeleteCompany(w http.ResponseWriter, r *http.Request)
 	id := vars["id"]
 
 	req := &pb.IdRequest{Id: id}
-	resp, err := h.companyClient.DeleteCompany(context.Background(), req)
+	resp, err := h.companyClient.DeleteCompany(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete company: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -393,7 +405,7 @@ func (h *FoodFolioHandler) ListTypes(w http.ResponseWriter, r *http.Request) {
 		req.Search = &search
 	}
 
-	resp, err := h.typeClient.ListTypes(context.Background(), req)
+	resp, err := h.typeClient.ListTypes(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list types: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -410,7 +422,7 @@ func (h *FoodFolioHandler) CreateType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.typeClient.CreateType(context.Background(), &req)
+	resp, err := h.typeClient.CreateType(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create type: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -424,7 +436,7 @@ func (h *FoodFolioHandler) CreateType(w http.ResponseWriter, r *http.Request) {
 func (h *FoodFolioHandler) GetType(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.typeClient.GetType(context.Background(), req)
+	resp, err := h.typeClient.GetType(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get type: "+err.Error(), http.StatusNotFound)
 		return
@@ -442,7 +454,7 @@ func (h *FoodFolioHandler) UpdateType(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.typeClient.UpdateType(context.Background(), &req)
+	resp, err := h.typeClient.UpdateType(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update type: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -454,7 +466,7 @@ func (h *FoodFolioHandler) UpdateType(w http.ResponseWriter, r *http.Request) {
 func (h *FoodFolioHandler) DeleteType(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.typeClient.DeleteType(context.Background(), req)
+	resp, err := h.typeClient.DeleteType(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete type: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -476,7 +488,7 @@ func (h *FoodFolioHandler) ListSizes(w http.ResponseWriter, r *http.Request) {
 
 	req := &pb.ListSizesRequest{Page: int32(page), PageSize: int32(pageSize)}
 
-	resp, err := h.sizeClient.ListSizes(context.Background(), req)
+	resp, err := h.sizeClient.ListSizes(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list sizes: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -493,7 +505,7 @@ func (h *FoodFolioHandler) CreateSize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.sizeClient.CreateSize(context.Background(), &req)
+	resp, err := h.sizeClient.CreateSize(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create size: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -507,7 +519,7 @@ func (h *FoodFolioHandler) CreateSize(w http.ResponseWriter, r *http.Request) {
 func (h *FoodFolioHandler) GetSize(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.sizeClient.GetSize(context.Background(), req)
+	resp, err := h.sizeClient.GetSize(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get size: "+err.Error(), http.StatusNotFound)
 		return
@@ -525,7 +537,7 @@ func (h *FoodFolioHandler) UpdateSize(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.sizeClient.UpdateSize(context.Background(), &req)
+	resp, err := h.sizeClient.UpdateSize(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update size: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -537,7 +549,7 @@ func (h *FoodFolioHandler) UpdateSize(w http.ResponseWriter, r *http.Request) {
 func (h *FoodFolioHandler) DeleteSize(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.sizeClient.DeleteSize(context.Background(), req)
+	resp, err := h.sizeClient.DeleteSize(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete size: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -561,7 +573,7 @@ func (h *FoodFolioHandler) ListWarehouses(w http.ResponseWriter, r *http.Request
 		req.Search = &search
 	}
 
-	resp, err := h.warehouseClient.ListWarehouses(context.Background(), req)
+	resp, err := h.warehouseClient.ListWarehouses(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list warehouses: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -578,7 +590,7 @@ func (h *FoodFolioHandler) CreateWarehouse(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	resp, err := h.warehouseClient.CreateWarehouse(context.Background(), &req)
+	resp, err := h.warehouseClient.CreateWarehouse(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create warehouse: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -592,7 +604,7 @@ func (h *FoodFolioHandler) CreateWarehouse(w http.ResponseWriter, r *http.Reques
 func (h *FoodFolioHandler) GetWarehouse(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.warehouseClient.GetWarehouse(context.Background(), req)
+	resp, err := h.warehouseClient.GetWarehouse(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get warehouse: "+err.Error(), http.StatusNotFound)
 		return
@@ -610,7 +622,7 @@ func (h *FoodFolioHandler) UpdateWarehouse(w http.ResponseWriter, r *http.Reques
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.warehouseClient.UpdateWarehouse(context.Background(), &req)
+	resp, err := h.warehouseClient.UpdateWarehouse(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update warehouse: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -622,7 +634,7 @@ func (h *FoodFolioHandler) UpdateWarehouse(w http.ResponseWriter, r *http.Reques
 func (h *FoodFolioHandler) DeleteWarehouse(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.warehouseClient.DeleteWarehouse(context.Background(), req)
+	resp, err := h.warehouseClient.DeleteWarehouse(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete warehouse: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -651,7 +663,7 @@ func (h *FoodFolioHandler) ListLocations(w http.ResponseWriter, r *http.Request)
 		req.ParentId = &parentID
 	}
 
-	resp, err := h.locationClient.ListLocations(context.Background(), req)
+	resp, err := h.locationClient.ListLocations(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list locations: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -668,7 +680,7 @@ func (h *FoodFolioHandler) CreateLocation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	resp, err := h.locationClient.CreateLocation(context.Background(), &req)
+	resp, err := h.locationClient.CreateLocation(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create location: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -682,7 +694,7 @@ func (h *FoodFolioHandler) CreateLocation(w http.ResponseWriter, r *http.Request
 func (h *FoodFolioHandler) GetLocation(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.locationClient.GetLocation(context.Background(), req)
+	resp, err := h.locationClient.GetLocation(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get location: "+err.Error(), http.StatusNotFound)
 		return
@@ -700,7 +712,7 @@ func (h *FoodFolioHandler) UpdateLocation(w http.ResponseWriter, r *http.Request
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.locationClient.UpdateLocation(context.Background(), &req)
+	resp, err := h.locationClient.UpdateLocation(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update location: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -712,7 +724,7 @@ func (h *FoodFolioHandler) UpdateLocation(w http.ResponseWriter, r *http.Request
 func (h *FoodFolioHandler) DeleteLocation(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.locationClient.DeleteLocation(context.Background(), req)
+	resp, err := h.locationClient.DeleteLocation(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete location: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -732,7 +744,7 @@ func (h *FoodFolioHandler) GetLocationTree(w http.ResponseWriter, r *http.Reques
 		req.RootId = &rootID
 	}
 
-	resp, err := h.locationClient.GetLocationTree(context.Background(), req)
+	resp, err := h.locationClient.GetLocationTree(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get location tree: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -767,7 +779,7 @@ func (h *FoodFolioHandler) ListItems(w http.ResponseWriter, r *http.Request) {
 		req.Search = &search
 	}
 
-	resp, err := h.itemClient.ListItems(context.Background(), req)
+	resp, err := h.itemClient.ListItems(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list items: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -784,7 +796,7 @@ func (h *FoodFolioHandler) CreateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.itemClient.CreateItem(context.Background(), &req)
+	resp, err := h.itemClient.CreateItem(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create item: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -798,7 +810,7 @@ func (h *FoodFolioHandler) CreateItem(w http.ResponseWriter, r *http.Request) {
 func (h *FoodFolioHandler) GetItem(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.itemClient.GetItem(context.Background(), req)
+	resp, err := h.itemClient.GetItem(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get item: "+err.Error(), http.StatusNotFound)
 		return
@@ -816,7 +828,7 @@ func (h *FoodFolioHandler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.itemClient.UpdateItem(context.Background(), &req)
+	resp, err := h.itemClient.UpdateItem(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update item: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -828,7 +840,7 @@ func (h *FoodFolioHandler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 func (h *FoodFolioHandler) DeleteItem(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.itemClient.DeleteItem(context.Background(), req)
+	resp, err := h.itemClient.DeleteItem(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete item: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -859,7 +871,7 @@ func (h *FoodFolioHandler) SearchItems(w http.ResponseWriter, r *http.Request) {
 		PageSize: int32(pageSize),
 	}
 
-	resp, err := h.itemClient.SearchItems(context.Background(), req)
+	resp, err := h.itemClient.SearchItems(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to search items: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -888,7 +900,7 @@ func (h *FoodFolioHandler) ListItemVariants(w http.ResponseWriter, r *http.Reque
 		req.ItemId = &itemID
 	}
 
-	resp, err := h.itemVariantClient.ListItemVariants(context.Background(), req)
+	resp, err := h.itemVariantClient.ListItemVariants(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list item variants: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -905,7 +917,7 @@ func (h *FoodFolioHandler) CreateItemVariant(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	resp, err := h.itemVariantClient.CreateItemVariant(context.Background(), &req)
+	resp, err := h.itemVariantClient.CreateItemVariant(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create item variant: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -919,7 +931,7 @@ func (h *FoodFolioHandler) CreateItemVariant(w http.ResponseWriter, r *http.Requ
 func (h *FoodFolioHandler) GetItemVariant(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.itemVariantClient.GetItemVariant(context.Background(), req)
+	resp, err := h.itemVariantClient.GetItemVariant(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get item variant: "+err.Error(), http.StatusNotFound)
 		return
@@ -937,7 +949,7 @@ func (h *FoodFolioHandler) UpdateItemVariant(w http.ResponseWriter, r *http.Requ
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.itemVariantClient.UpdateItemVariant(context.Background(), &req)
+	resp, err := h.itemVariantClient.UpdateItemVariant(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update item variant: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -949,7 +961,7 @@ func (h *FoodFolioHandler) UpdateItemVariant(w http.ResponseWriter, r *http.Requ
 func (h *FoodFolioHandler) DeleteItemVariant(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.itemVariantClient.DeleteItemVariant(context.Background(), req)
+	resp, err := h.itemVariantClient.DeleteItemVariant(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete item variant: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -961,7 +973,7 @@ func (h *FoodFolioHandler) DeleteItemVariant(w http.ResponseWriter, r *http.Requ
 func (h *FoodFolioHandler) GetCurrentStock(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.GetCurrentStockRequest{Id: vars["id"]}
-	resp, err := h.itemVariantClient.GetCurrentStock(context.Background(), req)
+	resp, err := h.itemVariantClient.GetCurrentStock(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get current stock: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -984,7 +996,7 @@ func (h *FoodFolioHandler) GetLowStockVariants(w http.ResponseWriter, r *http.Re
 		Page:     int32(page),
 		PageSize: int32(pageSize),
 	}
-	resp, err := h.itemVariantClient.GetLowStockVariants(context.Background(), req)
+	resp, err := h.itemVariantClient.GetLowStockVariants(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get low stock variants: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1007,7 +1019,7 @@ func (h *FoodFolioHandler) GetOverstockedVariants(w http.ResponseWriter, r *http
 		Page:     int32(page),
 		PageSize: int32(pageSize),
 	}
-	resp, err := h.itemVariantClient.GetOverstockedVariants(context.Background(), req)
+	resp, err := h.itemVariantClient.GetOverstockedVariants(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get overstocked variants: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1022,7 +1034,7 @@ func (h *FoodFolioHandler) GetItemWithVariants(w http.ResponseWriter, r *http.Re
 		Id:             vars["id"],
 		IncludeDetails: r.URL.Query().Get("include_details") == "true",
 	}
-	resp, err := h.itemVariantClient.GetItemWithVariants(context.Background(), req)
+	resp, err := h.itemVariantClient.GetItemWithVariants(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get item with variants: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1039,7 +1051,7 @@ func (h *FoodFolioHandler) ScanBarcode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := &pb.ScanBarcodeRequest{Barcode: barcode}
-	resp, err := h.itemVariantClient.ScanBarcode(context.Background(), req)
+	resp, err := h.itemVariantClient.ScanBarcode(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to scan barcode: "+err.Error(), http.StatusNotFound)
 		return
@@ -1070,7 +1082,7 @@ func (h *FoodFolioHandler) ListItemDetails(w http.ResponseWriter, r *http.Reques
 		req.LocationId = &locationID
 	}
 
-	resp, err := h.itemDetailClient.ListItemDetails(context.Background(), req)
+	resp, err := h.itemDetailClient.ListItemDetails(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list item details: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1087,7 +1099,7 @@ func (h *FoodFolioHandler) CreateItemDetail(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	resp, err := h.itemDetailClient.CreateItemDetail(context.Background(), &req)
+	resp, err := h.itemDetailClient.CreateItemDetail(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create item detail: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1105,7 +1117,7 @@ func (h *FoodFolioHandler) BatchCreateItemDetails(w http.ResponseWriter, r *http
 		return
 	}
 
-	resp, err := h.itemDetailClient.BatchCreateItemDetails(context.Background(), &req)
+	resp, err := h.itemDetailClient.BatchCreateItemDetails(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to batch create item details: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1119,7 +1131,7 @@ func (h *FoodFolioHandler) BatchCreateItemDetails(w http.ResponseWriter, r *http
 func (h *FoodFolioHandler) GetItemDetail(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.itemDetailClient.GetItemDetail(context.Background(), req)
+	resp, err := h.itemDetailClient.GetItemDetail(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get item detail: "+err.Error(), http.StatusNotFound)
 		return
@@ -1137,7 +1149,7 @@ func (h *FoodFolioHandler) UpdateItemDetail(w http.ResponseWriter, r *http.Reque
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.itemDetailClient.UpdateItemDetail(context.Background(), &req)
+	resp, err := h.itemDetailClient.UpdateItemDetail(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update item detail: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1149,7 +1161,7 @@ func (h *FoodFolioHandler) UpdateItemDetail(w http.ResponseWriter, r *http.Reque
 func (h *FoodFolioHandler) DeleteItemDetail(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.itemDetailClient.DeleteItemDetail(context.Background(), req)
+	resp, err := h.itemDetailClient.DeleteItemDetail(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete item detail: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1161,7 +1173,7 @@ func (h *FoodFolioHandler) DeleteItemDetail(w http.ResponseWriter, r *http.Reque
 func (h *FoodFolioHandler) OpenItem(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.OpenItemRequest{Id: vars["id"]}
-	resp, err := h.itemDetailClient.OpenItem(context.Background(), req)
+	resp, err := h.itemDetailClient.OpenItem(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to open item: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1177,7 +1189,7 @@ func (h *FoodFolioHandler) MoveItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.itemDetailClient.MoveItems(context.Background(), &req)
+	resp, err := h.itemDetailClient.MoveItems(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to move items: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1206,7 +1218,7 @@ func (h *FoodFolioHandler) GetExpiringItems(w http.ResponseWriter, r *http.Reque
 		Page:     int32(page),
 		PageSize: int32(pageSize),
 	}
-	resp, err := h.itemDetailClient.GetExpiringItems(context.Background(), req)
+	resp, err := h.itemDetailClient.GetExpiringItems(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get expiring items: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1229,7 +1241,7 @@ func (h *FoodFolioHandler) GetExpiredItems(w http.ResponseWriter, r *http.Reques
 		Page:     int32(page),
 		PageSize: int32(pageSize),
 	}
-	resp, err := h.itemDetailClient.GetExpiredItems(context.Background(), req)
+	resp, err := h.itemDetailClient.GetExpiredItems(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get expired items: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1252,7 +1264,7 @@ func (h *FoodFolioHandler) GetItemsWithDeposit(w http.ResponseWriter, r *http.Re
 		Page:     int32(page),
 		PageSize: int32(pageSize),
 	}
-	resp, err := h.itemDetailClient.GetItemsWithDeposit(context.Background(), req)
+	resp, err := h.itemDetailClient.GetItemsWithDeposit(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get items with deposit: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1278,7 +1290,7 @@ func (h *FoodFolioHandler) GetItemsByLocation(w http.ResponseWriter, r *http.Req
 		Page:            int32(page),
 		PageSize:        int32(pageSize),
 	}
-	resp, err := h.itemDetailClient.GetItemsByLocation(context.Background(), req)
+	resp, err := h.itemDetailClient.GetItemsByLocation(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get items by location: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1302,7 +1314,7 @@ func (h *FoodFolioHandler) ListShoppinglists(w http.ResponseWriter, r *http.Requ
 		PageSize: int32(pageSize),
 	}
 
-	resp, err := h.shoppinglistClient.ListShoppinglists(context.Background(), req)
+	resp, err := h.shoppinglistClient.ListShoppinglists(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list shoppinglists: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1319,7 +1331,7 @@ func (h *FoodFolioHandler) CreateShoppinglist(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	resp, err := h.shoppinglistClient.CreateShoppinglist(context.Background(), &req)
+	resp, err := h.shoppinglistClient.CreateShoppinglist(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create shoppinglist: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1333,7 +1345,7 @@ func (h *FoodFolioHandler) CreateShoppinglist(w http.ResponseWriter, r *http.Req
 func (h *FoodFolioHandler) GetShoppinglist(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.shoppinglistClient.GetShoppinglist(context.Background(), req)
+	resp, err := h.shoppinglistClient.GetShoppinglist(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get shoppinglist: "+err.Error(), http.StatusNotFound)
 		return
@@ -1351,7 +1363,7 @@ func (h *FoodFolioHandler) UpdateShoppinglist(w http.ResponseWriter, r *http.Req
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.shoppinglistClient.UpdateShoppinglist(context.Background(), &req)
+	resp, err := h.shoppinglistClient.UpdateShoppinglist(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update shoppinglist: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1363,7 +1375,7 @@ func (h *FoodFolioHandler) UpdateShoppinglist(w http.ResponseWriter, r *http.Req
 func (h *FoodFolioHandler) DeleteShoppinglist(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.shoppinglistClient.DeleteShoppinglist(context.Background(), req)
+	resp, err := h.shoppinglistClient.DeleteShoppinglist(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete shoppinglist: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1381,7 +1393,7 @@ func (h *FoodFolioHandler) AddItemToShoppinglist(w http.ResponseWriter, r *http.
 	}
 	req.ShoppinglistId = vars["id"]
 
-	resp, err := h.shoppinglistClient.AddItemToShoppinglist(context.Background(), &req)
+	resp, err := h.shoppinglistClient.AddItemToShoppinglist(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to add item to shoppinglist: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1397,7 +1409,7 @@ func (h *FoodFolioHandler) RemoveItemFromShoppinglist(w http.ResponseWriter, r *
 		ItemId:         vars["item_id"],
 	}
 
-	resp, err := h.shoppinglistClient.RemoveItemFromShoppinglist(context.Background(), req)
+	resp, err := h.shoppinglistClient.RemoveItemFromShoppinglist(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to remove item from shoppinglist: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1415,7 +1427,7 @@ func (h *FoodFolioHandler) UpdateShoppinglistItem(w http.ResponseWriter, r *http
 	}
 	req.Id = vars["item_id"]
 
-	resp, err := h.shoppinglistClient.UpdateShoppinglistItem(context.Background(), &req)
+	resp, err := h.shoppinglistClient.UpdateShoppinglistItem(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update shoppinglist item: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1430,7 +1442,7 @@ func (h *FoodFolioHandler) MarkItemPurchased(w http.ResponseWriter, r *http.Requ
 		Id: vars["item_id"],
 	}
 
-	resp, err := h.shoppinglistClient.MarkItemPurchased(context.Background(), req)
+	resp, err := h.shoppinglistClient.MarkItemPurchased(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to mark item purchased: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1443,7 +1455,7 @@ func (h *FoodFolioHandler) MarkAllItemsPurchased(w http.ResponseWriter, r *http.
 	vars := mux.Vars(r)
 	req := &pb.MarkAllItemsPurchasedRequest{ShoppinglistId: vars["id"]}
 
-	resp, err := h.shoppinglistClient.MarkAllItemsPurchased(context.Background(), req)
+	resp, err := h.shoppinglistClient.MarkAllItemsPurchased(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to mark all items purchased: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1456,7 +1468,7 @@ func (h *FoodFolioHandler) ClearPurchasedItems(w http.ResponseWriter, r *http.Re
 	vars := mux.Vars(r)
 	req := &pb.ClearPurchasedItemsRequest{ShoppinglistId: vars["id"]}
 
-	resp, err := h.shoppinglistClient.ClearPurchasedItems(context.Background(), req)
+	resp, err := h.shoppinglistClient.ClearPurchasedItems(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to clear purchased items: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1472,7 +1484,7 @@ func (h *FoodFolioHandler) GenerateFromLowStock(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	resp, err := h.shoppinglistClient.GenerateFromLowStock(context.Background(), &req)
+	resp, err := h.shoppinglistClient.GenerateFromLowStock(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to generate from low stock: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1497,7 +1509,7 @@ func (h *FoodFolioHandler) ListReceipts(w http.ResponseWriter, r *http.Request) 
 		PageSize: int32(pageSize),
 	}
 
-	resp, err := h.receiptClient.ListReceipts(context.Background(), req)
+	resp, err := h.receiptClient.ListReceipts(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list receipts: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1514,7 +1526,7 @@ func (h *FoodFolioHandler) CreateReceipt(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	resp, err := h.receiptClient.CreateReceipt(context.Background(), &req)
+	resp, err := h.receiptClient.CreateReceipt(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create receipt: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1528,7 +1540,7 @@ func (h *FoodFolioHandler) CreateReceipt(w http.ResponseWriter, r *http.Request)
 func (h *FoodFolioHandler) GetReceipt(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.receiptClient.GetReceipt(context.Background(), req)
+	resp, err := h.receiptClient.GetReceipt(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get receipt: "+err.Error(), http.StatusNotFound)
 		return
@@ -1546,7 +1558,7 @@ func (h *FoodFolioHandler) UpdateReceipt(w http.ResponseWriter, r *http.Request)
 	}
 	req.Id = vars["id"]
 
-	resp, err := h.receiptClient.UpdateReceipt(context.Background(), &req)
+	resp, err := h.receiptClient.UpdateReceipt(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update receipt: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1558,7 +1570,7 @@ func (h *FoodFolioHandler) UpdateReceipt(w http.ResponseWriter, r *http.Request)
 func (h *FoodFolioHandler) DeleteReceipt(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	req := &pb.IdRequest{Id: vars["id"]}
-	resp, err := h.receiptClient.DeleteReceipt(context.Background(), req)
+	resp, err := h.receiptClient.DeleteReceipt(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete receipt: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1603,7 +1615,7 @@ func (h *FoodFolioHandler) UploadReceipt(w http.ResponseWriter, r *http.Request)
 		ContentType: header.Header.Get("Content-Type"),
 	}
 
-	resp, err := h.receiptClient.UploadReceipt(context.Background(), req)
+	resp, err := h.receiptClient.UploadReceipt(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to upload receipt: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1620,7 +1632,7 @@ func (h *FoodFolioHandler) ProcessReceipt(w http.ResponseWriter, r *http.Request
 		AutoMatch: r.URL.Query().Get("auto_match") == "true",
 	}
 
-	resp, err := h.receiptClient.ProcessReceipt(context.Background(), req)
+	resp, err := h.receiptClient.ProcessReceipt(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to process receipt: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1638,7 +1650,7 @@ func (h *FoodFolioHandler) AddItemToReceipt(w http.ResponseWriter, r *http.Reque
 	}
 	req.ReceiptId = vars["id"]
 
-	resp, err := h.receiptClient.AddItemToReceipt(context.Background(), &req)
+	resp, err := h.receiptClient.AddItemToReceipt(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to add item to receipt: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1656,7 +1668,7 @@ func (h *FoodFolioHandler) UpdateReceiptItem(w http.ResponseWriter, r *http.Requ
 	}
 	req.Id = vars["item_id"]
 
-	resp, err := h.receiptClient.UpdateReceiptItem(context.Background(), &req)
+	resp, err := h.receiptClient.UpdateReceiptItem(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update receipt item: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1680,7 +1692,7 @@ func (h *FoodFolioHandler) MatchReceiptItem(w http.ResponseWriter, r *http.Reque
 		ItemVariantId: reqBody.ItemVariantId,
 	}
 
-	resp, err := h.receiptClient.MatchReceiptItem(context.Background(), req)
+	resp, err := h.receiptClient.MatchReceiptItem(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to match receipt item: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1702,7 +1714,7 @@ func (h *FoodFolioHandler) AutoMatchReceiptItems(w http.ResponseWriter, r *http.
 		}
 	}
 
-	resp, err := h.receiptClient.AutoMatchReceiptItems(context.Background(), req)
+	resp, err := h.receiptClient.AutoMatchReceiptItems(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to auto-match receipt items: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1720,7 +1732,7 @@ func (h *FoodFolioHandler) CreateInventoryFromReceipt(w http.ResponseWriter, r *
 	}
 	req.ReceiptId = vars["id"]
 
-	resp, err := h.receiptClient.CreateInventoryFromReceipt(context.Background(), &req)
+	resp, err := h.receiptClient.CreateInventoryFromReceipt(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create inventory from receipt: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1738,7 +1750,7 @@ func (h *FoodFolioHandler) GetReceiptStatistics(w http.ResponseWriter, r *http.R
 		req.WarehouseId = &warehouseID
 	}
 
-	resp, err := h.receiptClient.GetReceiptStatistics(context.Background(), req)
+	resp, err := h.receiptClient.GetReceiptStatistics(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get receipt statistics: "+err.Error(), http.StatusInternalServerError)
 		return

@@ -7,6 +7,8 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
+	"github.com/toxictoast/toxictoastgo/shared/middleware"
 	pb "toxictoast/services/link-service/api/proto"
 	"google.golang.org/grpc"
 )
@@ -23,20 +25,30 @@ func NewLinkHandler(conn *grpc.ClientConn) *LinkHandler {
 	}
 }
 
+// getContextWithAuth extracts JWT claims from HTTP request and injects them into gRPC metadata
+func (h *LinkHandler) getContextWithAuth(r *http.Request) context.Context {
+	ctx := r.Context()
+	claims := middleware.GetClaims(ctx)
+	if claims != nil {
+		ctx = sharedgrpc.InjectClaimsIntoMetadata(ctx, claims)
+	}
+	return ctx
+}
+
 // RegisterRoutes registers all link routes
-func (h *LinkHandler) RegisterRoutes(router *mux.Router) {
+func (h *LinkHandler) RegisterRoutes(router *mux.Router, authMiddleware *middleware.AuthMiddleware) {
 	// Link CRUD routes
 	router.HandleFunc("/links", h.ListLinks).Methods("GET")
-	router.HandleFunc("/links", h.CreateLink).Methods("POST")
+	router.Handle("/links", authMiddleware.Authenticate(http.HandlerFunc(h.CreateLink))).Methods("POST")
 	router.HandleFunc("/links/{id}", h.GetLink).Methods("GET")
-	router.HandleFunc("/links/{id}", h.UpdateLink).Methods("PUT")
-	router.HandleFunc("/links/{id}", h.DeleteLink).Methods("DELETE")
+	router.Handle("/links/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.UpdateLink))).Methods("PUT")
+	router.Handle("/links/{id}", authMiddleware.Authenticate(http.HandlerFunc(h.DeleteLink))).Methods("DELETE")
 
-	// Short code routes
+	// Short code routes (public)
 	router.HandleFunc("/s/{short_code}", h.GetLinkByShortCode).Methods("GET")
 	router.HandleFunc("/s/{short_code}/click", h.IncrementClick).Methods("POST")
 
-	// Analytics routes
+	// Analytics routes (read-only, public)
 	router.HandleFunc("/links/{id}/stats", h.GetLinkStats).Methods("GET")
 	router.HandleFunc("/links/{id}/clicks", h.GetLinkClicks).Methods("GET")
 	router.HandleFunc("/links/{id}/clicks-by-date", h.GetClicksByDate).Methods("GET")
@@ -73,7 +85,7 @@ func (h *LinkHandler) ListLinks(w http.ResponseWriter, r *http.Request) {
 		req.Search = &search
 	}
 
-	resp, err := h.client.ListLinks(context.Background(), req)
+	resp, err := h.client.ListLinks(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to list links: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -91,7 +103,7 @@ func (h *LinkHandler) CreateLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.client.CreateLink(context.Background(), &req)
+	resp, err := h.client.CreateLink(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to create link: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -108,7 +120,7 @@ func (h *LinkHandler) GetLink(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	req := &pb.GetLinkRequest{Id: id}
-	resp, err := h.client.GetLink(context.Background(), req)
+	resp, err := h.client.GetLink(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get link: "+err.Error(), http.StatusNotFound)
 		return
@@ -130,7 +142,7 @@ func (h *LinkHandler) UpdateLink(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Id = id
 
-	resp, err := h.client.UpdateLink(context.Background(), &req)
+	resp, err := h.client.UpdateLink(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to update link: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -146,7 +158,7 @@ func (h *LinkHandler) DeleteLink(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	req := &pb.DeleteLinkRequest{Id: id}
-	resp, err := h.client.DeleteLink(context.Background(), req)
+	resp, err := h.client.DeleteLink(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to delete link: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -162,7 +174,7 @@ func (h *LinkHandler) GetLinkByShortCode(w http.ResponseWriter, r *http.Request)
 	shortCode := vars["short_code"]
 
 	req := &pb.GetLinkByShortCodeRequest{ShortCode: shortCode}
-	resp, err := h.client.GetLinkByShortCode(context.Background(), req)
+	resp, err := h.client.GetLinkByShortCode(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Short link not found: "+err.Error(), http.StatusNotFound)
 		return
@@ -186,7 +198,7 @@ func (h *LinkHandler) IncrementClick(w http.ResponseWriter, r *http.Request) {
 	shortCode := vars["short_code"]
 
 	req := &pb.IncrementClickRequest{ShortCode: shortCode}
-	resp, err := h.client.IncrementClick(context.Background(), req)
+	resp, err := h.client.IncrementClick(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to increment click: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -202,7 +214,7 @@ func (h *LinkHandler) GetLinkStats(w http.ResponseWriter, r *http.Request) {
 	linkID := vars["id"]
 
 	req := &pb.GetLinkStatsRequest{LinkId: linkID}
-	resp, err := h.client.GetLinkStats(context.Background(), req)
+	resp, err := h.client.GetLinkStats(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get link stats: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -241,7 +253,7 @@ func (h *LinkHandler) RecordClick(w http.ResponseWriter, r *http.Request) {
 		DeviceType: reqBody.DeviceType,
 	}
 
-	resp, err := h.client.RecordClick(context.Background(), req)
+	resp, err := h.client.RecordClick(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to record click: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -273,7 +285,7 @@ func (h *LinkHandler) GetLinkClicks(w http.ResponseWriter, r *http.Request) {
 		PageSize: int32(pageSize),
 	}
 
-	resp, err := h.client.GetLinkClicks(context.Background(), req)
+	resp, err := h.client.GetLinkClicks(h.getContextWithAuth(r), req)
 	if err != nil {
 		http.Error(w, "Failed to get link clicks: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -295,7 +307,7 @@ func (h *LinkHandler) GetClicksByDate(w http.ResponseWriter, r *http.Request) {
 
 	// Note: In production, you'd parse timestamps from query params
 	// For now, this is a placeholder implementation
-	resp, err := h.client.GetClicksByDate(context.Background(), &req)
+	resp, err := h.client.GetClicksByDate(h.getContextWithAuth(r), &req)
 	if err != nil {
 		http.Error(w, "Failed to get clicks by date: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -326,5 +338,5 @@ func (h *LinkHandler) recordClickFromRequest(linkID string, r *http.Request) {
 	}
 
 	// Fire and forget - don't wait for response
-	go h.client.RecordClick(context.Background(), req)
+	go h.client.RecordClick(h.getContextWithAuth(r), req)
 }

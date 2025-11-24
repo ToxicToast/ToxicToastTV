@@ -18,6 +18,8 @@ This is a **Go monorepo** using Go workspaces, containing multiple microservices
 ```
 ToxicToastGo/
 ├── services/                   # Microservices
+│   ├── user-service/          # ✅ User management & profiles
+│   ├── auth-service/          # ✅ Authentication & authorization (JWT + RBAC)
 │   ├── blog-service/          # ✅ Blog CMS backend
 │   ├── foodfolio-service/     # ✅ Food inventory management
 │   ├── link-service/          # ✅ URL shortener
@@ -39,6 +41,56 @@ ToxicToastGo/
 ```
 
 ## 🚀 Services
+
+### User Service
+**Status:** ✅ Production Ready
+
+Centralized user management service handling user profiles, credentials, and lifecycle events.
+
+**Features:**
+- User CRUD operations (Create, Read, Update, Delete)
+- User profiles with email, username, and metadata
+- Password management with bcrypt hashing
+- User status management (Active, Inactive)
+- User search and pagination
+- Last login tracking
+- Kafka event publishing for all user operations
+- gRPC API with Protocol Buffers
+
+**Kafka Events:**
+- `user.created` - New user registered
+- `user.updated` - User profile modified
+- `user.deleted` - User account deleted
+- `user.activated` - User account activated
+- `user.deactivated` - User account deactivated
+- `user.password.changed` - User password updated
+
+### Auth Service
+**Status:** ✅ Production Ready
+
+Authentication and authorization service providing JWT-based auth with Role-Based Access Control (RBAC).
+
+**Features:**
+- User registration and login
+- JWT token generation (Access + Refresh tokens)
+- Token validation and refresh
+- Role-Based Access Control (RBAC)
+- Permission management per role
+- User role assignment
+- Kafka event publishing for auth operations
+- Integration with user-service via gRPC
+
+**Kafka Events:**
+- `auth.registered` - User completed registration
+- `auth.login` - Successful user login
+- `auth.token.refreshed` - JWT token refreshed
+
+**RBAC Features:**
+- Dynamic role creation and management
+- Fine-grained permission system
+- User-to-role assignment
+- Role-to-permission mapping
+- Permission validation in JWT claims
 
 ### Blog Service
 **Status:** ✅ Production Ready

@@ -18,6 +18,9 @@ type Config struct {
 	RateLimitBurst int
 	DevMode        bool
 
+	// JWT configuration
+	JWTSecret string
+
 	// Service endpoints
 	BlogServiceURL         string
 	LinkServiceURL         string
@@ -28,6 +31,8 @@ type Config struct {
 	WebhookServiceURL      string
 	WarcraftServiceURL     string
 	WeatherServiceURL      string
+	AuthServiceURL         string
+	UserServiceURL         string
 }
 
 func Load() (*Config, error) {
@@ -51,6 +56,9 @@ func Load() (*Config, error) {
 		RateLimitBurst: config.GetEnvAsInt("RATE_LIMIT_BURST", 200),
 		DevMode:        config.GetEnvAsBool("DEV_MODE", false),
 
+		// JWT
+		JWTSecret: config.GetEnv("JWT_SECRET", "your-secret-key-please-change-in-production"),
+
 		// Service URLs
 		BlogServiceURL:         config.GetEnv("BLOG_SERVICE_URL", "localhost:9091"),
 		LinkServiceURL:         config.GetEnv("LINK_SERVICE_URL", "localhost:9092"),
@@ -61,6 +69,8 @@ func Load() (*Config, error) {
 		WebhookServiceURL:      config.GetEnv("WEBHOOK_SERVICE_URL", "localhost:9097"),
 		WarcraftServiceURL:     config.GetEnv("WARCRAFT_SERVICE_URL", "localhost:9098"),
 		WeatherServiceURL:      config.GetEnv("WEATHER_SERVICE_URL", "localhost:9099"),
+		AuthServiceURL:         config.GetEnv("AUTH_SERVICE_URL", "localhost:11011"),
+		UserServiceURL:         config.GetEnv("USER_SERVICE_URL", "localhost:11012"),
 	}
 
 	return cfg, nil

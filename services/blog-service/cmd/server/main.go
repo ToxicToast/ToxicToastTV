@@ -20,6 +20,7 @@ import (
 
 	"github.com/toxictoast/toxictoastgo/shared/auth"
 	"github.com/toxictoast/toxictoastgo/shared/database"
+	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
@@ -201,12 +202,25 @@ func setupGRPCServer(cfg *config.Config, keycloakAuth *auth.KeycloakAuth, blogHa
 	// Setup interceptors
 	var opts []grpc.ServerOption
 
-	if keycloakAuth != nil {
-		opts = append(opts,
-			grpc.UnaryInterceptor(keycloakAuth.UnaryInterceptor()),
-			grpc.StreamInterceptor(keycloakAuth.StreamInterceptor()),
-		)
+	// Always add auth interceptor (extracts user from metadata)
+	unaryInterceptors := []grpc.UnaryServerInterceptor{
+		sharedgrpc.AuthInterceptor,
 	}
+	streamInterceptors := []grpc.StreamServerInterceptor{
+		sharedgrpc.StreamAuthInterceptor,
+	}
+
+	// Add Keycloak interceptor if enabled
+	if keycloakAuth != nil {
+		unaryInterceptors = append(unaryInterceptors, keycloakAuth.UnaryInterceptor())
+		streamInterceptors = append(streamInterceptors, keycloakAuth.StreamInterceptor())
+	}
+
+	// Chain interceptors
+	opts = append(opts,
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamInterceptors...),
+	)
 
 	// Create gRPC server
 	server := grpc.NewServer(opts...)

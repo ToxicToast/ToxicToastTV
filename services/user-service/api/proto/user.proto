@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package user;
+
+option go_package = "toxictoast/services/user-service/api/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// User Service - User Management
+service UserService {
+  // User CRUD Operations
+  rpc CreateUser(CreateUserRequest) returns (UserResponse);
+  rpc GetUser(GetUserRequest) returns (UserResponse);
+  rpc GetUserByEmail(GetUserByEmailRequest) returns (UserResponse);
+  rpc GetUserByUsername(GetUserByUsernameRequest) returns (UserResponse);
+  rpc UpdateUser(UpdateUserRequest) returns (UserResponse);
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+
+  // Password Management
+  rpc UpdatePassword(UpdatePasswordRequest) returns (UpdatePasswordResponse);
+  rpc VerifyPassword(VerifyPasswordRequest) returns (VerifyPasswordResponse);
+
+  // User Status Management
+  rpc ActivateUser(ActivateUserRequest) returns (UserResponse);
+  rpc DeactivateUser(DeactivateUserRequest) returns (UserResponse);
+}
+
+// User Messages
+
+message User {
+  string id = 1;
+  string email = 2;
+  string username = 3;
+  string first_name = 4;
+  string last_name = 5;
+  string avatar_url = 6;
+  UserStatus status = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  google.protobuf.Timestamp last_login = 10;
+}
+
+enum UserStatus {
+  USER_STATUS_UNSPECIFIED = 0;
+  USER_STATUS_ACTIVE = 1;
+  USER_STATUS_INACTIVE = 2;
+  USER_STATUS_SUSPENDED = 3;
+  USER_STATUS_DELETED = 4;
+}
+
+message CreateUserRequest {
+  string email = 1;
+  string username = 2;
+  string password = 3;
+  optional string first_name = 4;
+  optional string last_name = 5;
+  optional string avatar_url = 6;
+}
+
+message UpdateUserRequest {
+  string id = 1;
+  optional string email = 2;
+  optional string username = 3;
+  optional string first_name = 4;
+  optional string last_name = 5;
+  optional string avatar_url = 6;
+}
+
+message GetUserRequest {
+  string id = 1;
+}
+
+message GetUserByEmailRequest {
+  string email = 1;
+}
+
+message GetUserByUsernameRequest {
+  string username = 1;
+}
+
+message DeleteUserRequest {
+  string id = 1;
+  bool hard_delete = 2; // If true, permanently delete. If false, soft delete.
+}
+
+message ListUsersRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  optional UserStatus status = 3;
+  optional string search = 4; // Search in email, username, first_name, last_name
+  string sort_by = 5; // created_at, updated_at, email, username
+  string sort_order = 6; // asc, desc
+}
+
+message UserResponse {
+  User user = 1;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  int32 total_pages = 5;
+}
+
+// Password Management Messages
+
+message UpdatePasswordRequest {
+  string user_id = 1;
+  string password_hash = 2; // Already hashed by auth-service
+}
+
+message UpdatePasswordResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message VerifyPasswordRequest {
+  string user_id = 1;
+  string password_hash = 2; // Hash to verify against
+}
+
+message VerifyPasswordResponse {
+  bool valid = 1;
+}
+
+// User Status Messages
+
+message ActivateUserRequest {
+  string user_id = 1;
+}
+
+message DeactivateUserRequest {
+  string user_id = 1;
+}
+
+// Common Messages
+
+message DeleteResponse {
+  bool success = 1;
+  string message = 2;
+}
