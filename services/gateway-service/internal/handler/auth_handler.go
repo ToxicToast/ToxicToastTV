@@ -30,8 +30,12 @@ func NewAuthHandler(authConn, userConn *grpc.ClientConn, authMiddleware *sharedm
 	}
 }
 
-// RegisterRoutes registers all auth routes
+// RegisterRoutes registers all auth routes with proper authentication
 func (h *AuthHandler) RegisterRoutes(router *mux.Router, rateLimiter *sharedmiddleware.RateLimiter) {
+	// ========================================
+	// PUBLIC ROUTES (no authentication required)
+	// ========================================
+
 	// Authentication routes with rate limiting
 	if rateLimiter != nil {
 		router.Handle("/register", rateLimiter.Limit(http.HandlerFunc(h.Register))).Methods("POST")
@@ -43,42 +47,88 @@ func (h *AuthHandler) RegisterRoutes(router *mux.Router, rateLimiter *sharedmidd
 		router.HandleFunc("/refresh", h.RefreshToken).Methods("POST")
 	}
 
-	// Other auth routes (no rate limiting)
-	router.HandleFunc("/logout", h.Logout).Methods("POST")
+	// Token validation (public for service-to-service communication)
 	router.HandleFunc("/validate", h.ValidateToken).Methods("POST")
 
+	// ========================================
+	// PROTECTED ROUTES (authentication required)
+	// ========================================
+
+	protectedRouter := router.PathPrefix("").Subrouter()
+	protectedRouter.Use(h.authMiddleware.Authenticate)
+
+	// Logout requires authentication
+	protectedRouter.HandleFunc("/logout", h.Logout).Methods("POST")
+
+	// Own user profile (read-only)
+	protectedRouter.HandleFunc("/me", h.GetMyProfile).Methods("GET")
+
+	// ========================================
+	// ADMIN-ONLY ROUTES (requires 'admin' role)
+	// ========================================
+
+	adminRouter := router.PathPrefix("").Subrouter()
+	adminRouter.Use(h.authMiddleware.Authenticate)
+	adminRouter.Use(h.authMiddleware.RequireRole("admin"))
+
 	// Role management routes
-	router.HandleFunc("/roles", h.ListRoles).Methods("GET")
-	router.HandleFunc("/roles", h.CreateRole).Methods("POST")
-	router.HandleFunc("/roles/{id}", h.GetRole).Methods("GET")
-	router.HandleFunc("/roles/{id}", h.UpdateRole).Methods("PUT")
-	router.HandleFunc("/roles/{id}", h.DeleteRole).Methods("DELETE")
+	adminRouter.HandleFunc("/roles", h.ListRoles).Methods("GET")
+	adminRouter.HandleFunc("/roles", h.CreateRole).Methods("POST")
+	adminRouter.HandleFunc("/roles/{id}", h.GetRole).Methods("GET")
+	adminRouter.HandleFunc("/roles/{id}", h.UpdateRole).Methods("PUT")
+	adminRouter.HandleFunc("/roles/{id}", h.DeleteRole).Methods("DELETE")
 
 	// Permission management routes
-	router.HandleFunc("/permissions", h.ListPermissions).Methods("GET")
-	router.HandleFunc("/permissions", h.CreatePermission).Methods("POST")
-	router.HandleFunc("/permissions/{id}", h.GetPermission).Methods("GET")
-	router.HandleFunc("/permissions/{id}", h.UpdatePermission).Methods("PUT")
-	router.HandleFunc("/permissions/{id}", h.DeletePermission).Methods("DELETE")
+	adminRouter.HandleFunc("/permissions", h.ListPermissions).Methods("GET")
+	adminRouter.HandleFunc("/permissions", h.CreatePermission).Methods("POST")
+	adminRouter.HandleFunc("/permissions/{id}", h.GetPermission).Methods("GET")
+	adminRouter.HandleFunc("/permissions/{id}", h.UpdatePermission).Methods("PUT")
+	adminRouter.HandleFunc("/permissions/{id}", h.DeletePermission).Methods("DELETE")
 
 	// RBAC routes
-	router.HandleFunc("/users/{user_id}/roles", h.AssignRole).Methods("POST")
-	router.HandleFunc("/users/{user_id}/roles/{role_id}", h.RevokeRole).Methods("DELETE")
-	router.HandleFunc("/users/{user_id}/roles", h.ListUserRoles).Methods("GET")
-	router.HandleFunc("/roles/{role_id}/permissions", h.AssignPermission).Methods("POST")
-	router.HandleFunc("/roles/{role_id}/permissions/{permission_id}", h.RevokePermission).Methods("DELETE")
-	router.HandleFunc("/roles/{role_id}/permissions", h.ListRolePermissions).Methods("GET")
-	router.HandleFunc("/users/{user_id}/permissions", h.ListUserPermissions).Methods("GET")
-	router.HandleFunc("/users/{user_id}/check-permission", h.CheckPermission).Methods("POST")
+	adminRouter.HandleFunc("/users/{user_id}/roles", h.AssignRole).Methods("POST")
+	adminRouter.HandleFunc("/users/{user_id}/roles/{role_id}", h.RevokeRole).Methods("DELETE")
+	adminRouter.HandleFunc("/users/{user_id}/roles", h.ListUserRoles).Methods("GET")
+	adminRouter.HandleFunc("/roles/{role_id}/permissions", h.AssignPermission).Methods("POST")
+	adminRouter.HandleFunc("/roles/{role_id}/permissions/{permission_id}", h.RevokePermission).Methods("DELETE")
+	adminRouter.HandleFunc("/roles/{role_id}/permissions", h.ListRolePermissions).Methods("GET")
+	adminRouter.HandleFunc("/users/{user_id}/permissions", h.ListUserPermissions).Methods("GET")
+	adminRouter.HandleFunc("/users/{user_id}/check-permission", h.CheckPermission).Methods("POST")
 
-	// User management routes
-	router.HandleFunc("/users", h.ListUsers).Methods("GET")
-	router.HandleFunc("/users/{id}", h.GetUser).Methods("GET")
-	router.HandleFunc("/users/{id}", h.UpdateUser).Methods("PUT")
-	router.HandleFunc("/users/{id}", h.DeleteUser).Methods("DELETE")
-	router.HandleFunc("/users/{id}/password", h.UpdatePassword).Methods("PUT")
-	router.HandleFunc("/users/{id}/activate", h.ActivateUser).Methods("POST")
-	router.HandleFunc("/users/{id}/deactivate", h.DeactivateUser).Methods("POST")
+	// User management routes (admin can manage all users)
+	adminRouter.HandleFunc("/users", h.ListUsers).Methods("GET")
+	adminRouter.HandleFunc("/users/{id}", h.GetUser).Methods("GET")
+	adminRouter.HandleFunc("/users/{id}", h.UpdateUser).Methods("PUT")
+	adminRouter.HandleFunc("/users/{id}", h.DeleteUser).Methods("DELETE")
+	adminRouter.HandleFunc("/users/{id}/password", h.UpdatePassword).Methods("PUT")
+	adminRouter.HandleFunc("/users/{id}/activate", h.ActivateUser).Methods("POST")
+	adminRouter.HandleFunc("/users/{id}/deactivate", h.DeactivateUser).Methods("POST")
+}
+
+// GetMyProfile handles GET /auth/me - returns the authenticated user's profile
+func (h *AuthHandler) GetMyProfile(w http.ResponseWriter, r *http.Request) {
+	claims := sharedmiddleware.GetClaims(r.Context())
+	if claims == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	pbReq := &userpb.GetUserRequest{
+		Id: claims.UserID,
+	}
+
+	resp, err := h.userClient.GetUser(context.Background(), pbReq)
+	if err != nil {
+		http.Error(w, "Failed to get user profile: "+err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"user":        resp.User,
+		"roles":       claims.Roles,
+		"permissions": claims.Permissions,
+	})
 }
 
 // Register handles POST /auth/register
