@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -43,14 +44,14 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 		// Extract token from Authorization header
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			http.Error(w, "Authorization header required", http.StatusUnauthorized)
+			writeJSONError(w, "Authorization header required", http.StatusUnauthorized)
 			return
 		}
 
 		// Check for Bearer token format
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			http.Error(w, "Invalid authorization header format. Expected: Bearer <token>", http.StatusUnauthorized)
+			writeJSONError(w, "Invalid authorization header format. Expected: Bearer <token>", http.StatusUnauthorized)
 			return
 		}
 
@@ -58,14 +59,14 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 
 		// Check if token is revoked
 		if m.tokenBlacklist.IsRevoked(tokenString) {
-			http.Error(w, "Token has been revoked", http.StatusUnauthorized)
+			writeJSONError(w, "Token has been revoked", http.StatusUnauthorized)
 			return
 		}
 
 		// Validate token
 		claims, err := m.jwtHelper.ValidateToken(tokenString)
 		if err != nil {
-			http.Error(w, "Invalid or expired token: "+err.Error(), http.StatusUnauthorized)
+			writeJSONError(w, "Invalid or expired token: "+err.Error(), http.StatusUnauthorized)
 			return
 		}
 
@@ -118,12 +119,12 @@ func (m *AuthMiddleware) RequireRole(role string) func(http.Handler) http.Handle
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims := GetClaims(r.Context())
 			if claims == nil {
-				http.Error(w, "Unauthorized: authentication required", http.StatusUnauthorized)
+				writeJSONError(w, "Authentication required", http.StatusUnauthorized)
 				return
 			}
 
 			if !HasRole(claims, role) {
-				http.Error(w, "Forbidden: required role '"+role+"' not found", http.StatusForbidden)
+				writeJSONError(w, "Required role '"+role+"' not found", http.StatusForbidden)
 				return
 			}
 
@@ -139,7 +140,7 @@ func (m *AuthMiddleware) RequireAnyRole(roles ...string) func(http.Handler) http
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims := GetClaims(r.Context())
 			if claims == nil {
-				http.Error(w, "Unauthorized: authentication required", http.StatusUnauthorized)
+				writeJSONError(w, "Authentication required", http.StatusUnauthorized)
 				return
 			}
 
@@ -150,7 +151,7 @@ func (m *AuthMiddleware) RequireAnyRole(roles ...string) func(http.Handler) http
 				}
 			}
 
-			http.Error(w, "Forbidden: none of the required roles found", http.StatusForbidden)
+			writeJSONError(w, "None of the required roles found", http.StatusForbidden)
 		})
 	}
 }
@@ -162,12 +163,12 @@ func (m *AuthMiddleware) RequirePermission(permission string) func(http.Handler)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims := GetClaims(r.Context())
 			if claims == nil {
-				http.Error(w, "Unauthorized: authentication required", http.StatusUnauthorized)
+				writeJSONError(w, "Authentication required", http.StatusUnauthorized)
 				return
 			}
 
 			if !HasPermission(claims, permission) {
-				http.Error(w, "Forbidden: required permission '"+permission+"' not found", http.StatusForbidden)
+				writeJSONError(w, "Required permission '"+permission+"' not found", http.StatusForbidden)
 				return
 			}
 
@@ -183,7 +184,7 @@ func (m *AuthMiddleware) RequireAnyPermission(permissions ...string) func(http.H
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims := GetClaims(r.Context())
 			if claims == nil {
-				http.Error(w, "Unauthorized: authentication required", http.StatusUnauthorized)
+				writeJSONError(w, "Authentication required", http.StatusUnauthorized)
 				return
 			}
 
@@ -194,9 +195,19 @@ func (m *AuthMiddleware) RequireAnyPermission(permissions ...string) func(http.H
 				}
 			}
 
-			http.Error(w, "Forbidden: none of the required permissions found", http.StatusForbidden)
+			writeJSONError(w, "None of the required permissions found", http.StatusForbidden)
 		})
 	}
+}
+
+// writeJSONError writes a JSON-formatted error response
+func writeJSONError(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"error":   http.StatusText(statusCode),
+		"message": message,
+	})
 }
 
 // GetClaims extracts JWT claims from the request context

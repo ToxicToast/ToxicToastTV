@@ -71,7 +71,11 @@ func (h *ProtectedHandler) Protected(w http.ResponseWriter, r *http.Request) {
 
 	claims := middleware.GetClaims(r.Context())
 	if claims == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":   "Unauthorized",
+			"message": "Valid JWT token required",
+		})
 		return
 	}
 
@@ -95,7 +99,11 @@ func (h *ProtectedHandler) AdminOnly(w http.ResponseWriter, r *http.Request) {
 
 	claims := middleware.GetClaims(r.Context())
 	if claims == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":   "Unauthorized",
+			"message": "Valid JWT token required",
+		})
 		return
 	}
 
@@ -117,7 +125,11 @@ func (h *ProtectedHandler) EditorOnly(w http.ResponseWriter, r *http.Request) {
 
 	claims := middleware.GetClaims(r.Context())
 	if claims == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":   "Unauthorized",
+			"message": "Valid JWT token required",
+		})
 		return
 	}
 
@@ -139,7 +151,11 @@ func (h *ProtectedHandler) WriteOnly(w http.ResponseWriter, r *http.Request) {
 
 	claims := middleware.GetClaims(r.Context())
 	if claims == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":   "Unauthorized",
+			"message": "Valid JWT token required",
+		})
 		return
 	}
 
