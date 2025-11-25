@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/mux"
-	sharedmiddleware "github.com/toxictoast/toxictoastgo/shared/middleware"
 	authpb "toxictoast/services/auth-service/api/proto"
 	userpb "toxictoast/services/user-service/api/proto"
+
+	"github.com/gorilla/mux"
+	sharedmiddleware "github.com/toxictoast/toxictoastgo/shared/middleware"
 	"google.golang.org/grpc"
 )
 
@@ -69,7 +70,7 @@ func (h *AuthHandler) RegisterRoutes(router *mux.Router, rateLimiter *sharedmidd
 
 	adminRouter := router.PathPrefix("").Subrouter()
 	adminRouter.Use(h.authMiddleware.Authenticate)
-	adminRouter.Use(h.authMiddleware.RequireRole("admin"))
+	adminRouter.Use(h.authMiddleware.RequireRole("Administrator"))
 
 	// Role management routes
 	adminRouter.HandleFunc("/roles", h.ListRoles).Methods("GET")

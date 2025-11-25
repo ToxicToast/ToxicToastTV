@@ -83,6 +83,27 @@ func (c *ChangePasswordCommand) Validate() error {
 	return nil
 }
 
+// UpdatePasswordHashCommand updates a user's password with a pre-hashed password
+// This is used when the password is already hashed by auth-service
+type UpdatePasswordHashCommand struct {
+	cqrs.BaseCommand
+	NewPasswordHash string `json:"new_password_hash"`
+}
+
+func (c *UpdatePasswordHashCommand) CommandName() string {
+	return "update_password_hash"
+}
+
+func (c *UpdatePasswordHashCommand) Validate() error {
+	if c.AggregateID == "" {
+		return errors.New("user_id is required")
+	}
+	if c.NewPasswordHash == "" {
+		return errors.New("new_password_hash is required")
+	}
+	return nil
+}
+
 // UpdateProfileCommand updates a user's profile
 type UpdateProfileCommand struct {
 	cqrs.BaseCommand
@@ -291,6 +312,39 @@ func (h *ChangePasswordHandler) Handle(ctx context.Context, cmd cqrs.Command) er
 
 	// Change password
 	if err := user.ChangePassword(string(hashedPassword)); err != nil {
+		return fmt.Errorf("failed to change password: %w", err)
+	}
+
+	// Save events
+	if err := h.aggRepo.Save(ctx, user); err != nil {
+		return fmt.Errorf("failed to save user events: %w", err)
+	}
+
+	return nil
+}
+
+// UpdatePasswordHashHandler handles password updates with pre-hashed passwords
+type UpdatePasswordHashHandler struct {
+	aggRepo *eventstore.AggregateRepository
+}
+
+func NewUpdatePasswordHashHandler(aggRepo *eventstore.AggregateRepository) *UpdatePasswordHashHandler {
+	return &UpdatePasswordHashHandler{
+		aggRepo: aggRepo,
+	}
+}
+
+func (h *UpdatePasswordHashHandler) Handle(ctx context.Context, cmd cqrs.Command) error {
+	updateCmd := cmd.(*UpdatePasswordHashCommand)
+
+	// Load aggregate
+	user := aggregate.NewUserAggregate(updateCmd.AggregateID)
+	if err := h.aggRepo.Load(ctx, user); err != nil {
+		return fmt.Errorf("failed to load user: %w", err)
+	}
+
+	// Change password (already hashed)
+	if err := user.ChangePassword(updateCmd.NewPasswordHash); err != nil {
 		return fmt.Errorf("failed to change password: %w", err)
 	}
 

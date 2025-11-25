@@ -92,7 +92,7 @@ apiRouter.HandleFunc("/posts", listPosts).Methods("GET")
 // Require 'admin' role
 adminRouter := router.PathPrefix("/admin").Subrouter()
 adminRouter.Use(authMiddleware.Authenticate)
-adminRouter.Use(authMiddleware.RequireRole("admin"))
+adminRouter.Use(authMiddleware.RequireRole("Administrator"))
 adminRouter.HandleFunc("", adminDashboard).Methods("GET")
 
 // Require 'editor' OR 'admin' role
@@ -204,7 +204,7 @@ Requires user to have a specific role. Must be used after `Authenticate`.
 
 ```go
 router.Use(authMiddleware.Authenticate)
-router.Use(authMiddleware.RequireRole("admin"))
+router.Use(authMiddleware.RequireRole("Administrator"))
 ```
 
 #### `RequireAnyRole(roles ...string) func(http.Handler) http.Handler`
@@ -371,7 +371,7 @@ Apply middleware in the correct order:
 ```go
 // CORRECT ORDER:
 router.Use(authMiddleware.Authenticate)          // 1. Authenticate first
-router.Use(authMiddleware.RequireRole("admin"))  // 2. Then check role
+router.Use(authMiddleware.RequireRole("Administrator"))  // 2. Then check role
 ```
 
 ### 7. Use Context Helpers

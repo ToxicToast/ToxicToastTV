@@ -29,7 +29,7 @@ func (h *ProtectedHandler) RegisterRoutes(router *mux.Router, authMiddleware *mi
 	// Admin only endpoint - requires 'admin' role
 	adminRoute := router.PathPrefix("/admin").Subrouter()
 	adminRoute.Use(authMiddleware.Authenticate)
-	adminRoute.Use(authMiddleware.RequireRole("admin"))
+	adminRoute.Use(authMiddleware.RequireRole("Administrator"))
 	adminRoute.HandleFunc("", h.AdminOnly).Methods("GET")
 
 	// Editor endpoint - requires 'editor' OR 'admin' role
@@ -50,7 +50,7 @@ func (h *ProtectedHandler) Public(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	response := map[string]interface{}{
-		"message": "This is a public endpoint",
+		"message":       "This is a public endpoint",
 		"authenticated": false,
 	}
 
