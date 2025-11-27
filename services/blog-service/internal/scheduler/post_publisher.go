@@ -5,31 +5,33 @@ import (
 	"log"
 	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
+
+	"toxictoast/services/blog-service/internal/command"
 	"toxictoast/services/blog-service/internal/domain"
 	"toxictoast/services/blog-service/internal/repository"
-	"toxictoast/services/blog-service/internal/usecase"
 )
 
 type PostPublisherScheduler struct {
-	postUseCase usecase.PostUseCase
-	postRepo    repository.PostRepository
-	interval    time.Duration
-	enabled     bool
-	stopChan    chan struct{}
+	commandBus *cqrs.CommandBus
+	postRepo   repository.PostRepository
+	interval   time.Duration
+	enabled    bool
+	stopChan   chan struct{}
 }
 
 func NewPostPublisherScheduler(
-	postUseCase usecase.PostUseCase,
+	commandBus *cqrs.CommandBus,
 	postRepo repository.PostRepository,
 	interval time.Duration,
 	enabled bool,
 ) *PostPublisherScheduler {
 	return &PostPublisherScheduler{
-		postUseCase: postUseCase,
-		postRepo:    postRepo,
-		interval:    interval,
-		enabled:     enabled,
-		stopChan:    make(chan struct{}),
+		commandBus: commandBus,
+		postRepo:   postRepo,
+		interval:   interval,
+		enabled:    enabled,
+		stopChan:   make(chan struct{}),
 	}
 }
 
@@ -95,7 +97,12 @@ func (s *PostPublisherScheduler) checkScheduledPosts() {
 
 		// Check if post has PublishedAt set and it's in the past
 		if post.PublishedAt != nil && post.PublishedAt.Before(now) {
-			err := s.postUseCase.PublishScheduledPost(ctx, post)
+			cmd := &command.PublishScheduledPostCommand{
+				BaseCommand: cqrs.BaseCommand{},
+				Post:        post,
+			}
+
+			err := s.commandBus.Dispatch(ctx, cmd)
 			if err != nil {
 				log.Printf("Error publishing scheduled post %s: %v", post.ID, err)
 				errorCount++

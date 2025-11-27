@@ -5,30 +5,31 @@ import (
 	"log"
 	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
+
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
-	"toxictoast/services/foodfolio-service/internal/usecase"
 )
 
 type ItemExpirationScheduler struct {
-	itemDetailUseCase usecase.ItemDetailUseCase
-	itemDetailRepo    interfaces.ItemDetailRepository
-	interval          time.Duration
-	enabled           bool
-	stopChan          chan struct{}
+	kafkaProducer  *kafka.Producer
+	itemDetailRepo interfaces.ItemDetailRepository
+	interval       time.Duration
+	enabled        bool
+	stopChan       chan struct{}
 }
 
 func NewItemExpirationScheduler(
-	itemDetailUseCase usecase.ItemDetailUseCase,
+	kafkaProducer *kafka.Producer,
 	itemDetailRepo interfaces.ItemDetailRepository,
 	interval time.Duration,
 	enabled bool,
 ) *ItemExpirationScheduler {
 	return &ItemExpirationScheduler{
-		itemDetailUseCase: itemDetailUseCase,
-		itemDetailRepo:    itemDetailRepo,
-		interval:          interval,
-		enabled:           enabled,
-		stopChan:          make(chan struct{}),
+		kafkaProducer:  kafkaProducer,
+		itemDetailRepo: itemDetailRepo,
+		interval:       interval,
+		enabled:        enabled,
+		stopChan:       make(chan struct{}),
 	}
 }
 
@@ -90,21 +91,41 @@ func (s *ItemExpirationScheduler) checkExpirations() {
 
 		// Check if expired
 		if detail.IsExpired() {
-			err := s.itemDetailUseCase.NotifyItemExpired(ctx, detail)
-			if err != nil {
-				log.Printf("Error notifying expired item %s: %v", detail.ID, err)
-				errorCount++
-				continue
+			if s.kafkaProducer != nil {
+				event := kafka.FoodfolioDetailExpiredEvent{
+					DetailID:   detail.ID,
+					VariantID:  detail.ItemVariantID,
+					ExpiryDate: detail.ExpiryDate,
+					DetectedAt: time.Now(),
+				}
+				if err := s.kafkaProducer.PublishFoodfolioDetailExpired("foodfolio.detail.expired", event); err != nil {
+					log.Printf("Error notifying expired item %s: %v", detail.ID, err)
+					errorCount++
+					continue
+				}
 			}
 
 			log.Printf("Notified expired item: %s (expired at: %v)", detail.ID, detail.ExpiryDate)
 			expiredCount++
 		} else if detail.IsExpiringSoon(7) { // Check if expiring within 7 days
-			err := s.itemDetailUseCase.NotifyItemExpiringSoon(ctx, detail)
-			if err != nil {
-				log.Printf("Error notifying expiring soon item %s: %v", detail.ID, err)
-				errorCount++
-				continue
+			if s.kafkaProducer != nil {
+				var daysLeft int
+				if detail.ExpiryDate != nil {
+					daysLeft = int(time.Until(*detail.ExpiryDate).Hours() / 24)
+				}
+
+				event := kafka.FoodfolioDetailExpiringSoonEvent{
+					DetailID:   detail.ID,
+					VariantID:  detail.ItemVariantID,
+					ExpiryDate: detail.ExpiryDate,
+					DaysLeft:   daysLeft,
+					DetectedAt: time.Now(),
+				}
+				if err := s.kafkaProducer.PublishFoodfolioDetailExpiringSoon("foodfolio.detail.expiring.soon", event); err != nil {
+					log.Printf("Error notifying expiring soon item %s: %v", detail.ID, err)
+					errorCount++
+					continue
+				}
 			}
 
 			log.Printf("Notified expiring soon item: %s (expires at: %v)", detail.ID, detail.ExpiryDate)

@@ -9,20 +9,25 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"toxictoast/services/foodfolio-service/internal/handler/mapper"
-	"toxictoast/services/foodfolio-service/internal/usecase"
-	"toxictoast/services/foodfolio-service/pkg/ocr"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/foodfolio-service/api/proto"
+	"toxictoast/services/foodfolio-service/internal/command"
+	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/handler/mapper"
+	"toxictoast/services/foodfolio-service/internal/query"
+	"toxictoast/services/foodfolio-service/pkg/ocr"
 )
 
 type ReceiptHandler struct {
 	pb.UnimplementedReceiptServiceServer
-	receiptUC usecase.ReceiptUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewReceiptHandler(receiptUC usecase.ReceiptUseCase) *ReceiptHandler {
+func NewReceiptHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *ReceiptHandler {
 	return &ReceiptHandler{
-		receiptUC: receiptUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
@@ -33,22 +38,23 @@ func (h *ReceiptHandler) UploadReceipt(ctx context.Context, req *pb.UploadReceip
 	}
 
 	// Create receipt first to get ID
-	receipt, err := h.receiptUC.CreateReceipt(
-		ctx,
-		req.WarehouseId,
-		time.Now(),
-		0.0, // Will be updated after OCR
-		nil, // Will be set after saving file
-		nil, // Will be set after OCR
-	)
-	if err != nil {
+	cmd := &command.CreateReceiptCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		WarehouseID: req.WarehouseId,
+		ScanDate:    time.Now(),
+		TotalPrice:  0.0, // Will be updated after OCR
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to create receipt: %v", err))
 	}
 
+	receiptID := cmd.AggregateID
+
 	// Save image file
-	imagePath, err := ocr.SaveImageFile(req.ImageData, receipt.ID)
+	imagePath, err := ocr.SaveImageFile(req.ImageData, receiptID)
 	if err != nil {
-		log.Printf("Failed to save image file for receipt %s: %v", receipt.ID, err)
+		log.Printf("Failed to save image file for receipt %s: %v", receiptID, err)
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to save image: %v", err))
 	}
 
@@ -57,28 +63,31 @@ func (h *ReceiptHandler) UploadReceipt(ctx context.Context, req *pb.UploadReceip
 	// Perform OCR
 	ocrData, err := ocr.ParseReceipt(imagePath)
 	if err != nil {
-		log.Printf("OCR failed for receipt %s: %v", receipt.ID, err)
+		log.Printf("OCR failed for receipt %s: %v", receiptID, err)
 		// Still update with image path even if OCR fails
-		if _, updateErr := h.receiptUC.UpdateReceiptOCRData(ctx, receipt.ID, imagePath, "", 0.0); updateErr != nil {
+		updateCmd := &command.UpdateReceiptOCRDataCommand{
+			BaseCommand: cqrs.BaseCommand{AggregateID: receiptID},
+			ImagePath:   imagePath,
+			OCRText:     "",
+			TotalPrice:  0.0,
+		}
+		if updateErr := h.commandBus.Dispatch(ctx, updateCmd); updateErr != nil {
 			log.Printf("Failed to update receipt with image path: %v", updateErr)
 		}
 		return nil, status.Error(codes.Internal, fmt.Sprintf("OCR failed: %v", err))
 	}
 
-	log.Printf("OCR completed for receipt %s: found %d items, total: %.2f", receipt.ID, len(ocrData.Items), ocrData.TotalPrice)
-
-	// Store receipt ID before update
-	receiptID := receipt.ID
+	log.Printf("OCR completed for receipt %s: found %d items, total: %.2f", receiptID, len(ocrData.Items), ocrData.TotalPrice)
 
 	// Update receipt with OCR data
-	_, err = h.receiptUC.UpdateReceiptOCRData(
-		ctx,
-		receiptID,
-		imagePath,
-		ocrData.RawText,
-		ocrData.TotalPrice,
-	)
-	if err != nil {
+	updateCmd := &command.UpdateReceiptOCRDataCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: receiptID},
+		ImagePath:   imagePath,
+		OCRText:     ocrData.RawText,
+		TotalPrice:  ocrData.TotalPrice,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, updateCmd); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to update receipt: %v", err))
 	}
 
@@ -89,35 +98,48 @@ func (h *ReceiptHandler) UploadReceipt(ctx context.Context, req *pb.UploadReceip
 			articleNumber = &item.ArticleNumber
 		}
 
-		_, err := h.receiptUC.AddItemToReceipt(
-			ctx,
-			receiptID,
-			item.Name,
-			item.Quantity,
-			item.UnitPrice,
-			item.TotalPrice,
-			articleNumber,
-			nil, // itemVariantID - will be auto-matched next
-		)
-		if err != nil {
+		addItemCmd := &command.AddItemToReceiptCommand{
+			BaseCommand:   cqrs.BaseCommand{},
+			ReceiptID:     receiptID,
+			ItemName:      item.Name,
+			Quantity:      item.Quantity,
+			UnitPrice:     item.UnitPrice,
+			TotalPrice:    item.TotalPrice,
+			ArticleNumber: articleNumber,
+			ItemVariantID: nil, // Will be auto-matched next
+		}
+
+		if err := h.commandBus.Dispatch(ctx, addItemCmd); err != nil {
 			log.Printf("Failed to add item '%s' to receipt %s: %v", item.Name, receiptID, err)
 			// Continue with other items
 		}
 	}
 
 	// Auto-match receipt items with existing variants
-	matched, unmatched, err := h.receiptUC.AutoMatchReceiptItems(ctx, receiptID, 0.7)
-	if err != nil {
+	autoMatchCmd := &command.AutoMatchReceiptItemsCommand{
+		BaseCommand:         cqrs.BaseCommand{},
+		ReceiptID:           receiptID,
+		SimilarityThreshold: 0.7,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, autoMatchCmd); err != nil {
 		log.Printf("Auto-matching failed for receipt %s: %v", receiptID, err)
 	} else {
-		log.Printf("Auto-matching completed for receipt %s: %d matched, %d unmatched", receiptID, matched, unmatched)
+		log.Printf("Auto-matching completed for receipt %s: %d matched, %d unmatched", receiptID, autoMatchCmd.MatchedCount, autoMatchCmd.UnmatchedCount)
 	}
 
 	// Reload receipt with items
-	receipt, err = h.receiptUC.GetReceiptByID(ctx, receiptID)
+	qry := &query.GetReceiptByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        receiptID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to reload receipt: %v", err))
 	}
+
+	receipt := result.(*domain.Receipt)
 
 	return &pb.UploadReceiptResponse{
 		Receipt:  mapper.ReceiptToProto(receipt),
@@ -126,34 +148,55 @@ func (h *ReceiptHandler) UploadReceipt(ctx context.Context, req *pb.UploadReceip
 }
 
 func (h *ReceiptHandler) ProcessReceipt(ctx context.Context, req *pb.ProcessReceiptRequest) (*pb.ProcessReceiptResponse, error) {
-	receipt, err := h.receiptUC.GetReceiptByID(ctx, req.ReceiptId)
-	if err != nil {
-		if err == usecase.ErrReceiptNotFound {
-			return nil, status.Error(codes.NotFound, "receipt not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetReceiptByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.ReceiptId,
 	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "receipt not found")
+	}
+
+	receipt := result.(*domain.Receipt)
 
 	// In a real implementation, this would trigger OCR processing
 	// For now, just return the receipt
+	ocrText := ""
+	if receipt.OCRText != nil {
+		ocrText = *receipt.OCRText
+	}
+
 	return &pb.ProcessReceiptResponse{
 		Receipt: mapper.ReceiptToProto(receipt),
-		OcrText: "",
+		OcrText: ocrText,
 	}, nil
 }
 
 func (h *ReceiptHandler) CreateReceipt(ctx context.Context, req *pb.CreateReceiptRequest) (*pb.CreateReceiptResponse, error) {
-	receipt, err := h.receiptUC.CreateReceipt(
-		ctx,
-		req.WarehouseId,
-		req.ScanDate.AsTime(),
-		req.TotalPrice,
-		nil, // imagePath
-		nil, // ocrText
-	)
-	if err != nil {
+	cmd := &command.CreateReceiptCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		WarehouseID: req.WarehouseId,
+		ScanDate:    req.ScanDate.AsTime(),
+		TotalPrice:  req.TotalPrice,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Query the created receipt
+	qry := &query.GetReceiptByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "receipt not found")
+	}
+
+	receipt := result.(*domain.Receipt)
 
 	return &pb.CreateReceiptResponse{
 		Receipt: mapper.ReceiptToProto(receipt),
@@ -161,13 +204,17 @@ func (h *ReceiptHandler) CreateReceipt(ctx context.Context, req *pb.CreateReceip
 }
 
 func (h *ReceiptHandler) GetReceipt(ctx context.Context, req *pb.IdRequest) (*pb.GetReceiptResponse, error) {
-	receipt, err := h.receiptUC.GetReceiptByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrReceiptNotFound {
-			return nil, status.Error(codes.NotFound, "receipt not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetReceiptByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "receipt not found")
+	}
+
+	receipt := result.(*domain.Receipt)
 
 	return &pb.GetReceiptResponse{
 		Receipt: mapper.ReceiptToProto(receipt),
@@ -197,22 +244,34 @@ func (h *ReceiptHandler) ListReceipts(ctx context.Context, req *pb.ListReceiptsR
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	receipts, total, err := h.receiptUC.ListReceipts(ctx, int(page), int(pageSize), warehouseID, startDate, endDate, includeDeleted)
+	qry := &query.ListReceiptsQuery{
+		BaseQuery:      cqrs.BaseQuery{},
+		Page:           int(page),
+		PageSize:       int(pageSize),
+		WarehouseID:    warehouseID,
+		StartDate:      startDate,
+		EndDate:        endDate,
+		IncludeDeleted: includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	listResult := result.(*query.ListReceiptsResult)
+
 	// Calculate total amount
 	var totalAmount float64
-	for _, receipt := range receipts {
+	for _, receipt := range listResult.Receipts {
 		totalAmount += receipt.TotalPrice
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.ListReceiptsResponse{
-		Receipts:    mapper.ReceiptsToProto(receipts),
-		Total:       int32(total),
+		Receipts:    mapper.ReceiptsToProto(listResult.Receipts),
+		Total:       int32(listResult.Total),
 		Page:        page,
 		PageSize:    pageSize,
 		TotalPages:  int32(totalPages),
@@ -221,15 +280,20 @@ func (h *ReceiptHandler) ListReceipts(ctx context.Context, req *pb.ListReceiptsR
 }
 
 func (h *ReceiptHandler) UpdateReceipt(ctx context.Context, req *pb.UpdateReceiptRequest) (*pb.UpdateReceiptResponse, error) {
-	// Get existing to use as defaults
-	existing, err := h.receiptUC.GetReceiptByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrReceiptNotFound {
-			return nil, status.Error(codes.NotFound, "receipt not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	// Get existing receipt to use as defaults
+	qry := &query.GetReceiptByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
 
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "receipt not found")
+	}
+
+	existing := result.(*domain.Receipt)
+
+	// Use existing values as defaults
 	warehouseID := existing.WarehouseID
 	if req.WarehouseId != nil {
 		warehouseID = *req.WarehouseId
@@ -245,13 +309,24 @@ func (h *ReceiptHandler) UpdateReceipt(ctx context.Context, req *pb.UpdateReceip
 		totalPrice = *req.TotalPrice
 	}
 
-	receipt, err := h.receiptUC.UpdateReceipt(ctx, req.Id, warehouseID, scanDate, totalPrice)
-	if err != nil {
-		if err == usecase.ErrReceiptNotFound {
-			return nil, status.Error(codes.NotFound, "receipt not found")
-		}
+	cmd := &command.UpdateReceiptCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		WarehouseID: warehouseID,
+		ScanDate:    scanDate,
+		TotalPrice:  totalPrice,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Query the updated receipt
+	result, err = h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "receipt not found")
+	}
+
+	receipt := result.(*domain.Receipt)
 
 	return &pb.UpdateReceiptResponse{
 		Receipt: mapper.ReceiptToProto(receipt),
@@ -259,11 +334,11 @@ func (h *ReceiptHandler) UpdateReceipt(ctx context.Context, req *pb.UpdateReceip
 }
 
 func (h *ReceiptHandler) DeleteReceipt(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	err := h.receiptUC.DeleteReceipt(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrReceiptNotFound {
-			return nil, status.Error(codes.NotFound, "receipt not found")
-		}
+	cmd := &command.DeleteReceiptCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -286,30 +361,40 @@ func (h *ReceiptHandler) AddItemToReceipt(ctx context.Context, req *pb.AddItemTo
 
 	totalPrice := req.UnitPrice * float64(req.Quantity)
 
-	item, err := h.receiptUC.AddItemToReceipt(
-		ctx,
-		req.ReceiptId,
-		req.ItemName,
-		int(req.Quantity),
-		req.UnitPrice,
-		totalPrice,
-		articleNumber,
-		itemVariantID,
-	)
-	if err != nil {
-		if err == usecase.ErrReceiptNotFound {
-			return nil, status.Error(codes.NotFound, "receipt not found")
-		}
+	cmd := &command.AddItemToReceiptCommand{
+		BaseCommand:   cqrs.BaseCommand{},
+		ReceiptID:     req.ReceiptId,
+		ItemName:      req.ItemName,
+		Quantity:      int(req.Quantity),
+		UnitPrice:     req.UnitPrice,
+		TotalPrice:    totalPrice,
+		ArticleNumber: articleNumber,
+		ItemVariantID: itemVariantID,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// TODO: Query individual item when GetReceiptItemByIDQuery is implemented
+	// For now, return a basic response
 	return &pb.AddItemToReceiptResponse{
-		Item: mapper.ReceiptItemToProto(item),
+		Item: &pb.ReceiptItem{
+			Id:            cmd.AggregateID,
+			ReceiptId:     req.ReceiptId,
+			ItemName:      req.ItemName,
+			Quantity:      req.Quantity,
+			UnitPrice:     req.UnitPrice,
+			TotalPrice:    totalPrice,
+			ArticleNumber: articleNumber,
+			ItemVariantId: itemVariantID,
+		},
 	}, nil
 }
 
 func (h *ReceiptHandler) UpdateReceiptItem(ctx context.Context, req *pb.UpdateReceiptItemRequest) (*pb.UpdateReceiptItemResponse, error) {
-	// Set defaults for optional fields
+	// UpdateReceiptItemCommand expects non-pointer types
+	// We need to get existing item first or use defaults
 	itemName := ""
 	if req.ItemName != nil {
 		itemName = *req.ItemName
@@ -325,41 +410,52 @@ func (h *ReceiptHandler) UpdateReceiptItem(ctx context.Context, req *pb.UpdateRe
 		unitPrice = *req.UnitPrice
 	}
 
-	// Calculate total price
 	totalPrice := unitPrice * float64(quantity)
 
-	var articleNumber *string
-	if req.ArticleNumber != nil {
-		articleNumber = req.ArticleNumber
+	cmd := &command.UpdateReceiptItemCommand{
+		BaseCommand:   cqrs.BaseCommand{AggregateID: req.Id},
+		ItemName:      itemName,
+		Quantity:      quantity,
+		UnitPrice:     unitPrice,
+		TotalPrice:    totalPrice,
+		ArticleNumber: req.ArticleNumber,
 	}
 
-	item, err := h.receiptUC.UpdateReceiptItem(ctx, req.Id, itemName, quantity, unitPrice, totalPrice, articleNumber)
-	if err != nil {
-		if err == usecase.ErrReceiptItemNotFound {
-			return nil, status.Error(codes.NotFound, "receipt item not found")
-		}
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// TODO: Query individual item when GetReceiptItemByIDQuery is implemented
+	// For now, return a basic response
 	return &pb.UpdateReceiptItemResponse{
-		Item: mapper.ReceiptItemToProto(item),
+		Item: &pb.ReceiptItem{
+			Id:            req.Id,
+			ItemName:      itemName,
+			Quantity:      int32(quantity),
+			UnitPrice:     unitPrice,
+			TotalPrice:    totalPrice,
+			ArticleNumber: req.ArticleNumber,
+		},
 	}, nil
 }
 
 func (h *ReceiptHandler) MatchReceiptItem(ctx context.Context, req *pb.MatchReceiptItemRequest) (*pb.MatchReceiptItemResponse, error) {
-	item, err := h.receiptUC.MatchReceiptItem(ctx, req.ReceiptItemId, req.ItemVariantId)
-	if err != nil {
-		if err == usecase.ErrReceiptItemNotFound {
-			return nil, status.Error(codes.NotFound, "receipt item not found")
-		}
-		if err == usecase.ErrItemVariantNotFound {
-			return nil, status.Error(codes.NotFound, "item variant not found")
-		}
+	cmd := &command.MatchReceiptItemCommand{
+		BaseCommand:   cqrs.BaseCommand{AggregateID: req.ReceiptItemId},
+		ItemVariantID: req.ItemVariantId,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// TODO: Query individual item when GetReceiptItemByIDQuery is implemented
+	// For now, return a basic response
 	return &pb.MatchReceiptItemResponse{
-		Item: mapper.ReceiptItemToProto(item),
+		Item: &pb.ReceiptItem{
+			Id:            req.ReceiptItemId,
+			ItemVariantId: &req.ItemVariantId,
+		},
 	}, nil
 }
 
@@ -369,17 +465,19 @@ func (h *ReceiptHandler) AutoMatchReceiptItems(ctx context.Context, req *pb.Auto
 		similarityThreshold = 0.7 // Default threshold
 	}
 
-	matched, unmatched, err := h.receiptUC.AutoMatchReceiptItems(ctx, req.ReceiptId, similarityThreshold)
-	if err != nil {
-		if err == usecase.ErrReceiptNotFound {
-			return nil, status.Error(codes.NotFound, "receipt not found")
-		}
+	cmd := &command.AutoMatchReceiptItemsCommand{
+		BaseCommand:         cqrs.BaseCommand{},
+		ReceiptID:           req.ReceiptId,
+		SimilarityThreshold: similarityThreshold,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.AutoMatchReceiptItemsResponse{
-		MatchedCount:   int32(matched),
-		UnmatchedCount: int32(unmatched),
+		MatchedCount:   int32(cmd.MatchedCount),
+		UnmatchedCount: int32(cmd.UnmatchedCount),
 	}, nil
 }
 
@@ -390,16 +488,20 @@ func (h *ReceiptHandler) CreateInventoryFromReceipt(ctx context.Context, req *pb
 		expiryDate = &expiry
 	}
 
-	createdCount, err := h.receiptUC.CreateInventoryFromReceipt(ctx, req.ReceiptId, req.LocationId, expiryDate, req.OnlyMatched)
-	if err != nil {
-		if err == usecase.ErrReceiptNotFound {
-			return nil, status.Error(codes.NotFound, "receipt not found")
-		}
+	cmd := &command.CreateInventoryFromReceiptCommand{
+		BaseCommand:       cqrs.BaseCommand{},
+		ReceiptID:         req.ReceiptId,
+		LocationID:        req.LocationId,
+		DefaultExpiryDate: expiryDate,
+		OnlyMatched:       req.OnlyMatched,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.CreateInventoryFromReceiptResponse{
-		CreatedCount: int32(createdCount),
+		CreatedCount: int32(cmd.CreatedCount),
 	}, nil
 }
 
@@ -419,18 +521,25 @@ func (h *ReceiptHandler) GetReceiptStatistics(ctx context.Context, req *pb.GetRe
 		endDate = &end
 	}
 
-	stats, err := h.receiptUC.GetStatistics(ctx, warehouseID, startDate, endDate)
+	qry := &query.GetStatisticsQuery{
+		BaseQuery:   cqrs.BaseQuery{},
+		WarehouseID: warehouseID,
+		StartDate:   startDate,
+		EndDate:     endDate,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	response := &pb.GetReceiptStatisticsResponse{
-		TotalReceipts:      int32(stats["total_receipts"].(int64)),
-		TotalAmount:        stats["total_amount"].(float64),
-		AverageAmount:      stats["average_amount"].(float64),
-		TotalItems:         int32(stats["total_items"].(int64)),
-		AverageItemsPerReceipt: stats["average_items"].(float64),
-	}
+	stats := result.(map[string]interface{})
 
-	return response, nil
+	return &pb.GetReceiptStatisticsResponse{
+		TotalReceipts:          int32(stats["total_receipts"].(int64)),
+		TotalAmount:            stats["total_amount"].(float64),
+		AverageAmount:          stats["average_amount"].(float64),
+		TotalItems:             int32(stats["total_items"].(int64)),
+		AverageItemsPerReceipt: stats["average_items"].(float64),
+	}, nil
 }

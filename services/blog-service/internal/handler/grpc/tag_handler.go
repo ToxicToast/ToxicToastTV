@@ -8,22 +8,26 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/toxictoast/toxictoastgo/shared/auth"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 
 	pb "toxictoast/services/blog-service/api/proto"
+	"toxictoast/services/blog-service/internal/command"
 	"toxictoast/services/blog-service/internal/domain"
+	"toxictoast/services/blog-service/internal/query"
 	"toxictoast/services/blog-service/internal/repository"
-	"toxictoast/services/blog-service/internal/usecase"
 )
 
 type TagHandler struct {
 	pb.UnimplementedBlogServiceServer
-	tagUseCase  usecase.TagUseCase
+	commandBus  *cqrs.CommandBus
+	queryBus    *cqrs.QueryBus
 	authEnabled bool
 }
 
-func NewTagHandler(tagUseCase usecase.TagUseCase, authEnabled bool) *TagHandler {
+func NewTagHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus, authEnabled bool) *TagHandler {
 	return &TagHandler{
-		tagUseCase:  tagUseCase,
+		commandBus:  commandBus,
+		queryBus:    queryBus,
 		authEnabled: authEnabled,
 	}
 }
@@ -35,16 +39,29 @@ func (h *TagHandler) CreateTag(ctx context.Context, req *pb.CreateTagRequest) (*
 		return nil, err
 	}
 
-	// Convert request to use case input
-	input := usecase.CreateTagInput{
-		Name: req.Name,
+	// Create command
+	cmd := &command.CreateTagCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Name:        req.Name,
 	}
 
-	// Create tag
-	tag, err := h.tagUseCase.CreateTag(ctx, input)
-	if err != nil {
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create tag: %v", err)
 	}
+
+	// Query created tag
+	getQuery := &query.GetTagByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		TagID:     cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve created tag: %v", err)
+	}
+
+	tag := result.(*domain.Tag)
 
 	return &pb.TagResponse{
 		Tag: domainTagToProto(tag),
@@ -54,12 +71,29 @@ func (h *TagHandler) CreateTag(ctx context.Context, req *pb.CreateTagRequest) (*
 func (h *TagHandler) GetTag(ctx context.Context, req *pb.GetTagRequest) (*pb.TagResponse, error) {
 	var tag *domain.Tag
 	var err error
+	var result interface{}
 
 	switch identifier := req.Identifier.(type) {
 	case *pb.GetTagRequest_Id:
-		tag, err = h.tagUseCase.GetTag(ctx, identifier.Id)
+		getQuery := &query.GetTagByIDQuery{
+			BaseQuery: cqrs.BaseQuery{},
+			TagID:     identifier.Id,
+		}
+		result, err = h.queryBus.Dispatch(ctx, getQuery)
+		if err == nil {
+			tag = result.(*domain.Tag)
+		}
+
 	case *pb.GetTagRequest_Slug:
-		tag, err = h.tagUseCase.GetTagBySlug(ctx, identifier.Slug)
+		getQuery := &query.GetTagBySlugQuery{
+			BaseQuery: cqrs.BaseQuery{},
+			Slug:      identifier.Slug,
+		}
+		result, err = h.queryBus.Dispatch(ctx, getQuery)
+		if err == nil {
+			tag = result.(*domain.Tag)
+		}
+
 	default:
 		return nil, status.Error(codes.InvalidArgument, "must provide either id or slug")
 	}
@@ -80,16 +114,29 @@ func (h *TagHandler) UpdateTag(ctx context.Context, req *pb.UpdateTagRequest) (*
 		return nil, err
 	}
 
-	// Convert request to use case input
-	input := usecase.UpdateTagInput{
-		Name: req.Name,
+	// Create command
+	cmd := &command.UpdateTagCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Name:        req.Name,
 	}
 
-	// Update tag
-	tag, err := h.tagUseCase.UpdateTag(ctx, req.Id, input)
-	if err != nil {
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to update tag: %v", err)
 	}
+
+	// Query updated tag
+	getQuery := &query.GetTagByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		TagID:     req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve updated tag: %v", err)
+	}
+
+	tag := result.(*domain.Tag)
 
 	return &pb.TagResponse{
 		Tag: domainTagToProto(tag),
@@ -103,8 +150,13 @@ func (h *TagHandler) DeleteTag(ctx context.Context, req *pb.DeleteTagRequest) (*
 		return nil, err
 	}
 
-	// Delete tag
-	if err := h.tagUseCase.DeleteTag(ctx, req.Id); err != nil {
+	// Create command
+	cmd := &command.DeleteTagCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete tag: %v", err)
 	}
 
@@ -130,21 +182,29 @@ func (h *TagHandler) ListTags(ctx context.Context, req *pb.ListTagsRequest) (*pb
 		filters.PageSize = 100 // Higher default for tags
 	}
 
-	// List tags
-	tags, total, err := h.tagUseCase.ListTags(ctx, filters)
+	// Create query
+	listQuery := &query.ListTagsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Filters:   filters,
+	}
+
+	// Dispatch query
+	result, err := h.queryBus.Dispatch(ctx, listQuery)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list tags: %v", err)
 	}
 
+	listResult := result.(*query.ListTagsResult)
+
 	// Convert to proto
-	protoTags := make([]*pb.Tag, len(tags))
-	for i, tag := range tags {
+	protoTags := make([]*pb.Tag, len(listResult.Tags))
+	for i, tag := range listResult.Tags {
 		protoTags[i] = domainTagToProto(&tag)
 	}
 
 	return &pb.ListTagsResponse{
 		Tags:  protoTags,
-		Total: int32(total),
+		Total: int32(listResult.Total),
 	}, nil
 }
 

@@ -6,26 +6,32 @@ import (
 	"log"
 	"time"
 
-	"toxictoast/services/warcraft-service/internal/usecase"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
+
+	"toxictoast/services/warcraft-service/internal/command"
+	"toxictoast/services/warcraft-service/internal/query"
 )
 
 type GuildSyncScheduler struct {
-	guildUseCase *usecase.GuildUseCase
-	interval     time.Duration
-	enabled      bool
-	stopChan     chan struct{}
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
+	interval   time.Duration
+	enabled    bool
+	stopChan   chan struct{}
 }
 
 func NewGuildSyncScheduler(
-	guildUseCase *usecase.GuildUseCase,
+	commandBus *cqrs.CommandBus,
+	queryBus *cqrs.QueryBus,
 	interval time.Duration,
 	enabled bool,
 ) *GuildSyncScheduler {
 	return &GuildSyncScheduler{
-		guildUseCase: guildUseCase,
-		interval:     interval,
-		enabled:      enabled,
-		stopChan:     make(chan struct{}),
+		commandBus: commandBus,
+		queryBus:   queryBus,
+		interval:   interval,
+		enabled:    enabled,
+		stopChan:   make(chan struct{}),
 	}
 }
 
@@ -64,20 +70,31 @@ func (s *GuildSyncScheduler) syncAllGuilds() {
 	log.Println("Starting scheduled guild sync...")
 
 	// Get all guilds (first 1000, can be adjusted)
-	guilds, total, err := s.guildUseCase.ListGuilds(ctx, 1, 1000, nil, nil, nil)
+	listQuery := &query.ListGuildsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Page:      1,
+		PageSize:  1000,
+	}
+
+	result, err := s.queryBus.Dispatch(ctx, listQuery)
 	if err != nil {
 		log.Printf("Error listing guilds for sync: %v", err)
 		return
 	}
 
-	log.Printf("Found %d guilds to sync", total)
+	listResult := result.(*query.ListGuildsResult)
+	log.Printf("Found %d guilds to sync", listResult.Total)
 
 	successCount := 0
 	errorCount := 0
 
-	for _, guild := range guilds {
+	for _, guild := range listResult.Guilds {
 		// Refresh guild data from Blizzard API
-		_, err := s.guildUseCase.RefreshGuild(ctx, guild.ID)
+		refreshCmd := &command.RefreshGuildCommand{
+			BaseCommand: cqrs.BaseCommand{AggregateID: guild.ID},
+		}
+
+		err := s.commandBus.Dispatch(ctx, refreshCmd)
 		if err != nil {
 			log.Printf("Error syncing guild %s-%s: %v", guild.Name, guild.Realm, err)
 			errorCount++

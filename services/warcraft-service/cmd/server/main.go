@@ -18,17 +18,19 @@ import (
 	"google.golang.org/grpc/reflection"
 	"gorm.io/gorm"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	"github.com/toxictoast/toxictoastgo/shared/database"
 	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
 	pb "toxictoast/services/warcraft-service/api/proto"
+	"toxictoast/services/warcraft-service/internal/command"
 	grpcHandler "toxictoast/services/warcraft-service/internal/handler/grpc"
+	"toxictoast/services/warcraft-service/internal/query"
 	"toxictoast/services/warcraft-service/internal/repository/entity"
 	"toxictoast/services/warcraft-service/internal/repository/impl"
 	"toxictoast/services/warcraft-service/internal/scheduler"
-	"toxictoast/services/warcraft-service/internal/usecase"
 	"toxictoast/services/warcraft-service/pkg/blizzard"
 	"toxictoast/services/warcraft-service/pkg/config"
 )
@@ -124,33 +126,100 @@ func main() {
 	classRepo := impl.NewClassRepository(db)
 	factionRepo := impl.NewFactionRepository(db)
 
-	// Initialize use cases
-	characterUseCase := usecase.NewCharacterUseCase(
+	// Initialize Command Bus
+	commandBus := cqrs.NewCommandBus()
+
+	// Register Character Command Handlers (4 commands)
+	commandBus.RegisterHandler("create_character", command.NewCreateCharacterHandler(
 		characterRepo,
 		characterDetailsRepo,
-		characterEquipmentRepo,
-		characterStatsRepo,
 		raceRepo,
 		classRepo,
 		factionRepo,
 		guildRepo,
 		blizzardClient,
 		kafkaProducer,
-	)
-	guildUseCase := usecase.NewGuildUseCase(guildRepo, factionRepo, blizzardClient, kafkaProducer)
+	))
+	commandBus.RegisterHandler("update_character", command.NewUpdateCharacterHandler(
+		characterRepo,
+		characterDetailsRepo,
+	))
+	commandBus.RegisterHandler("delete_character", command.NewDeleteCharacterHandler(
+		characterRepo,
+		characterDetailsRepo,
+		characterEquipmentRepo,
+		characterStatsRepo,
+		kafkaProducer,
+	))
+	commandBus.RegisterHandler("refresh_character", command.NewRefreshCharacterHandler(
+		characterRepo,
+		characterDetailsRepo,
+		raceRepo,
+		classRepo,
+		factionRepo,
+		guildRepo,
+		blizzardClient,
+		kafkaProducer,
+	))
 
-	// Initialize gRPC handlers
-	characterHandler := grpcHandler.NewCharacterHandler(characterUseCase)
-	guildHandler := grpcHandler.NewGuildHandler(guildUseCase)
+	// Register Guild Command Handlers (4 commands)
+	commandBus.RegisterHandler("create_guild", command.NewCreateGuildHandler(
+		guildRepo,
+		factionRepo,
+		blizzardClient,
+		kafkaProducer,
+	))
+	commandBus.RegisterHandler("update_guild", command.NewUpdateGuildHandler(guildRepo))
+	commandBus.RegisterHandler("delete_guild", command.NewDeleteGuildHandler(guildRepo, kafkaProducer))
+	commandBus.RegisterHandler("refresh_guild", command.NewRefreshGuildHandler(
+		guildRepo,
+		factionRepo,
+		blizzardClient,
+		kafkaProducer,
+	))
+
+	logger.Info("Command Bus initialized with 8 command handlers")
+
+	// Initialize Query Bus
+	queryBus := cqrs.NewQueryBus()
+
+	// Register Character Query Handlers (4 queries)
+	queryBus.RegisterHandler("get_character", query.NewGetCharacterHandler(characterRepo))
+	queryBus.RegisterHandler("list_characters", query.NewListCharactersHandler(characterRepo))
+	queryBus.RegisterHandler("get_character_equipment", query.NewGetCharacterEquipmentHandler(
+		characterRepo,
+		characterEquipmentRepo,
+		blizzardClient,
+		kafkaProducer,
+	))
+	queryBus.RegisterHandler("get_character_stats", query.NewGetCharacterStatsHandler(
+		characterRepo,
+		characterStatsRepo,
+		blizzardClient,
+		kafkaProducer,
+	))
+
+	// Register Guild Query Handlers (3 queries)
+	queryBus.RegisterHandler("get_guild", query.NewGetGuildHandler(guildRepo))
+	queryBus.RegisterHandler("list_guilds", query.NewListGuildsHandler(guildRepo))
+	queryBus.RegisterHandler("get_guild_roster", query.NewGetGuildRosterHandler(guildRepo, blizzardClient))
+
+	logger.Info("Query Bus initialized with 7 query handlers")
+
+	// Initialize gRPC handlers with CQRS components
+	characterHandler := grpcHandler.NewCharacterHandler(commandBus, queryBus)
+	guildHandler := grpcHandler.NewGuildHandler(commandBus, queryBus)
 
 	// Initialize background job schedulers
 	characterSyncScheduler := scheduler.NewCharacterSyncScheduler(
-		characterUseCase,
+		commandBus,
+		queryBus,
 		cfg.CharacterSyncInterval,
 		cfg.CharacterSyncEnabled,
 	)
 	guildSyncScheduler := scheduler.NewGuildSyncScheduler(
-		guildUseCase,
+		commandBus,
+		queryBus,
 		cfg.GuildSyncInterval,
 		cfg.GuildSyncEnabled,
 	)

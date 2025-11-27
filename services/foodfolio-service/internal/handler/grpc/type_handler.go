@@ -6,41 +6,56 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"toxictoast/services/foodfolio-service/internal/handler/mapper"
-	"toxictoast/services/foodfolio-service/internal/usecase"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/foodfolio-service/api/proto"
+	"toxictoast/services/foodfolio-service/internal/command"
+	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/handler/mapper"
+	"toxictoast/services/foodfolio-service/internal/query"
 )
 
 type TypeHandler struct {
 	pb.UnimplementedTypeServiceServer
-	typeUC usecase.TypeUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewTypeHandler(typeUC usecase.TypeUseCase) *TypeHandler {
+func NewTypeHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *TypeHandler {
 	return &TypeHandler{
-		typeUC: typeUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
 func (h *TypeHandler) CreateType(ctx context.Context, req *pb.CreateTypeRequest) (*pb.CreateTypeResponse, error) {
-	typeEntity, err := h.typeUC.CreateType(ctx, req.Name)
-	if err != nil {
+	cmd := &command.CreateTypeCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Name:        req.Name,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.CreateTypeResponse{
-		Type: mapper.TypeToProto(typeEntity),
+		Type: &pb.Type{
+			Name: req.Name,
+		},
 	}, nil
 }
 
 func (h *TypeHandler) GetType(ctx context.Context, req *pb.IdRequest) (*pb.GetTypeResponse, error) {
-	typeEntity, err := h.typeUC.GetTypeByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrTypeNotFound {
-			return nil, status.Error(codes.NotFound, "type not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetTypeByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "type not found")
+	}
+
+	typeEntity := result.(*domain.Type)
 
 	return &pb.GetTypeResponse{
 		Type: mapper.TypeToProto(typeEntity),
@@ -60,16 +75,25 @@ func (h *TypeHandler) ListTypes(ctx context.Context, req *pb.ListTypesRequest) (
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	types, total, err := h.typeUC.ListTypes(ctx, int(page), int(pageSize), search, includeDeleted)
+	qry := &query.ListTypesQuery{
+		BaseQuery:      cqrs.BaseQuery{},
+		Page:           int(page),
+		PageSize:       int(pageSize),
+		Search:         search,
+		IncludeDeleted: includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListTypesResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.ListTypesResponse{
-		Types:      mapper.TypesToProto(types),
-		Total:      int32(total),
+		Types:      mapper.TypesToProto(listResult.Types),
+		Total:      int32(listResult.Total),
 		Page:       page,
 		PageSize:   pageSize,
 		TotalPages: int32(totalPages),
@@ -77,13 +101,27 @@ func (h *TypeHandler) ListTypes(ctx context.Context, req *pb.ListTypesRequest) (
 }
 
 func (h *TypeHandler) UpdateType(ctx context.Context, req *pb.UpdateTypeRequest) (*pb.UpdateTypeResponse, error) {
-	typeEntity, err := h.typeUC.UpdateType(ctx, req.Id, req.Name)
-	if err != nil {
-		if err == usecase.ErrTypeNotFound {
-			return nil, status.Error(codes.NotFound, "type not found")
-		}
+	cmd := &command.UpdateTypeCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Name:        req.Name,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Query the updated type
+	qry := &query.GetTypeByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "type not found")
+	}
+
+	typeEntity := result.(*domain.Type)
 
 	return &pb.UpdateTypeResponse{
 		Type: mapper.TypeToProto(typeEntity),
@@ -91,11 +129,11 @@ func (h *TypeHandler) UpdateType(ctx context.Context, req *pb.UpdateTypeRequest)
 }
 
 func (h *TypeHandler) DeleteType(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	err := h.typeUC.DeleteType(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrTypeNotFound {
-			return nil, status.Error(codes.NotFound, "type not found")
-		}
+	cmd := &command.DeleteTypeCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 

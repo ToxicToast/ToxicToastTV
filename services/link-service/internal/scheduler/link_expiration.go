@@ -5,30 +5,32 @@ import (
 	"log"
 	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
+
+	"toxictoast/services/link-service/internal/command"
 	"toxictoast/services/link-service/internal/repository"
-	"toxictoast/services/link-service/internal/usecase"
 )
 
 type LinkExpirationScheduler struct {
-	linkUseCase usecase.LinkUseCase
-	linkRepo    repository.LinkRepository
-	interval    time.Duration
-	enabled     bool
-	stopChan    chan struct{}
+	commandBus *cqrs.CommandBus
+	linkRepo   repository.LinkRepository
+	interval   time.Duration
+	enabled    bool
+	stopChan   chan struct{}
 }
 
 func NewLinkExpirationScheduler(
-	linkUseCase usecase.LinkUseCase,
+	commandBus *cqrs.CommandBus,
 	linkRepo repository.LinkRepository,
 	interval time.Duration,
 	enabled bool,
 ) *LinkExpirationScheduler {
 	return &LinkExpirationScheduler{
-		linkUseCase: linkUseCase,
-		linkRepo:    linkRepo,
-		interval:    interval,
-		enabled:     enabled,
-		stopChan:    make(chan struct{}),
+		commandBus: commandBus,
+		linkRepo:   linkRepo,
+		interval:   interval,
+		enabled:    enabled,
+		stopChan:   make(chan struct{}),
 	}
 }
 
@@ -90,8 +92,14 @@ func (s *LinkExpirationScheduler) checkExpiredLinks() {
 	for i := range links {
 		// Check if link is expired
 		if links[i].IsExpired() {
-			// Deactivate the link using the dedicated method
-			err := s.linkUseCase.DeactivateExpiredLink(ctx, &links[i])
+			// Create command to deactivate the link
+			cmd := &command.DeactivateExpiredLinkCommand{
+				BaseCommand: cqrs.BaseCommand{},
+				Link:        &links[i],
+			}
+
+			// Dispatch command
+			err := s.commandBus.Dispatch(ctx, cmd)
 			if err != nil {
 				log.Printf("Error deactivating expired link %s: %v", links[i].ShortCode, err)
 				errorCount++

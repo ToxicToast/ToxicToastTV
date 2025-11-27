@@ -3,24 +3,27 @@ package grpc
 import (
 	"context"
 
-	"toxictoast/services/notification-service/internal/handler/mapper"
-	"toxictoast/services/notification-service/internal/usecase"
-	pb "toxictoast/services/notification-service/api/proto"
-
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
+	pb "toxictoast/services/notification-service/api/proto"
+	"toxictoast/services/notification-service/internal/command"
+	"toxictoast/services/notification-service/internal/domain"
+	"toxictoast/services/notification-service/internal/handler/mapper"
+	"toxictoast/services/notification-service/internal/query"
 )
 
 type ChannelHandler struct {
 	pb.UnimplementedChannelManagementServiceServer
-	channelUC      *usecase.ChannelUseCase
-	notificationUC *usecase.NotificationUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewChannelHandler(channelUC *usecase.ChannelUseCase, notificationUC *usecase.NotificationUseCase) *ChannelHandler {
+func NewChannelHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *ChannelHandler {
 	return &ChannelHandler{
-		channelUC:      channelUC,
-		notificationUC: notificationUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
@@ -32,10 +35,31 @@ func (h *ChannelHandler) CreateChannel(ctx context.Context, req *pb.CreateChanne
 		return nil, status.Error(codes.InvalidArgument, "webhook_url is required")
 	}
 
-	channel, err := h.channelUC.CreateChannel(ctx, req.Name, req.WebhookUrl, req.EventTypes, int(req.Color), req.Description)
-	if err != nil {
+	cmd := &command.CreateChannelCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Name:        req.Name,
+		WebhookURL:  req.WebhookUrl,
+		EventTypes:  req.EventTypes,
+		Color:       int(req.Color),
+		Description: req.Description,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create channel: %v", err)
 	}
+
+	// Query the created channel
+	qry := &query.GetChannelByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "channel not found")
+	}
+
+	channel := result.(*domain.DiscordChannel)
 
 	return &pb.ChannelResponse{Channel: mapper.ToProtoChannel(channel)}, nil
 }
@@ -45,10 +69,17 @@ func (h *ChannelHandler) GetChannel(ctx context.Context, req *pb.GetChannelReque
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	channel, err := h.channelUC.GetChannel(ctx, req.Id)
+	qry := &query.GetChannelByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "channel not found: %v", err)
 	}
+
+	channel := result.(*domain.DiscordChannel)
 
 	return &pb.ChannelResponse{Channel: mapper.ToProtoChannel(channel)}, nil
 }
@@ -62,14 +93,23 @@ func (h *ChannelHandler) ListChannels(ctx context.Context, req *pb.ListChannelsR
 		return nil, status.Error(codes.InvalidArgument, "limit cannot exceed 1000")
 	}
 
-	channels, total, err := h.channelUC.ListChannels(ctx, limit, int(req.Offset), req.ActiveOnly)
+	qry := &query.ListChannelsQuery{
+		BaseQuery:  cqrs.BaseQuery{},
+		Limit:      limit,
+		Offset:     int(req.Offset),
+		ActiveOnly: req.ActiveOnly,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list channels: %v", err)
 	}
 
+	listResult := result.(*query.ListChannelsResult)
+
 	return &pb.ListChannelsResponse{
-		Channels: mapper.ToProtoChannels(channels),
-		Total:    total,
+		Channels: mapper.ToProtoChannels(listResult.Channels),
+		Total:    listResult.Total,
 		Limit:    int32(limit),
 		Offset:   req.Offset,
 	}, nil
@@ -80,10 +120,44 @@ func (h *ChannelHandler) UpdateChannel(ctx context.Context, req *pb.UpdateChanne
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	channel, err := h.channelUC.UpdateChannel(ctx, req.Id, req.Name, req.WebhookUrl, req.EventTypes, int(req.Color), req.Description, req.Active)
-	if err != nil {
+	cmd := &command.UpdateChannelCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if req.Name != "" {
+		cmd.Name = &req.Name
+	}
+	if req.WebhookUrl != "" {
+		cmd.WebhookURL = &req.WebhookUrl
+	}
+	if len(req.EventTypes) > 0 {
+		cmd.EventTypes = &req.EventTypes
+	}
+	if req.Color > 0 {
+		color := int(req.Color)
+		cmd.Color = &color
+	}
+	if req.Description != "" {
+		cmd.Description = &req.Description
+	}
+	cmd.Active = &req.Active
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to update channel: %v", err)
 	}
+
+	// Query the updated channel
+	qry := &query.GetChannelByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "channel not found")
+	}
+
+	channel := result.(*domain.DiscordChannel)
 
 	return &pb.ChannelResponse{Channel: mapper.ToProtoChannel(channel)}, nil
 }
@@ -93,7 +167,11 @@ func (h *ChannelHandler) DeleteChannel(ctx context.Context, req *pb.DeleteChanne
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	if err := h.channelUC.DeleteChannel(ctx, req.Id); err != nil {
+	cmd := &command.DeleteChannelCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete channel: %v", err)
 	}
 
@@ -105,10 +183,27 @@ func (h *ChannelHandler) ToggleChannel(ctx context.Context, req *pb.ToggleChanne
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	channel, err := h.channelUC.ToggleChannel(ctx, req.Id, req.Active)
-	if err != nil {
+	cmd := &command.ToggleChannelCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Active:      req.Active,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to toggle channel: %v", err)
 	}
+
+	// Query the updated channel
+	qry := &query.GetChannelByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "channel not found")
+	}
+
+	channel := result.(*domain.DiscordChannel)
 
 	return &pb.ChannelResponse{Channel: mapper.ToProtoChannel(channel)}, nil
 }
@@ -118,7 +213,12 @@ func (h *ChannelHandler) TestChannel(ctx context.Context, req *pb.TestChannelReq
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	if err := h.notificationUC.TestChannel(ctx, req.Id); err != nil {
+	cmd := &command.TestChannelCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		ChannelID:   req.Id,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to test channel: %v", err)
 	}
 

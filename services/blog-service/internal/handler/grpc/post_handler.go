@@ -7,24 +7,28 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	pb "toxictoast/services/blog-service/api/proto"
 	"github.com/toxictoast/toxictoastgo/shared/auth"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 
+	pb "toxictoast/services/blog-service/api/proto"
+	"toxictoast/services/blog-service/internal/command"
 	"toxictoast/services/blog-service/internal/domain"
+	"toxictoast/services/blog-service/internal/query"
 	"toxictoast/services/blog-service/internal/repository"
-	"toxictoast/services/blog-service/internal/usecase"
 )
 
 type PostHandler struct {
 	pb.UnimplementedBlogServiceServer
-	postUseCase usecase.PostUseCase
+	commandBus  *cqrs.CommandBus
+	queryBus    *cqrs.QueryBus
 	authEnabled bool
 }
 
-func NewPostHandler(postUseCase usecase.PostUseCase, authEnabled bool) *PostHandler {
+func NewPostHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus, authEnabled bool) *PostHandler {
 	return &PostHandler{
-		postUseCase: postUseCase,
+		commandBus:  commandBus,
+		queryBus:    queryBus,
 		authEnabled: authEnabled,
 	}
 }
@@ -36,21 +40,10 @@ func (h *PostHandler) CreatePost(ctx context.Context, req *pb.CreatePostRequest)
 		return nil, err
 	}
 
-	// Convert request to use case input
-	input := usecase.CreatePostInput{
-		Title:           req.Title,
-		Content:         req.Content,
-		Excerpt:         req.Excerpt,
-		CategoryIDs:     req.CategoryIds,
-		TagIDs:          req.TagIds,
-		FeaturedImageID: stringPtrFromString(req.FeaturedImageId),
-		Featured:        req.Featured,
-		AuthorID:        user.UserID,
-	}
-
 	// Convert SEO metadata
+	var seoData command.SEOData
 	if req.Seo != nil {
-		input.SEO = usecase.SEOInput{
+		seoData = command.SEOData{
 			MetaTitle:       req.Seo.MetaTitle,
 			MetaDescription: req.Seo.MetaDescription,
 			MetaKeywords:    req.Seo.MetaKeywords,
@@ -61,11 +54,37 @@ func (h *PostHandler) CreatePost(ctx context.Context, req *pb.CreatePostRequest)
 		}
 	}
 
-	// Create post
-	post, err := h.postUseCase.CreatePost(ctx, input)
-	if err != nil {
+	// Create command
+	cmd := &command.CreatePostCommand{
+		BaseCommand:     cqrs.BaseCommand{},
+		Title:           req.Title,
+		Content:         req.Content,
+		Excerpt:         req.Excerpt,
+		CategoryIDs:     req.CategoryIds,
+		TagIDs:          req.TagIds,
+		FeaturedImageID: stringPtrFromString(req.FeaturedImageId),
+		Featured:        req.Featured,
+		AuthorID:        user.UserID,
+		SEO:             seoData,
+	}
+
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create post: %v", err)
 	}
+
+	// Query created post
+	getQuery := &query.GetPostByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		PostID:    cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve created post: %v", err)
+	}
+
+	post := result.(*domain.Post)
 
 	return &pb.PostResponse{
 		Post: domainPostToProto(post),
@@ -75,16 +94,36 @@ func (h *PostHandler) CreatePost(ctx context.Context, req *pb.CreatePostRequest)
 func (h *PostHandler) GetPost(ctx context.Context, req *pb.GetPostRequest) (*pb.PostResponse, error) {
 	var post *domain.Post
 	var err error
+	var result interface{}
 
 	switch identifier := req.Identifier.(type) {
 	case *pb.GetPostRequest_Id:
-		post, err = h.postUseCase.GetPost(ctx, identifier.Id)
-	case *pb.GetPostRequest_Slug:
-		post, err = h.postUseCase.GetPostBySlug(ctx, identifier.Slug)
-		// Increment view count for public access via slug
-		if err == nil && post != nil {
-			_ = h.postUseCase.IncrementViewCount(ctx, post.ID)
+		getQuery := &query.GetPostByIDQuery{
+			BaseQuery: cqrs.BaseQuery{},
+			PostID:    identifier.Id,
 		}
+		result, err = h.queryBus.Dispatch(ctx, getQuery)
+		if err == nil {
+			post = result.(*domain.Post)
+		}
+
+	case *pb.GetPostRequest_Slug:
+		getQuery := &query.GetPostBySlugQuery{
+			BaseQuery: cqrs.BaseQuery{},
+			Slug:      identifier.Slug,
+		}
+		result, err = h.queryBus.Dispatch(ctx, getQuery)
+		if err == nil {
+			post = result.(*domain.Post)
+			// Increment view count for public access via slug
+			if post != nil {
+				incrementCmd := &command.IncrementPostViewCountCommand{
+					BaseCommand: cqrs.BaseCommand{AggregateID: post.ID},
+				}
+				_ = h.commandBus.Dispatch(ctx, incrementCmd)
+			}
+		}
+
 	default:
 		return nil, status.Error(codes.InvalidArgument, "must provide either id or slug")
 	}
@@ -105,20 +144,10 @@ func (h *PostHandler) UpdatePost(ctx context.Context, req *pb.UpdatePostRequest)
 		return nil, err
 	}
 
-	// Convert request to use case input
-	input := usecase.UpdatePostInput{
-		Title:           stringPtrFromOptional(req.Title),
-		Content:         stringPtrFromOptional(req.Content),
-		Excerpt:         stringPtrFromOptional(req.Excerpt),
-		CategoryIDs:     req.CategoryIds,
-		TagIDs:          req.TagIds,
-		FeaturedImageID: stringPtrFromOptional(req.FeaturedImageId),
-		Featured:        boolPtrFromOptional(req.Featured),
-	}
-
 	// Convert SEO metadata if provided
+	var seoData *command.SEOData
 	if req.Seo != nil {
-		input.SEO = &usecase.SEOInput{
+		seoData = &command.SEOData{
 			MetaTitle:       req.Seo.MetaTitle,
 			MetaDescription: req.Seo.MetaDescription,
 			MetaKeywords:    req.Seo.MetaKeywords,
@@ -129,11 +158,36 @@ func (h *PostHandler) UpdatePost(ctx context.Context, req *pb.UpdatePostRequest)
 		}
 	}
 
-	// Update post
-	post, err := h.postUseCase.UpdatePost(ctx, req.Id, input)
-	if err != nil {
+	// Create command
+	cmd := &command.UpdatePostCommand{
+		BaseCommand:     cqrs.BaseCommand{AggregateID: req.Id},
+		Title:           stringPtrFromOptional(req.Title),
+		Content:         stringPtrFromOptional(req.Content),
+		Excerpt:         stringPtrFromOptional(req.Excerpt),
+		CategoryIDs:     req.CategoryIds,
+		TagIDs:          req.TagIds,
+		FeaturedImageID: stringPtrFromOptional(req.FeaturedImageId),
+		Featured:        boolPtrFromOptional(req.Featured),
+		SEO:             seoData,
+	}
+
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to update post: %v", err)
 	}
+
+	// Query updated post
+	getQuery := &query.GetPostByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		PostID:    req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve updated post: %v", err)
+	}
+
+	post := result.(*domain.Post)
 
 	return &pb.PostResponse{
 		Post: domainPostToProto(post),
@@ -147,8 +201,13 @@ func (h *PostHandler) DeletePost(ctx context.Context, req *pb.DeletePostRequest)
 		return nil, err
 	}
 
-	// Delete post
-	if err := h.postUseCase.DeletePost(ctx, req.Id); err != nil {
+	// Create command
+	cmd := &command.DeletePostCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete post: %v", err)
 	}
 
@@ -181,23 +240,31 @@ func (h *PostHandler) ListPosts(ctx context.Context, req *pb.ListPostsRequest) (
 		filters.PageSize = 10
 	}
 
-	// List posts
-	posts, total, err := h.postUseCase.ListPosts(ctx, filters)
+	// Create query
+	listQuery := &query.ListPostsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Filters:   filters,
+	}
+
+	// Dispatch query
+	result, err := h.queryBus.Dispatch(ctx, listQuery)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list posts: %v", err)
 	}
 
+	listResult := result.(*query.ListPostsResult)
+
 	// Convert to proto
-	protoPosts := make([]*pb.Post, len(posts))
-	for i, post := range posts {
+	protoPosts := make([]*pb.Post, len(listResult.Posts))
+	for i, post := range listResult.Posts {
 		protoPosts[i] = domainPostToProto(&post)
 	}
 
 	// Calculate total pages
 	var totalPages int32
 	if req.PageSize > 0 {
-		totalPages = int32(total) / req.PageSize
-		if int32(total)%req.PageSize > 0 {
+		totalPages = int32(listResult.Total) / req.PageSize
+		if int32(listResult.Total)%req.PageSize > 0 {
 			totalPages++
 		}
 	} else {
@@ -206,7 +273,7 @@ func (h *PostHandler) ListPosts(ctx context.Context, req *pb.ListPostsRequest) (
 
 	return &pb.ListPostsResponse{
 		Posts:      protoPosts,
-		Total:      int32(total),
+		Total:      int32(listResult.Total),
 		Page:       req.Page,
 		PageSize:   req.PageSize,
 		TotalPages: totalPages,
@@ -220,11 +287,28 @@ func (h *PostHandler) PublishPost(ctx context.Context, req *pb.PublishPostReques
 		return nil, err
 	}
 
-	// Publish post
-	post, err := h.postUseCase.PublishPost(ctx, req.Id)
-	if err != nil {
+	// Create command
+	cmd := &command.PublishPostCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to publish post: %v", err)
 	}
+
+	// Query published post
+	getQuery := &query.GetPostByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		PostID:    req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve published post: %v", err)
+	}
+
+	post := result.(*domain.Post)
 
 	return &pb.PostResponse{
 		Post: domainPostToProto(post),
@@ -239,20 +323,20 @@ func domainPostToProto(post *domain.Post) *pb.Post {
 	}
 
 	protoPost := &pb.Post{
-		Id:             post.ID,
-		Title:          post.Title,
-		Slug:           post.Slug,
-		Content:        post.Content,
-		Excerpt:        post.Excerpt,
-		Markdown:       post.Markdown,
-		Html:           post.HTML,
-		Status:         domainPostStatusToProto(post.Status),
-		Featured:       post.Featured,
-		AuthorId:       post.AuthorID,
-		ReadingTime:    int32(post.ReadingTime),
-		ViewCount:      int32(post.ViewCount),
-		CreatedAt:      timestamppb.New(post.CreatedAt),
-		UpdatedAt:      timestamppb.New(post.UpdatedAt),
+		Id:          post.ID,
+		Title:       post.Title,
+		Slug:        post.Slug,
+		Content:     post.Content,
+		Excerpt:     post.Excerpt,
+		Markdown:    post.Markdown,
+		Html:        post.HTML,
+		Status:      domainPostStatusToProto(post.Status),
+		Featured:    post.Featured,
+		AuthorId:    post.AuthorID,
+		ReadingTime: int32(post.ReadingTime),
+		ViewCount:   int32(post.ViewCount),
+		CreatedAt:   timestamppb.New(post.CreatedAt),
+		UpdatedAt:   timestamppb.New(post.UpdatedAt),
 	}
 
 	// Add published date if available

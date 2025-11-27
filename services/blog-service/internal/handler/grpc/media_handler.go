@@ -11,23 +11,27 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/toxictoast/toxictoastgo/shared/auth"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 
 	pb "toxictoast/services/blog-service/api/proto"
+	"toxictoast/services/blog-service/internal/command"
 	"toxictoast/services/blog-service/internal/domain"
+	"toxictoast/services/blog-service/internal/query"
 	"toxictoast/services/blog-service/internal/repository"
-	"toxictoast/services/blog-service/internal/usecase"
 )
 
 type MediaHandler struct {
 	pb.UnimplementedBlogServiceServer
-	mediaUseCase usecase.MediaUseCase
-	authEnabled  bool
+	commandBus  *cqrs.CommandBus
+	queryBus    *cqrs.QueryBus
+	authEnabled bool
 }
 
-func NewMediaHandler(mediaUseCase usecase.MediaUseCase, authEnabled bool) *MediaHandler {
+func NewMediaHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus, authEnabled bool) *MediaHandler {
 	return &MediaHandler{
-		mediaUseCase: mediaUseCase,
-		authEnabled:  authEnabled,
+		commandBus:  commandBus,
+		queryBus:    queryBus,
+		authEnabled: authEnabled,
 	}
 }
 
@@ -75,18 +79,32 @@ func (h *MediaHandler) UploadMedia(stream pb.BlogService_UploadMediaServer) erro
 		return status.Error(codes.InvalidArgument, "no metadata received")
 	}
 
-	// Create media via use case
-	input := usecase.UploadMediaInput{
+	// Create command
+	cmd := &command.UploadMediaCommand{
+		BaseCommand:      cqrs.BaseCommand{},
 		Data:             fileData.Bytes(),
 		OriginalFilename: metadata.Filename,
 		MimeType:         metadata.MimeType,
 		UploadedBy:       user.UserID,
 	}
 
-	media, err := h.mediaUseCase.UploadMedia(stream.Context(), input)
-	if err != nil {
+	// Dispatch command
+	if err := h.commandBus.Dispatch(stream.Context(), cmd); err != nil {
 		return status.Errorf(codes.Internal, "failed to upload media: %v", err)
 	}
+
+	// Query uploaded media
+	getQuery := &query.GetMediaByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		MediaID:   cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(stream.Context(), getQuery)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to retrieve uploaded media: %v", err)
+	}
+
+	media := result.(*domain.Media)
 
 	// Send response
 	response := &pb.MediaResponse{
@@ -101,10 +119,18 @@ func (h *MediaHandler) UploadMedia(stream pb.BlogService_UploadMediaServer) erro
 }
 
 func (h *MediaHandler) GetMedia(ctx context.Context, req *pb.GetMediaRequest) (*pb.MediaResponse, error) {
-	media, err := h.mediaUseCase.GetMedia(ctx, req.Id)
+	// Query media
+	getQuery := &query.GetMediaByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		MediaID:   req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "media not found: %v", err)
 	}
+
+	media := result.(*domain.Media)
 
 	return &pb.MediaResponse{
 		Media: domainMediaToProto(media),
@@ -118,8 +144,13 @@ func (h *MediaHandler) DeleteMedia(ctx context.Context, req *pb.DeleteMediaReque
 		return nil, err
 	}
 
-	// Delete media
-	if err := h.mediaUseCase.DeleteMedia(ctx, req.Id); err != nil {
+	// Create command
+	cmd := &command.DeleteMediaCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete media: %v", err)
 	}
 
@@ -145,21 +176,29 @@ func (h *MediaHandler) ListMedia(ctx context.Context, req *pb.ListMediaRequest) 
 		filters.PageSize = 20
 	}
 
-	// List media
-	mediaList, total, err := h.mediaUseCase.ListMedia(ctx, filters)
+	// Create query
+	listQuery := &query.ListMediaQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Filters:   filters,
+	}
+
+	// Dispatch query
+	result, err := h.queryBus.Dispatch(ctx, listQuery)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list media: %v", err)
 	}
 
+	listResult := result.(*query.ListMediaResult)
+
 	// Convert to proto
-	protoMedia := make([]*pb.Media, len(mediaList))
-	for i, media := range mediaList {
+	protoMedia := make([]*pb.Media, len(listResult.Media))
+	for i, media := range listResult.Media {
 		protoMedia[i] = domainMediaToProto(&media)
 	}
 
 	return &pb.ListMediaResponse{
 		Media: protoMedia,
-		Total: int32(total),
+		Total: int32(listResult.Total),
 	}, nil
 }
 

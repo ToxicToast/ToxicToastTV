@@ -6,16 +6,17 @@ import (
 	"fmt"
 	"sync"
 
-	"toxictoast/services/notification-service/internal/domain"
-	"toxictoast/services/notification-service/internal/usecase"
-
 	"github.com/segmentio/kafka-go"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
+
+	"toxictoast/services/notification-service/internal/command"
+	"toxictoast/services/notification-service/internal/domain"
 )
 
 type KafkaConsumer struct {
 	reader         *kafka.Reader
-	notificationUC *usecase.NotificationUseCase
+	commandBus     *cqrs.CommandBus
 	wg             sync.WaitGroup
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -32,7 +33,7 @@ type Config struct {
 
 func NewKafkaConsumer(
 	config Config,
-	notificationUC *usecase.NotificationUseCase,
+	commandBus *cqrs.CommandBus,
 ) *KafkaConsumer {
 	if config.WorkerCount == 0 {
 		config.WorkerCount = 5
@@ -51,7 +52,7 @@ func NewKafkaConsumer(
 
 	return &KafkaConsumer{
 		reader:         reader,
-		notificationUC: notificationUC,
+		commandBus:     commandBus,
 		ctx:            ctx,
 		cancel:         cancel,
 		messageChannel: make(chan kafka.Message, 100),
@@ -173,7 +174,12 @@ func (c *KafkaConsumer) processMessage(msg kafka.Message) error {
 	}
 
 	// Process event and send notifications
-	if err := c.notificationUC.ProcessEvent(c.ctx, &event); err != nil {
+	cmd := &command.ProcessEventCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Event:       &event,
+	}
+
+	if err := c.commandBus.Dispatch(c.ctx, cmd); err != nil {
 		return fmt.Errorf("failed to process event: %w", err)
 	}
 

@@ -17,18 +17,20 @@ import (
 	"google.golang.org/grpc/reflection"
 	"gorm.io/gorm"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	"github.com/toxictoast/toxictoastgo/shared/database"
 	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
 	pb "toxictoast/services/notification-service/api/proto"
+	"toxictoast/services/notification-service/internal/command"
 	"toxictoast/services/notification-service/internal/consumer"
 	"toxictoast/services/notification-service/internal/discord"
 	grpcHandler "toxictoast/services/notification-service/internal/handler/grpc"
+	"toxictoast/services/notification-service/internal/query"
 	"toxictoast/services/notification-service/internal/repository/entity"
 	"toxictoast/services/notification-service/internal/repository/impl"
 	"toxictoast/services/notification-service/internal/scheduler"
-	"toxictoast/services/notification-service/internal/usecase"
 	"toxictoast/services/notification-service/pkg/config"
 )
 
@@ -87,10 +89,32 @@ func main() {
 	discordClient := discord.NewClient()
 	logger.Info("Discord client created")
 
-	// Initialize use cases
-	channelUC := usecase.NewChannelUseCase(channelRepo)
-	notificationUC := usecase.NewNotificationUseCase(notificationRepo, channelRepo, discordClient)
-	logger.Info("Use cases initialized")
+	// Initialize CQRS buses
+	commandBus := cqrs.NewCommandBus()
+	queryBus := cqrs.NewQueryBus()
+	logger.Info("CQRS buses initialized")
+
+	// Register command handlers
+	logger.Info("Registering command handlers...")
+	commandBus.RegisterHandler("create_channel", command.NewCreateChannelHandler(channelRepo))
+	commandBus.RegisterHandler("update_channel", command.NewUpdateChannelHandler(channelRepo))
+	commandBus.RegisterHandler("delete_channel", command.NewDeleteChannelHandler(channelRepo))
+	commandBus.RegisterHandler("toggle_channel", command.NewToggleChannelHandler(channelRepo))
+	commandBus.RegisterHandler("process_event", command.NewProcessEventHandler(notificationRepo, channelRepo, discordClient))
+	commandBus.RegisterHandler("delete_notification", command.NewDeleteNotificationHandler(notificationRepo))
+	commandBus.RegisterHandler("cleanup_old_notifications", command.NewCleanupOldNotificationsHandler(notificationRepo))
+	commandBus.RegisterHandler("retry_notification", command.NewRetryNotificationHandler(notificationRepo, channelRepo, discordClient))
+	commandBus.RegisterHandler("test_channel", command.NewTestChannelHandler(notificationRepo, channelRepo, discordClient))
+	logger.Info("Command handlers registered")
+
+	// Register query handlers
+	logger.Info("Registering query handlers...")
+	queryBus.RegisterHandler("get_channel_by_id", query.NewGetChannelByIDHandler(channelRepo))
+	queryBus.RegisterHandler("list_channels", query.NewListChannelsHandler(channelRepo))
+	queryBus.RegisterHandler("get_active_channels_for_event", query.NewGetActiveChannelsForEventHandler(channelRepo))
+	queryBus.RegisterHandler("get_notification_by_id", query.NewGetNotificationByIDHandler(notificationRepo))
+	queryBus.RegisterHandler("list_notifications", query.NewListNotificationsHandler(notificationRepo))
+	logger.Info("Query handlers registered")
 
 	// Initialize Kafka consumer
 	kafkaConsumer := consumer.NewKafkaConsumer(
@@ -100,7 +124,7 @@ func main() {
 			GroupID:     cfg.Kafka.GroupID,
 			WorkerCount: 5,
 		},
-		notificationUC,
+		commandBus,
 	)
 	logger.Info("Kafka consumer created")
 
@@ -113,7 +137,7 @@ func main() {
 
 	// Initialize background job schedulers
 	retryScheduler := scheduler.NewNotificationRetryScheduler(
-		notificationUC,
+		commandBus,
 		notificationRepo,
 		cfg.NotificationRetryInterval,
 		cfg.NotificationRetryMaxRetries,
@@ -133,8 +157,8 @@ func main() {
 	logger.Info("Background jobs initialized")
 
 	// Initialize gRPC handlers
-	channelHandler := grpcHandler.NewChannelHandler(channelUC, notificationUC)
-	notificationHandler := grpcHandler.NewNotificationHandler(notificationUC)
+	channelHandler := grpcHandler.NewChannelHandler(commandBus, queryBus)
+	notificationHandler := grpcHandler.NewNotificationHandler(commandBus, queryBus)
 	logger.Info("gRPC handlers initialized")
 
 	// Setup gRPC server

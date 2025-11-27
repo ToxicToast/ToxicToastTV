@@ -8,30 +8,36 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/toxictoast/toxictoastgo/shared/auth"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 
 	pb "toxictoast/services/blog-service/api/proto"
+	"toxictoast/services/blog-service/internal/command"
 	"toxictoast/services/blog-service/internal/domain"
+	"toxictoast/services/blog-service/internal/query"
 	"toxictoast/services/blog-service/internal/repository"
-	"toxictoast/services/blog-service/internal/usecase"
 )
 
 type CommentHandler struct {
 	pb.UnimplementedBlogServiceServer
-	commentUseCase usecase.CommentUseCase
-	authEnabled    bool
+	commandBus  *cqrs.CommandBus
+	queryBus    *cqrs.QueryBus
+	authEnabled bool
 }
 
-func NewCommentHandler(commentUseCase usecase.CommentUseCase, authEnabled bool) *CommentHandler {
+func NewCommentHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus, authEnabled bool) *CommentHandler {
 	return &CommentHandler{
-		commentUseCase: commentUseCase,
-		authEnabled:    authEnabled,
+		commandBus:  commandBus,
+		queryBus:    queryBus,
+		authEnabled: authEnabled,
 	}
 }
 
 func (h *CommentHandler) CreateComment(ctx context.Context, req *pb.CreateCommentRequest) (*pb.CommentResponse, error) {
 	// Comments can be created by anyone (public endpoint)
-	// Convert request to use case input
-	input := usecase.CreateCommentInput{
+
+	// Create command
+	cmd := &command.CreateCommentCommand{
+		BaseCommand: cqrs.BaseCommand{},
 		PostID:      req.PostId,
 		ParentID:    stringPtrFromOptional(req.ParentId),
 		AuthorName:  req.AuthorName,
@@ -39,11 +45,23 @@ func (h *CommentHandler) CreateComment(ctx context.Context, req *pb.CreateCommen
 		Content:     req.Content,
 	}
 
-	// Create comment
-	comment, err := h.commentUseCase.CreateComment(ctx, input)
-	if err != nil {
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create comment: %v", err)
 	}
+
+	// Query created comment
+	getQuery := &query.GetCommentByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		CommentID: cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve created comment: %v", err)
+	}
+
+	comment := result.(*domain.Comment)
 
 	return &pb.CommentResponse{
 		Comment: domainCommentToProto(comment),
@@ -51,10 +69,18 @@ func (h *CommentHandler) CreateComment(ctx context.Context, req *pb.CreateCommen
 }
 
 func (h *CommentHandler) GetComment(ctx context.Context, req *pb.GetCommentRequest) (*pb.CommentResponse, error) {
-	comment, err := h.commentUseCase.GetComment(ctx, req.Id)
+	// Query comment
+	getQuery := &query.GetCommentByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		CommentID: req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "comment not found: %v", err)
 	}
+
+	comment := result.(*domain.Comment)
 
 	return &pb.CommentResponse{
 		Comment: domainCommentToProto(comment),
@@ -65,16 +91,29 @@ func (h *CommentHandler) UpdateComment(ctx context.Context, req *pb.UpdateCommen
 	// In a real app, you'd verify that the user owns this comment
 	// For now, we allow anyone to update (or require auth)
 
-	// Convert request to use case input
-	input := usecase.UpdateCommentInput{
-		Content: req.Content,
+	// Create command
+	cmd := &command.UpdateCommentCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Content:     req.Content,
 	}
 
-	// Update comment
-	comment, err := h.commentUseCase.UpdateComment(ctx, req.Id, input)
-	if err != nil {
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to update comment: %v", err)
 	}
+
+	// Query updated comment
+	getQuery := &query.GetCommentByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		CommentID: req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve updated comment: %v", err)
+	}
+
+	comment := result.(*domain.Comment)
 
 	return &pb.CommentResponse{
 		Comment: domainCommentToProto(comment),
@@ -88,8 +127,13 @@ func (h *CommentHandler) DeleteComment(ctx context.Context, req *pb.DeleteCommen
 		return nil, err
 	}
 
-	// Delete comment
-	if err := h.commentUseCase.DeleteComment(ctx, req.Id); err != nil {
+	// Create command
+	cmd := &command.DeleteCommentCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete comment: %v", err)
 	}
 
@@ -116,21 +160,29 @@ func (h *CommentHandler) ListComments(ctx context.Context, req *pb.ListCommentsR
 		filters.PageSize = 20
 	}
 
-	// List comments
-	comments, total, err := h.commentUseCase.ListComments(ctx, filters)
+	// Create query
+	listQuery := &query.ListCommentsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Filters:   filters,
+	}
+
+	// Dispatch query
+	result, err := h.queryBus.Dispatch(ctx, listQuery)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list comments: %v", err)
 	}
 
+	listResult := result.(*query.ListCommentsResult)
+
 	// Convert to proto
-	protoComments := make([]*pb.Comment, len(comments))
-	for i, comment := range comments {
+	protoComments := make([]*pb.Comment, len(listResult.Comments))
+	for i, comment := range listResult.Comments {
 		protoComments[i] = domainCommentToProto(&comment)
 	}
 
 	return &pb.ListCommentsResponse{
 		Comments: protoComments,
-		Total:    int32(total),
+		Total:    int32(listResult.Total),
 	}, nil
 }
 
@@ -144,11 +196,29 @@ func (h *CommentHandler) ModerateComment(ctx context.Context, req *pb.ModerateCo
 	// Convert proto status to domain status
 	domainStatus := protoCommentStatusToDomain(req.Status)
 
-	// Moderate comment
-	comment, err := h.commentUseCase.ModerateComment(ctx, req.Id, domainStatus)
-	if err != nil {
+	// Create command
+	cmd := &command.ModerateCommentCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Status:      domainStatus,
+	}
+
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to moderate comment: %v", err)
 	}
+
+	// Query moderated comment
+	getQuery := &query.GetCommentByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		CommentID: req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve moderated comment: %v", err)
+	}
+
+	comment := result.(*domain.Comment)
 
 	return &pb.CommentResponse{
 		Comment: domainCommentToProto(comment),

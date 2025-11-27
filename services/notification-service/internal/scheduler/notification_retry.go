@@ -5,34 +5,36 @@ import (
 	"log"
 	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
+
+	"toxictoast/services/notification-service/internal/command"
 	"toxictoast/services/notification-service/internal/domain"
 	"toxictoast/services/notification-service/internal/repository/interfaces"
-	"toxictoast/services/notification-service/internal/usecase"
 )
 
 type NotificationRetryScheduler struct {
-	notificationUseCase *usecase.NotificationUseCase
-	notificationRepo    interfaces.NotificationRepository
-	interval            time.Duration
-	maxRetries          int
-	enabled             bool
-	stopChan            chan struct{}
+	commandBus       *cqrs.CommandBus
+	notificationRepo interfaces.NotificationRepository
+	interval         time.Duration
+	maxRetries       int
+	enabled          bool
+	stopChan         chan struct{}
 }
 
 func NewNotificationRetryScheduler(
-	notificationUseCase *usecase.NotificationUseCase,
+	commandBus *cqrs.CommandBus,
 	notificationRepo interfaces.NotificationRepository,
 	interval time.Duration,
 	maxRetries int,
 	enabled bool,
 ) *NotificationRetryScheduler {
 	return &NotificationRetryScheduler{
-		notificationUseCase: notificationUseCase,
-		notificationRepo:    notificationRepo,
-		interval:            interval,
-		maxRetries:          maxRetries,
-		enabled:             enabled,
-		stopChan:            make(chan struct{}),
+		commandBus:       commandBus,
+		notificationRepo: notificationRepo,
+		interval:         interval,
+		maxRetries:       maxRetries,
+		enabled:          enabled,
+		stopChan:         make(chan struct{}),
 	}
 }
 
@@ -98,18 +100,27 @@ func (s *NotificationRetryScheduler) retryFailedNotifications() {
 		}
 
 		// Retry the notification
-		err := s.notificationUseCase.RetryNotification(ctx, &notification)
+		cmd := &command.RetryNotificationCommand{
+			BaseCommand:    cqrs.BaseCommand{},
+			NotificationID: notification.ID,
+		}
+
+		err := s.commandBus.Dispatch(ctx, cmd)
 		if err != nil {
 			log.Printf("Error retrying notification %s: %v", notification.ID, err)
 			errorCount++
 			continue
 		}
 
-		if notification.Status == domain.NotificationStatusSuccess {
-			log.Printf("Successfully retried notification: %s (attempt %d/%d)", notification.ID, notification.AttemptCount, s.maxRetries)
-			retriedCount++
-		} else {
-			log.Printf("Retry failed for notification: %s (attempt %d/%d): %s", notification.ID, notification.AttemptCount, s.maxRetries, notification.LastError)
+		// Re-fetch to check status
+		updatedNotif, err := s.notificationRepo.GetByID(ctx, notification.ID)
+		if err == nil {
+			if updatedNotif.Status == domain.NotificationStatusSuccess {
+				log.Printf("Successfully retried notification: %s (attempt %d/%d)", updatedNotif.ID, updatedNotif.AttemptCount, s.maxRetries)
+				retriedCount++
+			} else {
+				log.Printf("Retry failed for notification: %s (attempt %d/%d): %s", updatedNotif.ID, updatedNotif.AttemptCount, s.maxRetries, updatedNotif.LastError)
+			}
 		}
 
 		time.Sleep(100 * time.Millisecond) // Rate limiting

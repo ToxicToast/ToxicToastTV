@@ -19,17 +19,19 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/toxictoast/toxictoastgo/shared/auth"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	"github.com/toxictoast/toxictoastgo/shared/database"
 	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
 	pb "toxictoast/services/blog-service/api/proto"
+	"toxictoast/services/blog-service/internal/command"
 	grpcHandler "toxictoast/services/blog-service/internal/handler/grpc"
+	"toxictoast/services/blog-service/internal/query"
 	"toxictoast/services/blog-service/internal/repository"
 	"toxictoast/services/blog-service/internal/repository/entity"
 	"toxictoast/services/blog-service/internal/scheduler"
-	"toxictoast/services/blog-service/internal/usecase"
 	"toxictoast/services/blog-service/pkg/config"
 )
 
@@ -114,19 +116,80 @@ func main() {
 	commentRepo := repository.NewCommentRepository(db)
 	mediaRepo := repository.NewMediaRepository(db)
 
-	// Initialize use cases
-	postUseCase := usecase.NewPostUseCase(postRepo, categoryRepo, tagRepo, kafkaProducer, cfg)
-	categoryUseCase := usecase.NewCategoryUseCase(categoryRepo, kafkaProducer, cfg)
-	tagUseCase := usecase.NewTagUseCase(tagRepo, kafkaProducer, cfg)
-	commentUseCase := usecase.NewCommentUseCase(commentRepo, postRepo, kafkaProducer, cfg)
-	mediaUseCase, err := usecase.NewMediaUseCase(mediaRepo, kafkaProducer, cfg)
+	// Initialize Command Bus
+	commandBus := cqrs.NewCommandBus()
+
+	// Register Command Handlers - Post (6 commands)
+	commandBus.RegisterHandler("create_post", command.NewCreatePostHandler(postRepo, categoryRepo, tagRepo, kafkaProducer))
+	commandBus.RegisterHandler("update_post", command.NewUpdatePostHandler(postRepo, categoryRepo, tagRepo, kafkaProducer))
+	commandBus.RegisterHandler("delete_post", command.NewDeletePostHandler(postRepo, kafkaProducer))
+	commandBus.RegisterHandler("publish_post", command.NewPublishPostHandler(postRepo, kafkaProducer))
+	commandBus.RegisterHandler("increment_post_view_count", command.NewIncrementPostViewCountHandler(postRepo))
+	commandBus.RegisterHandler("publish_scheduled_post", command.NewPublishScheduledPostHandler(postRepo, kafkaProducer))
+
+	// Register Command Handlers - Category (3 commands)
+	commandBus.RegisterHandler("create_category", command.NewCreateCategoryHandler(categoryRepo, kafkaProducer))
+	commandBus.RegisterHandler("update_category", command.NewUpdateCategoryHandler(categoryRepo, kafkaProducer))
+	commandBus.RegisterHandler("delete_category", command.NewDeleteCategoryHandler(categoryRepo, kafkaProducer))
+
+	// Register Command Handlers - Tag (3 commands)
+	commandBus.RegisterHandler("create_tag", command.NewCreateTagHandler(tagRepo, kafkaProducer))
+	commandBus.RegisterHandler("update_tag", command.NewUpdateTagHandler(tagRepo, kafkaProducer))
+	commandBus.RegisterHandler("delete_tag", command.NewDeleteTagHandler(tagRepo, kafkaProducer))
+
+	// Register Command Handlers - Comment (4 commands)
+	commandBus.RegisterHandler("create_comment", command.NewCreateCommentHandler(commentRepo, postRepo, kafkaProducer))
+	commandBus.RegisterHandler("update_comment", command.NewUpdateCommentHandler(commentRepo))
+	commandBus.RegisterHandler("delete_comment", command.NewDeleteCommentHandler(commentRepo, kafkaProducer))
+	commandBus.RegisterHandler("moderate_comment", command.NewModerateCommentHandler(commentRepo, kafkaProducer))
+
+	// Register Command Handlers - Media (2 commands)
+	uploadMediaHandler, err := command.NewUploadMediaHandler(mediaRepo, kafkaProducer, cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize media use case: %v", err)
+		log.Fatalf("Failed to initialize upload media handler: %v", err)
 	}
+	deleteMediaHandler, err := command.NewDeleteMediaHandler(mediaRepo, kafkaProducer, cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize delete media handler: %v", err)
+	}
+	commandBus.RegisterHandler("upload_media", uploadMediaHandler)
+	commandBus.RegisterHandler("delete_media", deleteMediaHandler)
+
+	logger.Info("Command Bus initialized with 18 command handlers")
+
+	// Initialize Query Bus
+	queryBus := cqrs.NewQueryBus()
+
+	// Register Query Handlers - Post (3 queries)
+	queryBus.RegisterHandler("get_post_by_id", query.NewGetPostByIDHandler(postRepo))
+	queryBus.RegisterHandler("get_post_by_slug", query.NewGetPostBySlugHandler(postRepo))
+	queryBus.RegisterHandler("list_posts", query.NewListPostsHandler(postRepo))
+
+	// Register Query Handlers - Category (4 queries)
+	queryBus.RegisterHandler("get_category_by_id", query.NewGetCategoryByIDHandler(categoryRepo))
+	queryBus.RegisterHandler("get_category_by_slug", query.NewGetCategoryBySlugHandler(categoryRepo))
+	queryBus.RegisterHandler("list_categories", query.NewListCategoriesHandler(categoryRepo))
+	queryBus.RegisterHandler("get_category_children", query.NewGetCategoryChildrenHandler(categoryRepo))
+
+	// Register Query Handlers - Tag (3 queries)
+	queryBus.RegisterHandler("get_tag_by_id", query.NewGetTagByIDHandler(tagRepo))
+	queryBus.RegisterHandler("get_tag_by_slug", query.NewGetTagBySlugHandler(tagRepo))
+	queryBus.RegisterHandler("list_tags", query.NewListTagsHandler(tagRepo))
+
+	// Register Query Handlers - Comment (3 queries)
+	queryBus.RegisterHandler("get_comment_by_id", query.NewGetCommentByIDHandler(commentRepo))
+	queryBus.RegisterHandler("list_comments", query.NewListCommentsHandler(commentRepo))
+	queryBus.RegisterHandler("get_comment_replies", query.NewGetCommentRepliesHandler(commentRepo))
+
+	// Register Query Handlers - Media (2 queries)
+	queryBus.RegisterHandler("get_media_by_id", query.NewGetMediaByIDHandler(mediaRepo))
+	queryBus.RegisterHandler("list_media", query.NewListMediaHandler(mediaRepo))
+
+	logger.Info("Query Bus initialized with 15 query handlers")
 
 	// Initialize background job schedulers
 	postPublisherScheduler := scheduler.NewPostPublisherScheduler(
-		postUseCase,
+		commandBus,
 		postRepo,
 		cfg.PostPublisherInterval,
 		cfg.PostPublisherEnabled,
@@ -136,12 +199,12 @@ func main() {
 	postPublisherScheduler.Start()
 	log.Printf("Background jobs initialized")
 
-	// Initialize gRPC handlers
-	postHandler := grpcHandler.NewPostHandler(postUseCase, cfg.AuthEnabled)
-	categoryHandler := grpcHandler.NewCategoryHandler(categoryUseCase, cfg.AuthEnabled)
-	tagHandler := grpcHandler.NewTagHandler(tagUseCase, cfg.AuthEnabled)
-	commentHandler := grpcHandler.NewCommentHandler(commentUseCase, cfg.AuthEnabled)
-	mediaHandler := grpcHandler.NewMediaHandler(mediaUseCase, cfg.AuthEnabled)
+	// Initialize gRPC handlers with CQRS components
+	postHandler := grpcHandler.NewPostHandler(commandBus, queryBus, cfg.AuthEnabled)
+	categoryHandler := grpcHandler.NewCategoryHandler(commandBus, queryBus, cfg.AuthEnabled)
+	tagHandler := grpcHandler.NewTagHandler(commandBus, queryBus, cfg.AuthEnabled)
+	commentHandler := grpcHandler.NewCommentHandler(commandBus, queryBus, cfg.AuthEnabled)
+	mediaHandler := grpcHandler.NewMediaHandler(commandBus, queryBus, cfg.AuthEnabled)
 
 	// Create composed blog handler
 	blogHandler := grpcHandler.NewBlogHandler(postHandler, categoryHandler, tagHandler, commentHandler, mediaHandler)

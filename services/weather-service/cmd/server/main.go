@@ -14,9 +14,10 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/weather-service/api/proto"
 	grpcHandler "toxictoast/services/weather-service/internal/handler/grpc"
-	"toxictoast/services/weather-service/internal/usecase"
+	"toxictoast/services/weather-service/internal/query"
 	"toxictoast/services/weather-service/pkg/config"
 	"toxictoast/services/weather-service/pkg/openmeteo"
 )
@@ -33,14 +34,20 @@ func main() {
 	// Initialize OpenMeteo client
 	openMeteoClient := openmeteo.New()
 
-	// Initialize use cases
-	log.Println("Initializing use cases...")
-	weatherUC := usecase.NewWeatherUseCase(openMeteoClient)
-	log.Println("Use cases initialized")
+	// Initialize CQRS buses
+	log.Println("Initializing CQRS buses...")
+	queryBus := cqrs.NewQueryBus()
+	log.Println("CQRS buses initialized")
+
+	// Register query handlers
+	log.Println("Registering query handlers...")
+	queryBus.RegisterHandler("get_current_weather", query.NewGetCurrentWeatherHandler(openMeteoClient))
+	queryBus.RegisterHandler("get_forecast", query.NewGetForecastHandler(openMeteoClient))
+	log.Println("Query handlers registered")
 
 	// Initialize gRPC handler
 	log.Println("Initializing gRPC handlers...")
-	weatherHandler := grpcHandler.NewWeatherHandler(weatherUC, version)
+	weatherHandler := grpcHandler.NewWeatherHandler(queryBus, version)
 	log.Println("gRPC handlers initialized")
 
 	// Create gRPC server

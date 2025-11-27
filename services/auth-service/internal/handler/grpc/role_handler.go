@@ -7,28 +7,47 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	authpb "toxictoast/services/auth-service/api/proto"
+	"toxictoast/services/auth-service/internal/command"
 	"toxictoast/services/auth-service/internal/domain"
+	"toxictoast/services/auth-service/internal/query"
 )
 
 // CreateRole creates a new role
 func (h *AuthHandler) CreateRole(ctx context.Context, req *authpb.CreateRoleRequest) (*authpb.RoleResponse, error) {
-	role, err := h.roleUseCase.CreateRole(ctx, req.Name, req.Description)
-	if err != nil {
+	cmd := &command.CreateRoleCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Name:        req.Name,
+		Description: req.Description,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create role: %v", err)
 	}
 
+	// Return minimal response (role was created successfully)
 	return &authpb.RoleResponse{
-		Role: domainRoleToProto(role),
+		Role: &authpb.Role{
+			Name:        req.Name,
+			Description: req.Description,
+		},
 	}, nil
 }
 
 // GetRole retrieves a role by ID
 func (h *AuthHandler) GetRole(ctx context.Context, req *authpb.GetRoleRequest) (*authpb.RoleResponse, error) {
-	role, err := h.roleUseCase.GetRole(ctx, req.Id)
+	qry := &query.GetRoleQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		RoleID:    req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "role not found: %v", err)
 	}
+
+	role := result.(*domain.Role)
 
 	return &authpb.RoleResponse{
 		Role: domainRoleToProto(role),
@@ -37,10 +56,28 @@ func (h *AuthHandler) GetRole(ctx context.Context, req *authpb.GetRoleRequest) (
 
 // UpdateRole updates an existing role
 func (h *AuthHandler) UpdateRole(ctx context.Context, req *authpb.UpdateRoleRequest) (*authpb.RoleResponse, error) {
-	role, err := h.roleUseCase.UpdateRole(ctx, req.Id, req.Name, req.Description)
-	if err != nil {
+	cmd := &command.UpdateRoleCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Name:        req.Name,
+		Description: req.Description,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to update role: %v", err)
 	}
+
+	// Query the updated role
+	qry := &query.GetRoleQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		RoleID:    req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "role not found: %v", err)
+	}
+
+	role := result.(*domain.Role)
 
 	return &authpb.RoleResponse{
 		Role: domainRoleToProto(role),
@@ -49,7 +86,11 @@ func (h *AuthHandler) UpdateRole(ctx context.Context, req *authpb.UpdateRoleRequ
 
 // DeleteRole deletes a role
 func (h *AuthHandler) DeleteRole(ctx context.Context, req *authpb.DeleteRoleRequest) (*authpb.DeleteResponse, error) {
-	if err := h.roleUseCase.DeleteRole(ctx, req.Id); err != nil {
+	cmd := &command.DeleteRoleCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete role: %v", err)
 	}
 
@@ -61,19 +102,27 @@ func (h *AuthHandler) DeleteRole(ctx context.Context, req *authpb.DeleteRoleRequ
 
 // ListRoles retrieves all roles with pagination
 func (h *AuthHandler) ListRoles(ctx context.Context, req *authpb.ListRolesRequest) (*authpb.ListRolesResponse, error) {
-	roles, total, err := h.roleUseCase.ListRoles(ctx, int(req.Page), int(req.PageSize))
+	qry := &query.ListRolesQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Page:      int(req.Page),
+		PageSize:  int(req.PageSize),
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list roles: %v", err)
 	}
 
-	protoRoles := make([]*authpb.Role, 0, len(roles))
-	for _, role := range roles {
+	listResult := result.(*query.ListRolesResult)
+
+	protoRoles := make([]*authpb.Role, 0, len(listResult.Roles))
+	for _, role := range listResult.Roles {
 		protoRoles = append(protoRoles, domainRoleToProto(role))
 	}
 
 	return &authpb.ListRolesResponse{
 		Roles: protoRoles,
-		Total: int32(total),
+		Total: int32(listResult.Total),
 	}, nil
 }
 

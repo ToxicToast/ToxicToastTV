@@ -6,29 +6,37 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
+
 	pb "toxictoast/services/link-service/api/proto"
+	"toxictoast/services/link-service/internal/command"
+	"toxictoast/services/link-service/internal/domain"
 	"toxictoast/services/link-service/internal/handler/mapper"
+	"toxictoast/services/link-service/internal/query"
 	"toxictoast/services/link-service/internal/repository"
-	"toxictoast/services/link-service/internal/usecase"
+	"toxictoast/services/link-service/pkg/config"
 )
 
 type LinkHandler struct {
 	pb.UnimplementedLinkServiceServer
-	linkUseCase  usecase.LinkUseCase
-	clickUseCase usecase.ClickUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
+	config     *config.Config
 }
 
 // NewLinkHandler creates a new instance of LinkHandler
-func NewLinkHandler(linkUseCase usecase.LinkUseCase, clickUseCase usecase.ClickUseCase) *LinkHandler {
+func NewLinkHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus, cfg *config.Config) *LinkHandler {
 	return &LinkHandler{
-		linkUseCase:  linkUseCase,
-		clickUseCase: clickUseCase,
+		commandBus: commandBus,
+		queryBus:   queryBus,
+		config:     cfg,
 	}
 }
 
 func (h *LinkHandler) CreateLink(ctx context.Context, req *pb.CreateLinkRequest) (*pb.CreateLinkResponse, error) {
-	// Convert request to use case input
-	input := usecase.CreateLinkInput{
+	// Create command
+	cmd := &command.CreateLinkCommand{
+		BaseCommand: cqrs.BaseCommand{},
 		OriginalURL: req.OriginalUrl,
 		CustomAlias: req.CustomAlias,
 		Title:       req.Title,
@@ -36,23 +44,43 @@ func (h *LinkHandler) CreateLink(ctx context.Context, req *pb.CreateLinkRequest)
 		ExpiresAt:   mapper.ProtoToTime(req.ExpiresAt),
 	}
 
-	// Create link
-	link, shortURL, err := h.linkUseCase.CreateLink(ctx, input)
-	if err != nil {
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create link: %v", err)
 	}
 
+	// Query created link
+	getQuery := &query.GetLinkByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		LinkID:    cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve created link: %v", err)
+	}
+
+	link := result.(*domain.Link)
+
 	return &pb.CreateLinkResponse{
 		Link:     mapper.LinkToProto(link),
-		ShortUrl: shortURL,
+		ShortUrl: cmd.ShortURL,
 	}, nil
 }
 
 func (h *LinkHandler) GetLink(ctx context.Context, req *pb.GetLinkRequest) (*pb.GetLinkResponse, error) {
-	link, err := h.linkUseCase.GetLink(ctx, req.Id)
+	// Query link
+	getQuery := &query.GetLinkByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		LinkID:    req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "link not found: %v", err)
 	}
+
+	link := result.(*domain.Link)
 
 	return &pb.GetLinkResponse{
 		Link: mapper.LinkToProto(link),
@@ -60,10 +88,18 @@ func (h *LinkHandler) GetLink(ctx context.Context, req *pb.GetLinkRequest) (*pb.
 }
 
 func (h *LinkHandler) GetLinkByShortCode(ctx context.Context, req *pb.GetLinkByShortCodeRequest) (*pb.GetLinkResponse, error) {
-	link, err := h.linkUseCase.GetLinkByShortCode(ctx, req.ShortCode)
+	// Query link by short code
+	getQuery := &query.GetLinkByShortCodeQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ShortCode: req.ShortCode,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "link not found: %v", err)
 	}
+
+	link := result.(*domain.Link)
 
 	return &pb.GetLinkResponse{
 		Link: mapper.LinkToProto(link),
@@ -71,44 +107,51 @@ func (h *LinkHandler) GetLinkByShortCode(ctx context.Context, req *pb.GetLinkByS
 }
 
 func (h *LinkHandler) ListLinks(ctx context.Context, req *pb.ListLinksRequest) (*pb.ListLinksResponse, error) {
-	// Get default pagination
-	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
-
 	// Convert request to filters
 	filters := repository.LinkFilters{
-		Page:           int(page),
-		PageSize:       int(pageSize),
-		IsActive:       req.IsActive,
-		IncludeExpired: mapper.BoolValue(req.IncludeExpired),
-		Search:         req.Search,
-		SortBy:         "created_at",
-		SortOrder:      "DESC",
+		Page:     int(req.Page),
+		PageSize: int(req.PageSize),
+		IsActive: req.IsActive,
 	}
 
-	// List links
-	links, total, err := h.linkUseCase.ListLinks(ctx, filters)
+	// Default pagination
+	if filters.Page < 1 {
+		filters.Page = 1
+	}
+	if filters.PageSize < 1 {
+		filters.PageSize = 10
+	}
+
+	// Create query
+	listQuery := &query.ListLinksQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Filters:   filters,
+	}
+
+	// Dispatch query
+	result, err := h.queryBus.Dispatch(ctx, listQuery)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list links: %v", err)
 	}
 
-	// Calculate total pages
-	totalPages := int32(total) / pageSize
-	if int32(total)%pageSize > 0 {
-		totalPages++
+	listResult := result.(*query.ListLinksResult)
+
+	// Convert to proto
+	protoLinks := make([]*pb.Link, len(listResult.Links))
+	for i, link := range listResult.Links {
+		protoLinks[i] = mapper.LinkToProto(&link)
 	}
 
 	return &pb.ListLinksResponse{
-		Links:      mapper.LinksToProto(links),
-		Total:      int32(total),
-		Page:       page,
-		PageSize:   pageSize,
-		TotalPages: totalPages,
+		Links: protoLinks,
+		Total: int32(listResult.Total),
 	}, nil
 }
 
 func (h *LinkHandler) UpdateLink(ctx context.Context, req *pb.UpdateLinkRequest) (*pb.UpdateLinkResponse, error) {
-	// Convert request to use case input
-	input := usecase.UpdateLinkInput{
+	// Create command
+	cmd := &command.UpdateLinkCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
 		OriginalURL: req.OriginalUrl,
 		CustomAlias: req.CustomAlias,
 		Title:       req.Title,
@@ -117,11 +160,23 @@ func (h *LinkHandler) UpdateLink(ctx context.Context, req *pb.UpdateLinkRequest)
 		IsActive:    req.IsActive,
 	}
 
-	// Update link
-	link, err := h.linkUseCase.UpdateLink(ctx, req.Id, input)
-	if err != nil {
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to update link: %v", err)
 	}
+
+	// Query updated link
+	getQuery := &query.GetLinkByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		LinkID:    req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve updated link: %v", err)
+	}
+
+	link := result.(*domain.Link)
 
 	return &pb.UpdateLinkResponse{
 		Link: mapper.LinkToProto(link),
@@ -129,7 +184,13 @@ func (h *LinkHandler) UpdateLink(ctx context.Context, req *pb.UpdateLinkRequest)
 }
 
 func (h *LinkHandler) DeleteLink(ctx context.Context, req *pb.DeleteLinkRequest) (*pb.DeleteResponse, error) {
-	if err := h.linkUseCase.DeleteLink(ctx, req.Id); err != nil {
+	// Create command
+	cmd := &command.DeleteLinkCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete link: %v", err)
 	}
 
@@ -140,49 +201,95 @@ func (h *LinkHandler) DeleteLink(ctx context.Context, req *pb.DeleteLinkRequest)
 }
 
 func (h *LinkHandler) IncrementClick(ctx context.Context, req *pb.IncrementClickRequest) (*pb.IncrementClickResponse, error) {
-	clickCount, err := h.linkUseCase.IncrementClick(ctx, req.ShortCode)
-	if err != nil {
+	// Create command
+	cmd := &command.IncrementClickCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		ShortCode:   req.ShortCode,
+	}
+
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to increment click: %v", err)
 	}
 
 	return &pb.IncrementClickResponse{
-		ClickCount: int32(clickCount),
+		ClickCount: int32(cmd.NewCount),
 	}, nil
 }
 
 func (h *LinkHandler) GetLinkStats(ctx context.Context, req *pb.GetLinkStatsRequest) (*pb.GetLinkStatsResponse, error) {
-	stats, err := h.clickUseCase.GetLinkAnalytics(ctx, req.LinkId)
+	// Query link stats
+	statsQuery := &query.GetLinkStatsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		LinkID:    req.LinkId,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, statsQuery)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get link stats: %v", err)
 	}
 
-	// Convert map[string]int to map[string]int32
-	clicksByCountry := make(map[string]int32)
-	for k, v := range stats.ClicksByCountry {
-		clicksByCountry[k] = int32(v)
+	stats := result.(*repository.LinkStats)
+
+	// Get analytics for detailed stats (optional, if needed)
+	analyticsQuery := &query.GetLinkAnalyticsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		LinkID:    req.LinkId,
 	}
 
-	clicksByDevice := make(map[string]int32)
-	for k, v := range stats.ClicksByDevice {
-		clicksByDevice[k] = int32(v)
+	analyticsResult, _ := h.queryBus.Dispatch(ctx, analyticsQuery)
+
+	var clicksByCountry map[string]int32
+	var clicksByDevice map[string]int32
+	var topReferers []string
+
+	if analyticsResult != nil {
+		clickStats := analyticsResult.(*repository.ClickStats)
+		clicksByCountry = make(map[string]int32)
+		for k, v := range clickStats.ClicksByCountry {
+			clicksByCountry[k] = int32(v)
+		}
+		clicksByDevice = make(map[string]int32)
+		for k, v := range clickStats.ClicksByDevice {
+			clicksByDevice[k] = int32(v)
+		}
+		topReferers = clickStats.TopReferers
 	}
 
 	return &pb.GetLinkStatsResponse{
-		LinkId:           stats.LinkID,
-		TotalClicks:      int32(stats.TotalClicks),
-		UniqueIps:        int32(stats.UniqueIPs),
-		ClicksToday:      int32(stats.ClicksToday),
-		ClicksThisWeek:   int32(stats.ClicksThisWeek),
-		ClicksThisMonth:  int32(stats.ClicksThisMonth),
-		ClicksByCountry:  clicksByCountry,
-		ClicksByDevice:   clicksByDevice,
-		TopReferers:      stats.TopReferers,
+		LinkId:            stats.LinkID,
+		TotalClicks:       int32(stats.TotalClicks),
+		UniqueIps:         int32(stats.UniqueIPs),
+		ClicksToday:       int32(stats.ClicksToday),
+		ClicksThisWeek:    int32(stats.ClicksWeek),
+		ClicksThisMonth:   int32(stats.ClicksMonth),
+		ClicksByCountry:   clicksByCountry,
+		ClicksByDevice:    clicksByDevice,
+		TopReferers:       topReferers,
 	}, nil
 }
 
 func (h *LinkHandler) RecordClick(ctx context.Context, req *pb.RecordClickRequest) (*pb.RecordClickResponse, error) {
-	// Convert request to use case input
-	input := usecase.RecordClickInput{
+	// Create command
+	cmd := &command.RecordClickCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		LinkID:      req.LinkId,
+		IPAddress:   req.IpAddress,
+		UserAgent:   req.UserAgent,
+		Referer:     req.Referer,
+		Country:     req.Country,
+		City:        req.City,
+		DeviceType:  req.DeviceType,
+	}
+
+	// Dispatch command
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to record click: %v", err)
+	}
+
+	// Create a simple Click response (we don't need to query it back)
+	click := &domain.Click{
+		ID:         cmd.AggregateID,
 		LinkID:     req.LinkId,
 		IPAddress:  req.IpAddress,
 		UserAgent:  req.UserAgent,
@@ -192,69 +299,78 @@ func (h *LinkHandler) RecordClick(ctx context.Context, req *pb.RecordClickReques
 		DeviceType: req.DeviceType,
 	}
 
-	// Record click
-	click, err := h.clickUseCase.RecordClick(ctx, input)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to record click: %v", err)
-	}
-
 	return &pb.RecordClickResponse{
 		Click: mapper.ClickToProto(click),
 	}, nil
 }
 
 func (h *LinkHandler) GetLinkClicks(ctx context.Context, req *pb.GetLinkClicksRequest) (*pb.GetLinkClicksResponse, error) {
-	// Get default pagination
-	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
+	// Create query
+	clicksQuery := &query.GetLinkClicksQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		LinkID:    req.LinkId,
+		Page:      int(req.Page),
+		PageSize:  int(req.PageSize),
+		StartDate: mapper.ProtoToTime(req.StartDate),
+		EndDate:   mapper.ProtoToTime(req.EndDate),
+	}
 
-	// Get clicks
-	clicks, total, err := h.clickUseCase.GetLinkClicks(
-		ctx,
-		req.LinkId,
-		int(page),
-		int(pageSize),
-		mapper.ProtoToTime(req.StartDate),
-		mapper.ProtoToTime(req.EndDate),
-	)
+	// Dispatch query
+	result, err := h.queryBus.Dispatch(ctx, clicksQuery)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get link clicks: %v", err)
 	}
 
-	// Calculate total pages
-	totalPages := int32(total) / pageSize
-	if int32(total)%pageSize > 0 {
-		totalPages++
+	clicksResult := result.(*query.GetLinkClicksResult)
+
+	// Convert to proto
+	protoClicks := make([]*pb.Click, len(clicksResult.Clicks))
+	for i, click := range clicksResult.Clicks {
+		protoClicks[i] = mapper.ClickToProto(&click)
 	}
 
 	return &pb.GetLinkClicksResponse{
-		Clicks:     mapper.ClicksToProto(clicks),
-		Total:      int32(total),
-		Page:       page,
-		PageSize:   pageSize,
-		TotalPages: totalPages,
+		Clicks: protoClicks,
+		Total:  int32(clicksResult.Total),
 	}, nil
 }
 
 func (h *LinkHandler) GetClicksByDate(ctx context.Context, req *pb.GetClicksByDateRequest) (*pb.GetClicksByDateResponse, error) {
-	startDate := req.StartDate.AsTime()
-	endDate := req.EndDate.AsTime()
+	// Validate dates
+	startDate := mapper.ProtoToTime(req.StartDate)
+	endDate := mapper.ProtoToTime(req.EndDate)
 
-	clicksByDate, totalClicks, err := h.clickUseCase.GetClicksByDate(ctx, req.LinkId, startDate, endDate)
+	if startDate == nil || endDate == nil {
+		return nil, status.Error(codes.InvalidArgument, "start_date and end_date are required")
+	}
+
+	// Create query
+	clicksByDateQuery := &query.GetClicksByDateQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		LinkID:    req.LinkId,
+		StartDate: *startDate,
+		EndDate:   *endDate,
+	}
+
+	// Dispatch query
+	result, err := h.queryBus.Dispatch(ctx, clicksByDateQuery)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get clicks by date: %v", err)
 	}
 
-	// Convert to proto
-	data := make([]*pb.ClicksByDate, 0, len(clicksByDate))
-	for date, clicks := range clicksByDate {
+	clicksByDateResult := result.(*query.GetClicksByDateResult)
+
+	// Convert to proto format (repeated ClicksByDate)
+	data := make([]*pb.ClicksByDate, 0, len(clicksByDateResult.ClicksByDate))
+	for date, count := range clicksByDateResult.ClicksByDate {
 		data = append(data, &pb.ClicksByDate{
 			Date:   date,
-			Clicks: int32(clicks),
+			Clicks: int32(count),
 		})
 	}
 
 	return &pb.GetClicksByDateResponse{
 		Data:        data,
-		TotalClicks: int32(totalClicks),
+		TotalClicks: int32(clicksByDateResult.TotalClicks),
 	}, nil
 }

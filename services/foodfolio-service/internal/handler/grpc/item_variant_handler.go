@@ -6,19 +6,24 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"toxictoast/services/foodfolio-service/internal/handler/mapper"
-	"toxictoast/services/foodfolio-service/internal/usecase"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/foodfolio-service/api/proto"
+	"toxictoast/services/foodfolio-service/internal/command"
+	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/handler/mapper"
+	"toxictoast/services/foodfolio-service/internal/query"
 )
 
 type ItemVariantHandler struct {
 	pb.UnimplementedItemVariantServiceServer
-	variantUC usecase.ItemVariantUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewItemVariantHandler(variantUC usecase.ItemVariantUseCase) *ItemVariantHandler {
+func NewItemVariantHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *ItemVariantHandler {
 	return &ItemVariantHandler{
-		variantUC: variantUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
@@ -28,36 +33,46 @@ func (h *ItemVariantHandler) CreateItemVariant(ctx context.Context, req *pb.Crea
 		barcode = req.Barcode
 	}
 
-	variant, err := h.variantUC.CreateItemVariant(
-		ctx,
-		req.ItemId,
-		req.SizeId,
-		req.VariantName,
-		barcode,
-		int(req.MinSku),
-		int(req.MaxSku),
-		req.IsNormallyFrozen,
-	)
-	if err != nil {
-		if err == usecase.ErrBarcodeAlreadyExists {
-			return nil, status.Error(codes.AlreadyExists, "barcode already exists")
-		}
+	cmd := &command.CreateItemVariantCommand{
+		BaseCommand:      cqrs.BaseCommand{},
+		ItemID:           req.ItemId,
+		SizeID:           req.SizeId,
+		VariantName:      req.VariantName,
+		Barcode:          barcode,
+		MinSKU:           int(req.MinSku),
+		MaxSKU:           int(req.MaxSku),
+		IsNormallyFrozen: req.IsNormallyFrozen,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.CreateItemVariantResponse{
-		ItemVariant: mapper.ItemVariantToProto(variant),
+		ItemVariant: &pb.ItemVariant{
+			ItemId:           req.ItemId,
+			SizeId:           req.SizeId,
+			VariantName:      req.VariantName,
+			Barcode:          barcode,
+			MinSku:           req.MinSku,
+			MaxSku:           req.MaxSku,
+			IsNormallyFrozen: req.IsNormallyFrozen,
+		},
 	}, nil
 }
 
 func (h *ItemVariantHandler) GetItemVariant(ctx context.Context, req *pb.IdRequest) (*pb.GetItemVariantResponse, error) {
-	variant, err := h.variantUC.GetItemVariantByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrItemVariantNotFound {
-			return nil, status.Error(codes.NotFound, "item variant not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetItemVariantByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "item variant not found")
+	}
+
+	variant := result.(*domain.ItemVariant)
 
 	return &pb.GetItemVariantResponse{
 		ItemVariant: mapper.ItemVariantToProto(variant),
@@ -85,16 +100,27 @@ func (h *ItemVariantHandler) ListItemVariants(ctx context.Context, req *pb.ListI
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	variants, total, err := h.variantUC.ListItemVariants(ctx, int(page), int(pageSize), itemID, sizeID, isNormallyFrozen, includeDeleted)
+	qry := &query.ListItemVariantsQuery{
+		BaseQuery:        cqrs.BaseQuery{},
+		Page:             int(page),
+		PageSize:         int(pageSize),
+		ItemID:           itemID,
+		SizeID:           sizeID,
+		IsNormallyFrozen: isNormallyFrozen,
+		IncludeDeleted:   includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListItemVariantsResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.ListItemVariantsResponse{
-		ItemVariants: mapper.ItemVariantsToProto(variants),
-		Total:        int32(total),
+		ItemVariants: mapper.ItemVariantsToProto(listResult.ItemVariants),
+		Total:        int32(listResult.Total),
 		Page:         page,
 		PageSize:     pageSize,
 		TotalPages:   int32(totalPages),
@@ -102,60 +128,41 @@ func (h *ItemVariantHandler) ListItemVariants(ctx context.Context, req *pb.ListI
 }
 
 func (h *ItemVariantHandler) UpdateItemVariant(ctx context.Context, req *pb.UpdateItemVariantRequest) (*pb.UpdateItemVariantResponse, error) {
-	// Get existing to use as defaults
-	existing, err := h.variantUC.GetItemVariantByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrItemVariantNotFound {
-			return nil, status.Error(codes.NotFound, "item variant not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	var variantName string
-	var barcode *string
-	var minSku, maxSku int
-	var isNormallyFrozen bool
-
-	if req.VariantName != nil {
-		variantName = *req.VariantName
-	} else {
-		variantName = existing.VariantName
-	}
-
-	if req.Barcode != nil {
-		barcode = req.Barcode
-	} else {
-		barcode = existing.Barcode
-	}
-
+	var minSKU, maxSKU *int
 	if req.MinSku != nil {
-		minSku = int(*req.MinSku)
-	} else {
-		minSku = existing.MinSKU
+		val := int(*req.MinSku)
+		minSKU = &val
 	}
-
 	if req.MaxSku != nil {
-		maxSku = int(*req.MaxSku)
-	} else {
-		maxSku = existing.MaxSKU
+		val := int(*req.MaxSku)
+		maxSKU = &val
 	}
 
-	if req.IsNormallyFrozen != nil {
-		isNormallyFrozen = *req.IsNormallyFrozen
-	} else {
-		isNormallyFrozen = existing.IsNormallyFrozen
+	cmd := &command.UpdateItemVariantCommand{
+		BaseCommand:      cqrs.BaseCommand{AggregateID: req.Id},
+		VariantName:      req.VariantName,
+		Barcode:          req.Barcode,
+		MinSKU:           minSKU,
+		MaxSKU:           maxSKU,
+		IsNormallyFrozen: req.IsNormallyFrozen,
 	}
 
-	variant, err := h.variantUC.UpdateItemVariant(ctx, req.Id, variantName, barcode, minSku, maxSku, isNormallyFrozen)
-	if err != nil {
-		if err == usecase.ErrItemVariantNotFound {
-			return nil, status.Error(codes.NotFound, "item variant not found")
-		}
-		if err == usecase.ErrBarcodeAlreadyExists {
-			return nil, status.Error(codes.AlreadyExists, "barcode already exists")
-		}
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Query the updated variant
+	qry := &query.GetItemVariantByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "item variant not found")
+	}
+
+	variant := result.(*domain.ItemVariant)
 
 	return &pb.UpdateItemVariantResponse{
 		ItemVariant: mapper.ItemVariantToProto(variant),
@@ -163,11 +170,11 @@ func (h *ItemVariantHandler) UpdateItemVariant(ctx context.Context, req *pb.Upda
 }
 
 func (h *ItemVariantHandler) DeleteItemVariant(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	err := h.variantUC.DeleteItemVariant(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrItemVariantNotFound {
-			return nil, status.Error(codes.NotFound, "item variant not found")
-		}
+	cmd := &command.DeleteItemVariantCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -178,34 +185,45 @@ func (h *ItemVariantHandler) DeleteItemVariant(ctx context.Context, req *pb.IdRe
 }
 
 func (h *ItemVariantHandler) GetCurrentStock(ctx context.Context, req *pb.GetCurrentStockRequest) (*pb.GetCurrentStockResponse, error) {
-	stock, needsRestock, isOverstocked, err := h.variantUC.GetCurrentStock(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrItemVariantNotFound {
-			return nil, status.Error(codes.NotFound, "item variant not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetCurrentStockQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		VariantID: req.Id,
 	}
 
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "item variant not found")
+	}
+
+	stockResult := result.(*query.CurrentStockResult)
+
 	return &pb.GetCurrentStockResponse{
-		CurrentStock:   int32(stock),
-		NeedsRestock:   needsRestock,
-		IsOverstocked:  isOverstocked,
+		CurrentStock:  int32(stockResult.Stock),
+		NeedsRestock:  stockResult.NeedsRestock,
+		IsOverstocked: stockResult.IsOverstocked,
 	}, nil
 }
 
 func (h *ItemVariantHandler) GetLowStockVariants(ctx context.Context, req *pb.GetLowStockVariantsRequest) (*pb.GetLowStockVariantsResponse, error) {
 	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
-	variants, total, err := h.variantUC.GetLowStockVariants(ctx, int(page), int(pageSize))
+	qry := &query.GetLowStockVariantsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Page:      int(page),
+		PageSize:  int(pageSize),
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListItemVariantsResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.GetLowStockVariantsResponse{
-		ItemVariants: mapper.ItemVariantsToProto(variants),
-		Total:        int32(total),
+		ItemVariants: mapper.ItemVariantsToProto(listResult.ItemVariants),
+		Total:        int32(listResult.Total),
 		Page:         page,
 		PageSize:     pageSize,
 		TotalPages:   int32(totalPages),
@@ -215,16 +233,23 @@ func (h *ItemVariantHandler) GetLowStockVariants(ctx context.Context, req *pb.Ge
 func (h *ItemVariantHandler) GetOverstockedVariants(ctx context.Context, req *pb.GetOverstockedVariantsRequest) (*pb.GetOverstockedVariantsResponse, error) {
 	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
-	variants, total, err := h.variantUC.GetOverstockedVariants(ctx, int(page), int(pageSize))
+	qry := &query.GetOverstockedVariantsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Page:      int(page),
+		PageSize:  int(pageSize),
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListItemVariantsResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.GetOverstockedVariantsResponse{
-		ItemVariants: mapper.ItemVariantsToProto(variants),
-		Total:        int32(total),
+		ItemVariants: mapper.ItemVariantsToProto(listResult.ItemVariants),
+		Total:        int32(listResult.Total),
 		Page:         page,
 		PageSize:     pageSize,
 		TotalPages:   int32(totalPages),
@@ -232,13 +257,17 @@ func (h *ItemVariantHandler) GetOverstockedVariants(ctx context.Context, req *pb
 }
 
 func (h *ItemVariantHandler) ScanBarcode(ctx context.Context, req *pb.ScanBarcodeRequest) (*pb.ScanBarcodeResponse, error) {
-	variant, err := h.variantUC.GetItemVariantByBarcode(ctx, req.Barcode)
-	if err != nil {
-		if err == usecase.ErrItemVariantNotFound {
-			return nil, status.Error(codes.NotFound, "item variant not found for barcode")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetItemVariantByBarcodeQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Barcode:   req.Barcode,
 	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "item variant not found for barcode")
+	}
+
+	variant := result.(*domain.ItemVariant)
 
 	return &pb.ScanBarcodeResponse{
 		ItemVariant: mapper.ItemVariantToProto(variant),

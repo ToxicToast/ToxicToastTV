@@ -6,12 +6,22 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	authpb "toxictoast/services/auth-service/api/proto"
+	"toxictoast/services/auth-service/internal/command"
+	"toxictoast/services/auth-service/internal/domain"
+	"toxictoast/services/auth-service/internal/query"
 )
 
 // AssignRole assigns a role to a user
 func (h *AuthHandler) AssignRole(ctx context.Context, req *authpb.AssignRoleRequest) (*authpb.AssignRoleResponse, error) {
-	if err := h.rbacUseCase.AssignRole(ctx, req.UserId, req.RoleId); err != nil {
+	cmd := &command.AssignRoleCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		UserID:      req.UserId,
+		RoleID:      req.RoleId,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to assign role: %v", err)
 	}
 
@@ -23,7 +33,13 @@ func (h *AuthHandler) AssignRole(ctx context.Context, req *authpb.AssignRoleRequ
 
 // RevokeRole revokes a role from a user
 func (h *AuthHandler) RevokeRole(ctx context.Context, req *authpb.RevokeRoleRequest) (*authpb.RevokeRoleResponse, error) {
-	if err := h.rbacUseCase.RevokeRole(ctx, req.UserId, req.RoleId); err != nil {
+	cmd := &command.RevokeRoleCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		UserID:      req.UserId,
+		RoleID:      req.RoleId,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to revoke role: %v", err)
 	}
 
@@ -35,7 +51,13 @@ func (h *AuthHandler) RevokeRole(ctx context.Context, req *authpb.RevokeRoleRequ
 
 // AssignPermission assigns a permission to a role
 func (h *AuthHandler) AssignPermission(ctx context.Context, req *authpb.AssignPermissionRequest) (*authpb.AssignPermissionResponse, error) {
-	if err := h.rbacUseCase.AssignPermission(ctx, req.RoleId, req.PermissionId); err != nil {
+	cmd := &command.AssignPermissionCommand{
+		BaseCommand:  cqrs.BaseCommand{},
+		RoleID:       req.RoleId,
+		PermissionID: req.PermissionId,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to assign permission: %v", err)
 	}
 
@@ -47,7 +69,13 @@ func (h *AuthHandler) AssignPermission(ctx context.Context, req *authpb.AssignPe
 
 // RevokePermission revokes a permission from a role
 func (h *AuthHandler) RevokePermission(ctx context.Context, req *authpb.RevokePermissionRequest) (*authpb.RevokePermissionResponse, error) {
-	if err := h.rbacUseCase.RevokePermission(ctx, req.RoleId, req.PermissionId); err != nil {
+	cmd := &command.RevokePermissionCommand{
+		BaseCommand:  cqrs.BaseCommand{},
+		RoleID:       req.RoleId,
+		PermissionID: req.PermissionId,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to revoke permission: %v", err)
 	}
 
@@ -59,22 +87,38 @@ func (h *AuthHandler) RevokePermission(ctx context.Context, req *authpb.RevokePe
 
 // CheckPermission checks if a user has a specific permission
 func (h *AuthHandler) CheckPermission(ctx context.Context, req *authpb.CheckPermissionRequest) (*authpb.CheckPermissionResponse, error) {
-	allowed, err := h.rbacUseCase.CheckPermission(ctx, req.UserId, req.Resource, req.Action)
+	qry := &query.CheckPermissionQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		UserID:    req.UserId,
+		Resource:  req.Resource,
+		Action:    req.Action,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to check permission: %v", err)
 	}
 
+	checkResult := result.(*query.CheckPermissionResult)
+
 	return &authpb.CheckPermissionResponse{
-		Allowed: allowed,
+		Allowed: checkResult.HasPermission,
 	}, nil
 }
 
 // ListUserRoles lists all roles for a user
 func (h *AuthHandler) ListUserRoles(ctx context.Context, req *authpb.ListUserRolesRequest) (*authpb.ListUserRolesResponse, error) {
-	roles, err := h.rbacUseCase.GetUserRoles(ctx, req.UserId)
+	qry := &query.GetUserRolesQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		UserID:    req.UserId,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get user roles: %v", err)
 	}
+
+	roles := result.([]*domain.Role)
 
 	protoRoles := make([]*authpb.Role, 0, len(roles))
 	for _, role := range roles {
@@ -88,10 +132,17 @@ func (h *AuthHandler) ListUserRoles(ctx context.Context, req *authpb.ListUserRol
 
 // ListUserPermissions lists all permissions for a user
 func (h *AuthHandler) ListUserPermissions(ctx context.Context, req *authpb.ListUserPermissionsRequest) (*authpb.ListUserPermissionsResponse, error) {
-	permissions, err := h.rbacUseCase.GetUserPermissions(ctx, req.UserId)
+	qry := &query.GetUserPermissionsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		UserID:    req.UserId,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get user permissions: %v", err)
 	}
+
+	permissions := result.([]*domain.Permission)
 
 	protoPermissions := make([]*authpb.Permission, 0, len(permissions))
 	for _, permission := range permissions {
@@ -105,10 +156,17 @@ func (h *AuthHandler) ListUserPermissions(ctx context.Context, req *authpb.ListU
 
 // ListRolePermissions lists all permissions for a role
 func (h *AuthHandler) ListRolePermissions(ctx context.Context, req *authpb.ListRolePermissionsRequest) (*authpb.ListRolePermissionsResponse, error) {
-	permissions, err := h.rbacUseCase.GetRolePermissions(ctx, req.RoleId)
+	qry := &query.GetRolePermissionsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		RoleID:    req.RoleId,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get role permissions: %v", err)
 	}
+
+	permissions := result.([]*domain.Permission)
 
 	protoPermissions := make([]*authpb.Permission, 0, len(permissions))
 	for _, permission := range permissions {

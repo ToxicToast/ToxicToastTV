@@ -7,19 +7,24 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/foodfolio-service/api/proto"
+	"toxictoast/services/foodfolio-service/internal/command"
+	"toxictoast/services/foodfolio-service/internal/domain"
 	"toxictoast/services/foodfolio-service/internal/handler/mapper"
-	"toxictoast/services/foodfolio-service/internal/usecase"
+	"toxictoast/services/foodfolio-service/internal/query"
 )
 
 type ItemDetailHandler struct {
 	pb.UnimplementedItemDetailServiceServer
-	detailUC usecase.ItemDetailUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewItemDetailHandler(detailUC usecase.ItemDetailUseCase) *ItemDetailHandler {
+func NewItemDetailHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *ItemDetailHandler {
 	return &ItemDetailHandler{
-		detailUC: detailUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
@@ -35,21 +40,35 @@ func (h *ItemDetailHandler) CreateItemDetail(ctx context.Context, req *pb.Create
 		articleNumber = req.ArticleNumber
 	}
 
-	detail, err := h.detailUC.CreateItemDetail(
-		ctx,
-		req.ItemVariantId,
-		req.WarehouseId,
-		req.LocationId,
-		articleNumber,
-		req.PurchasePrice,
-		req.PurchaseDate.AsTime(),
-		expiryDate,
-		req.HasDeposit,
-		req.IsFrozen,
-	)
-	if err != nil {
+	cmd := &command.CreateItemDetailCommand{
+		BaseCommand:   cqrs.BaseCommand{},
+		ItemVariantID: req.ItemVariantId,
+		WarehouseID:   req.WarehouseId,
+		LocationID:    req.LocationId,
+		ArticleNumber: articleNumber,
+		PurchasePrice: req.PurchasePrice,
+		PurchaseDate:  req.PurchaseDate.AsTime(),
+		ExpiryDate:    expiryDate,
+		HasDeposit:    req.HasDeposit,
+		IsFrozen:      req.IsFrozen,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Query the created detail
+	qry := &query.GetItemDetailByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "item detail not found")
+	}
+
+	detail := result.(*domain.ItemDetail)
 
 	return &pb.CreateItemDetailResponse{
 		ItemDetail: mapper.ItemDetailToProto(detail),
@@ -68,21 +87,38 @@ func (h *ItemDetailHandler) BatchCreateItemDetails(ctx context.Context, req *pb.
 		articleNumber = req.ArticleNumber
 	}
 
-	createdDetails, err := h.detailUC.BatchCreateItemDetails(
-		ctx,
-		req.ItemVariantId,
-		req.WarehouseId,
-		req.LocationId,
-		articleNumber,
-		req.PurchasePrice,
-		req.PurchaseDate.AsTime(),
-		expiryDate,
-		req.HasDeposit,
-		req.IsFrozen,
-		int(req.Quantity),
-	)
-	if err != nil {
+	cmd := &command.BatchCreateItemDetailsCommand{
+		BaseCommand:   cqrs.BaseCommand{},
+		ItemVariantID: req.ItemVariantId,
+		WarehouseID:   req.WarehouseId,
+		LocationID:    req.LocationId,
+		ArticleNumber: articleNumber,
+		PurchasePrice: req.PurchasePrice,
+		PurchaseDate:  req.PurchaseDate.AsTime(),
+		ExpiryDate:    expiryDate,
+		HasDeposit:    req.HasDeposit,
+		IsFrozen:      req.IsFrozen,
+		Quantity:      int(req.Quantity),
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	// Query all created details
+	createdDetails := make([]*domain.ItemDetail, 0, len(cmd.CreatedIDs))
+	for _, id := range cmd.CreatedIDs {
+		qry := &query.GetItemDetailByIDQuery{
+			BaseQuery: cqrs.BaseQuery{},
+			ID:        id,
+		}
+
+		result, err := h.queryBus.Dispatch(ctx, qry)
+		if err == nil {
+			if detail, ok := result.(*domain.ItemDetail); ok {
+				createdDetails = append(createdDetails, detail)
+			}
+		}
 	}
 
 	return &pb.BatchCreateItemDetailsResponse{
@@ -92,13 +128,17 @@ func (h *ItemDetailHandler) BatchCreateItemDetails(ctx context.Context, req *pb.
 }
 
 func (h *ItemDetailHandler) GetItemDetail(ctx context.Context, req *pb.IdRequest) (*pb.GetItemDetailResponse, error) {
-	detail, err := h.detailUC.GetItemDetailByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrItemDetailNotFound {
-			return nil, status.Error(codes.NotFound, "item detail not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetItemDetailByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "item detail not found")
+	}
+
+	detail := result.(*domain.ItemDetail)
 
 	return &pb.GetItemDetailResponse{
 		ItemDetail: mapper.ItemDetailToProto(detail),
@@ -135,16 +175,30 @@ func (h *ItemDetailHandler) ListItemDetails(ctx context.Context, req *pb.ListIte
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	details, total, err := h.detailUC.ListItemDetails(ctx, int(page), int(pageSize), variantID, warehouseID, locationID, isOpened, hasDeposit, isFrozen, includeDeleted)
+	qry := &query.ListItemDetailsQuery{
+		BaseQuery:      cqrs.BaseQuery{},
+		Page:           int(page),
+		PageSize:       int(pageSize),
+		VariantID:      variantID,
+		WarehouseID:    warehouseID,
+		LocationID:     locationID,
+		IsOpened:       isOpened,
+		HasDeposit:     hasDeposit,
+		IsFrozen:       isFrozen,
+		IncludeDeleted: includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListItemDetailsResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.ListItemDetailsResponse{
-		ItemDetails: mapper.ItemDetailsToProto(details),
-		Total:       int32(total),
+		ItemDetails: mapper.ItemDetailsToProto(listResult.ItemDetails),
+		Total:       int32(listResult.Total),
 		Page:        page,
 		PageSize:    pageSize,
 		TotalPages:  int32(totalPages),
@@ -152,38 +206,28 @@ func (h *ItemDetailHandler) ListItemDetails(ctx context.Context, req *pb.ListIte
 }
 
 func (h *ItemDetailHandler) UpdateItemDetail(ctx context.Context, req *pb.UpdateItemDetailRequest) (*pb.UpdateItemDetailResponse, error) {
-	// Get existing to use as defaults
-	existing, err := h.detailUC.GetItemDetailByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrItemDetailNotFound {
-			return nil, status.Error(codes.NotFound, "item detail not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	// Get existing detail to use as defaults
+	qry := &query.GetItemDetailByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
 
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "item detail not found")
+	}
+
+	existing := result.(*domain.ItemDetail)
+
+	// Use existing values as defaults
 	locationID := existing.LocationID
 	if req.LocationId != nil {
 		locationID = *req.LocationId
 	}
 
-	var articleNumber *string
-	if req.ArticleNumber != nil {
-		articleNumber = req.ArticleNumber
-	} else {
-		articleNumber = existing.ArticleNumber
-	}
-
 	purchasePrice := existing.PurchasePrice
 	if req.PurchasePrice != nil {
 		purchasePrice = *req.PurchasePrice
-	}
-
-	var expiryDate *time.Time
-	if req.ExpiryDate != nil {
-		expiry := req.ExpiryDate.AsTime()
-		expiryDate = &expiry
-	} else {
-		expiryDate = existing.ExpiryDate
 	}
 
 	hasDeposit := existing.HasDeposit
@@ -196,13 +240,40 @@ func (h *ItemDetailHandler) UpdateItemDetail(ctx context.Context, req *pb.Update
 		isFrozen = *req.IsFrozen
 	}
 
-	detail, err := h.detailUC.UpdateItemDetail(ctx, req.Id, locationID, articleNumber, purchasePrice, expiryDate, hasDeposit, isFrozen)
-	if err != nil {
-		if err == usecase.ErrItemDetailNotFound {
-			return nil, status.Error(codes.NotFound, "item detail not found")
-		}
+	var expiryDate *time.Time
+	if req.ExpiryDate != nil {
+		expiry := req.ExpiryDate.AsTime()
+		expiryDate = &expiry
+	} else {
+		expiryDate = existing.ExpiryDate
+	}
+
+	articleNumber := existing.ArticleNumber
+	if req.ArticleNumber != nil {
+		articleNumber = req.ArticleNumber
+	}
+
+	cmd := &command.UpdateItemDetailCommand{
+		BaseCommand:   cqrs.BaseCommand{AggregateID: req.Id},
+		LocationID:    locationID,
+		ArticleNumber: articleNumber,
+		PurchasePrice: purchasePrice,
+		ExpiryDate:    expiryDate,
+		HasDeposit:    hasDeposit,
+		IsFrozen:      isFrozen,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Query the updated detail
+	result, err = h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "item detail not found")
+	}
+
+	detail := result.(*domain.ItemDetail)
 
 	return &pb.UpdateItemDetailResponse{
 		ItemDetail: mapper.ItemDetailToProto(detail),
@@ -210,11 +281,11 @@ func (h *ItemDetailHandler) UpdateItemDetail(ctx context.Context, req *pb.Update
 }
 
 func (h *ItemDetailHandler) DeleteItemDetail(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	err := h.detailUC.DeleteItemDetail(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrItemDetailNotFound {
-			return nil, status.Error(codes.NotFound, "item detail not found")
-		}
+	cmd := &command.DeleteItemDetailCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -225,16 +296,26 @@ func (h *ItemDetailHandler) DeleteItemDetail(ctx context.Context, req *pb.IdRequ
 }
 
 func (h *ItemDetailHandler) OpenItem(ctx context.Context, req *pb.OpenItemRequest) (*pb.OpenItemResponse, error) {
-	detail, err := h.detailUC.OpenItem(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrItemDetailNotFound {
-			return nil, status.Error(codes.NotFound, "item detail not found")
-		}
-		if err == usecase.ErrItemAlreadyOpened {
-			return nil, status.Error(codes.FailedPrecondition, "item already opened")
-		}
+	cmd := &command.OpenItemCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Query the opened item
+	qry := &query.GetItemDetailByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "item detail not found")
+	}
+
+	detail := result.(*domain.ItemDetail)
 
 	return &pb.OpenItemResponse{
 		ItemDetail: mapper.ItemDetailToProto(detail),
@@ -242,9 +323,30 @@ func (h *ItemDetailHandler) OpenItem(ctx context.Context, req *pb.OpenItemReques
 }
 
 func (h *ItemDetailHandler) MoveItems(ctx context.Context, req *pb.MoveItemsRequest) (*pb.MoveItemsResponse, error) {
-	movedItems, err := h.detailUC.MoveItems(ctx, req.ItemDetailIds, req.NewLocationId)
-	if err != nil {
+	cmd := &command.MoveItemsCommand{
+		BaseCommand:   cqrs.BaseCommand{},
+		ItemIDs:       req.ItemDetailIds,
+		NewLocationID: req.NewLocationId,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	// Query all moved items
+	movedItems := make([]*domain.ItemDetail, 0, len(req.ItemDetailIds))
+	for _, id := range req.ItemDetailIds {
+		qry := &query.GetItemDetailByIDQuery{
+			BaseQuery: cqrs.BaseQuery{},
+			ID:        id,
+		}
+
+		result, err := h.queryBus.Dispatch(ctx, qry)
+		if err == nil {
+			if detail, ok := result.(*domain.ItemDetail); ok {
+				movedItems = append(movedItems, detail)
+			}
+		}
 	}
 
 	return &pb.MoveItemsResponse{
@@ -261,56 +363,78 @@ func (h *ItemDetailHandler) GetExpiringItems(ctx context.Context, req *pb.GetExp
 		days = 7 // Default to 7 days
 	}
 
-	details, total, err := h.detailUC.GetExpiringItems(ctx, days, int(page), int(pageSize))
+	qry := &query.GetExpiringItemsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Days:      days,
+		Page:      int(page),
+		PageSize:  int(pageSize),
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListItemDetailsResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.GetExpiringItemsResponse{
-		ItemDetails:    mapper.ItemDetailsToProto(details),
-		Total:          int32(total),
-		Page:           page,
-		PageSize:       pageSize,
-		TotalPages:     int32(totalPages),
-		TotalExpiring:  int32(total),
+		ItemDetails:   mapper.ItemDetailsToProto(listResult.ItemDetails),
+		Total:         int32(listResult.Total),
+		Page:          page,
+		PageSize:      pageSize,
+		TotalPages:    int32(totalPages),
+		TotalExpiring: int32(listResult.Total),
 	}, nil
 }
 
 func (h *ItemDetailHandler) GetExpiredItems(ctx context.Context, req *pb.GetExpiredItemsRequest) (*pb.GetExpiredItemsResponse, error) {
 	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
-	details, total, err := h.detailUC.GetExpiredItems(ctx, int(page), int(pageSize))
+	qry := &query.GetExpiredItemsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Page:      int(page),
+		PageSize:  int(pageSize),
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListItemDetailsResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.GetExpiredItemsResponse{
-		ItemDetails:   mapper.ItemDetailsToProto(details),
-		Total:         int32(total),
-		Page:          page,
-		PageSize:      pageSize,
-		TotalPages:    int32(totalPages),
-		TotalExpired:  int32(total),
+		ItemDetails:  mapper.ItemDetailsToProto(listResult.ItemDetails),
+		Total:        int32(listResult.Total),
+		Page:         page,
+		PageSize:     pageSize,
+		TotalPages:   int32(totalPages),
+		TotalExpired: int32(listResult.Total),
 	}, nil
 }
 
 func (h *ItemDetailHandler) GetItemsWithDeposit(ctx context.Context, req *pb.GetItemsWithDepositRequest) (*pb.GetItemsWithDepositResponse, error) {
 	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
-	details, total, err := h.detailUC.GetItemsWithDeposit(ctx, int(page), int(pageSize))
+	qry := &query.GetItemsWithDepositQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Page:      int(page),
+		PageSize:  int(pageSize),
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListItemDetailsResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.GetItemsWithDepositResponse{
-		ItemDetails:       mapper.ItemDetailsToProto(details),
-		Total:             int32(total),
+		ItemDetails:       mapper.ItemDetailsToProto(listResult.ItemDetails),
+		Total:             int32(listResult.Total),
 		Page:              page,
 		PageSize:          pageSize,
 		TotalPages:        int32(totalPages),
@@ -321,11 +445,18 @@ func (h *ItemDetailHandler) GetItemsWithDeposit(ctx context.Context, req *pb.Get
 func (h *ItemDetailHandler) GetItemsByLocation(ctx context.Context, req *pb.GetItemsByLocationRequest) (*pb.GetItemsByLocationResponse, error) {
 	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
 
-	// Get all items for location
-	allDetails, err := h.detailUC.GetByLocation(ctx, req.LocationId, req.IncludeChildren)
+	qry := &query.GetItemDetailsByLocationQuery{
+		BaseQuery:       cqrs.BaseQuery{},
+		LocationID:      req.LocationId,
+		IncludeChildren: req.IncludeChildren,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	allDetails := result.([]*domain.ItemDetail)
 
 	// Manual pagination
 	total := int64(len(allDetails))

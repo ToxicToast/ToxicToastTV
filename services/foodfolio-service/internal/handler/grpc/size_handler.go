@@ -6,41 +6,60 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"toxictoast/services/foodfolio-service/internal/handler/mapper"
-	"toxictoast/services/foodfolio-service/internal/usecase"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/foodfolio-service/api/proto"
+	"toxictoast/services/foodfolio-service/internal/command"
+	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/handler/mapper"
+	"toxictoast/services/foodfolio-service/internal/query"
 )
 
 type SizeHandler struct {
 	pb.UnimplementedSizeServiceServer
-	sizeUC usecase.SizeUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewSizeHandler(sizeUC usecase.SizeUseCase) *SizeHandler {
+func NewSizeHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *SizeHandler {
 	return &SizeHandler{
-		sizeUC: sizeUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
 func (h *SizeHandler) CreateSize(ctx context.Context, req *pb.CreateSizeRequest) (*pb.CreateSizeResponse, error) {
-	size, err := h.sizeUC.CreateSize(ctx, req.Name, req.Value, req.Unit)
-	if err != nil {
+	cmd := &command.CreateSizeCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Name:        req.Name,
+		Value:       req.Value,
+		Unit:        req.Unit,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.CreateSizeResponse{
-		Size: mapper.SizeToProto(size),
+		Size: &pb.Size{
+			Name:  req.Name,
+			Value: req.Value,
+			Unit:  req.Unit,
+		},
 	}, nil
 }
 
 func (h *SizeHandler) GetSize(ctx context.Context, req *pb.IdRequest) (*pb.GetSizeResponse, error) {
-	size, err := h.sizeUC.GetSizeByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrSizeNotFound {
-			return nil, status.Error(codes.NotFound, "size not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetSizeByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "size not found")
+	}
+
+	size := result.(*domain.Size)
 
 	return &pb.GetSizeResponse{
 		Size: mapper.SizeToProto(size),
@@ -68,16 +87,27 @@ func (h *SizeHandler) ListSizes(ctx context.Context, req *pb.ListSizesRequest) (
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	sizes, total, err := h.sizeUC.ListSizes(ctx, int(page), int(pageSize), unit, minValue, maxValue, includeDeleted)
+	qry := &query.ListSizesQuery{
+		BaseQuery:      cqrs.BaseQuery{},
+		Page:           int(page),
+		PageSize:       int(pageSize),
+		Unit:           unit,
+		MinValue:       minValue,
+		MaxValue:       maxValue,
+		IncludeDeleted: includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListSizesResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.ListSizesResponse{
-		Sizes:      mapper.SizesToProto(sizes),
-		Total:      int32(total),
+		Sizes:      mapper.SizesToProto(listResult.Sizes),
+		Total:      int32(listResult.Total),
 		Page:       page,
 		PageSize:   pageSize,
 		TotalPages: int32(totalPages),
@@ -85,47 +115,29 @@ func (h *SizeHandler) ListSizes(ctx context.Context, req *pb.ListSizesRequest) (
 }
 
 func (h *SizeHandler) UpdateSize(ctx context.Context, req *pb.UpdateSizeRequest) (*pb.UpdateSizeResponse, error) {
-	name := req.Name
-	if req.Name == nil || *req.Name == "" {
-		// Get existing to keep name
-		size, err := h.sizeUC.GetSizeByID(ctx, req.Id)
-		if err != nil {
-			if err == usecase.ErrSizeNotFound {
-				return nil, status.Error(codes.NotFound, "size not found")
-			}
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		nameVal := size.Name
-		name = &nameVal
+	cmd := &command.UpdateSizeCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Name:        req.Name,
+		Value:       req.Value,
+		Unit:        req.Unit,
 	}
 
-	value := req.Value
-	if req.Value == nil {
-		size, err := h.sizeUC.GetSizeByID(ctx, req.Id)
-		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		valueVal := size.Value
-		value = &valueVal
-	}
-
-	unit := req.Unit
-	if req.Unit == nil || *req.Unit == "" {
-		size, err := h.sizeUC.GetSizeByID(ctx, req.Id)
-		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		unitVal := size.Unit
-		unit = &unitVal
-	}
-
-	size, err := h.sizeUC.UpdateSize(ctx, req.Id, *name, *value, *unit)
-	if err != nil {
-		if err == usecase.ErrSizeNotFound {
-			return nil, status.Error(codes.NotFound, "size not found")
-		}
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Query the updated size
+	qry := &query.GetSizeByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "size not found")
+	}
+
+	size := result.(*domain.Size)
 
 	return &pb.UpdateSizeResponse{
 		Size: mapper.SizeToProto(size),
@@ -133,11 +145,11 @@ func (h *SizeHandler) UpdateSize(ctx context.Context, req *pb.UpdateSizeRequest)
 }
 
 func (h *SizeHandler) DeleteSize(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	err := h.sizeUC.DeleteSize(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrSizeNotFound {
-			return nil, status.Error(codes.NotFound, "size not found")
-		}
+	cmd := &command.DeleteSizeCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 

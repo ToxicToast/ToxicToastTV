@@ -3,22 +3,26 @@ package grpc
 import (
 	"context"
 
-	"toxictoast/services/notification-service/internal/handler/mapper"
-	"toxictoast/services/notification-service/internal/usecase"
-	pb "toxictoast/services/notification-service/api/proto"
-
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
+	pb "toxictoast/services/notification-service/api/proto"
+	"toxictoast/services/notification-service/internal/command"
+	"toxictoast/services/notification-service/internal/handler/mapper"
+	"toxictoast/services/notification-service/internal/query"
 )
 
 type NotificationHandler struct {
 	pb.UnimplementedNotificationServiceServer
-	notificationUC *usecase.NotificationUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewNotificationHandler(notificationUC *usecase.NotificationUseCase) *NotificationHandler {
+func NewNotificationHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *NotificationHandler {
 	return &NotificationHandler{
-		notificationUC: notificationUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
@@ -27,14 +31,21 @@ func (h *NotificationHandler) GetNotification(ctx context.Context, req *pb.GetNo
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	notification, attempts, err := h.notificationUC.GetNotification(ctx, req.Id)
+	qry := &query.GetNotificationByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "notification not found: %v", err)
 	}
 
+	notifResult := result.(*query.GetNotificationResult)
+
 	return &pb.NotificationResponse{
-		Notification: mapper.ToProtoNotification(notification),
-		Attempts:     mapper.ToProtoAttempts(attempts),
+		Notification: mapper.ToProtoNotification(notifResult.Notification),
+		Attempts:     mapper.ToProtoAttempts(notifResult.Attempts),
 	}, nil
 }
 
@@ -49,14 +60,24 @@ func (h *NotificationHandler) ListNotifications(ctx context.Context, req *pb.Lis
 
 	domainStatus := mapper.FromProtoStatus(req.Status)
 
-	notifications, total, err := h.notificationUC.ListNotifications(ctx, req.ChannelId, domainStatus, limit, int(req.Offset))
+	qry := &query.ListNotificationsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ChannelID: req.ChannelId,
+		Status:    domainStatus,
+		Limit:     limit,
+		Offset:    int(req.Offset),
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list notifications: %v", err)
 	}
 
+	listResult := result.(*query.ListNotificationsResult)
+
 	return &pb.ListNotificationsResponse{
-		Notifications: mapper.ToProtoNotifications(notifications),
-		Total:         total,
+		Notifications: mapper.ToProtoNotifications(listResult.Notifications),
+		Total:         listResult.Total,
 		Limit:         int32(limit),
 		Offset:        req.Offset,
 	}, nil
@@ -67,7 +88,11 @@ func (h *NotificationHandler) DeleteNotification(ctx context.Context, req *pb.De
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	if err := h.notificationUC.DeleteNotification(ctx, req.Id); err != nil {
+	cmd := &command.DeleteNotificationCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete notification: %v", err)
 	}
 
@@ -79,7 +104,12 @@ func (h *NotificationHandler) CleanupOldNotifications(ctx context.Context, req *
 		return nil, status.Error(codes.InvalidArgument, "older_than_days must be positive")
 	}
 
-	if err := h.notificationUC.CleanupOldNotifications(ctx, int(req.OlderThanDays)); err != nil {
+	cmd := &command.CleanupOldNotificationsCommand{
+		BaseCommand:   cqrs.BaseCommand{},
+		OlderThanDays: int(req.OlderThanDays),
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to cleanup notifications: %v", err)
 	}
 

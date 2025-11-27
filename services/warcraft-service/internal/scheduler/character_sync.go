@@ -6,26 +6,32 @@ import (
 	"log"
 	"time"
 
-	"toxictoast/services/warcraft-service/internal/usecase"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
+
+	"toxictoast/services/warcraft-service/internal/command"
+	"toxictoast/services/warcraft-service/internal/query"
 )
 
 type CharacterSyncScheduler struct {
-	characterUseCase *usecase.CharacterUseCase
-	interval         time.Duration
-	enabled          bool
-	stopChan         chan struct{}
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
+	interval   time.Duration
+	enabled    bool
+	stopChan   chan struct{}
 }
 
 func NewCharacterSyncScheduler(
-	characterUseCase *usecase.CharacterUseCase,
+	commandBus *cqrs.CommandBus,
+	queryBus *cqrs.QueryBus,
 	interval time.Duration,
 	enabled bool,
 ) *CharacterSyncScheduler {
 	return &CharacterSyncScheduler{
-		characterUseCase: characterUseCase,
-		interval:         interval,
-		enabled:          enabled,
-		stopChan:         make(chan struct{}),
+		commandBus: commandBus,
+		queryBus:   queryBus,
+		interval:   interval,
+		enabled:    enabled,
+		stopChan:   make(chan struct{}),
 	}
 }
 
@@ -64,20 +70,31 @@ func (s *CharacterSyncScheduler) syncAllCharacters() {
 	log.Println("Starting scheduled character sync...")
 
 	// Get all characters (first 1000, can be adjusted)
-	characters, total, err := s.characterUseCase.ListCharacters(ctx, 1, 1000, nil, nil, nil)
+	listQuery := &query.ListCharactersQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Page:      1,
+		PageSize:  1000,
+	}
+
+	result, err := s.queryBus.Dispatch(ctx, listQuery)
 	if err != nil {
 		log.Printf("Error listing characters for sync: %v", err)
 		return
 	}
 
-	log.Printf("Found %d characters to sync", total)
+	listResult := result.(*query.ListCharactersResult)
+	log.Printf("Found %d characters to sync", listResult.Total)
 
 	successCount := 0
 	errorCount := 0
 
-	for _, character := range characters {
+	for _, character := range listResult.Characters {
 		// Refresh character data from Blizzard API
-		_, err := s.characterUseCase.RefreshCharacter(ctx, character.ID)
+		refreshCmd := &command.RefreshCharacterCommand{
+			BaseCommand: cqrs.BaseCommand{AggregateID: character.ID},
+		}
+
+		err := s.commandBus.Dispatch(ctx, refreshCmd)
 		if err != nil {
 			log.Printf("Error syncing character %s-%s: %v", character.Name, character.Realm, err)
 			errorCount++

@@ -6,41 +6,62 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"toxictoast/services/foodfolio-service/internal/handler/mapper"
-	"toxictoast/services/foodfolio-service/internal/usecase"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/foodfolio-service/api/proto"
+	"toxictoast/services/foodfolio-service/internal/command"
+	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/handler/mapper"
+	"toxictoast/services/foodfolio-service/internal/query"
 )
 
 type ItemHandler struct {
 	pb.UnimplementedItemServiceServer
-	itemUC usecase.ItemUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewItemHandler(itemUC usecase.ItemUseCase) *ItemHandler {
+func NewItemHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *ItemHandler {
 	return &ItemHandler{
-		itemUC: itemUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
 func (h *ItemHandler) CreateItem(ctx context.Context, req *pb.CreateItemRequest) (*pb.CreateItemResponse, error) {
-	item, err := h.itemUC.CreateItem(ctx, req.Name, req.CategoryId, req.CompanyId, req.TypeId)
-	if err != nil {
+	cmd := &command.CreateItemCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Name:        req.Name,
+		CategoryID:  req.CategoryId,
+		CompanyID:   req.CompanyId,
+		TypeID:      req.TypeId,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.CreateItemResponse{
-		Item: mapper.ItemToProto(item),
+		Item: &pb.Item{
+			Name:       req.Name,
+			CategoryId: req.CategoryId,
+			CompanyId:  req.CompanyId,
+			TypeId:     req.TypeId,
+		},
 	}, nil
 }
 
 func (h *ItemHandler) GetItem(ctx context.Context, req *pb.IdRequest) (*pb.GetItemResponse, error) {
-	item, err := h.itemUC.GetItemByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrItemNotFound {
-			return nil, status.Error(codes.NotFound, "item not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetItemByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "item not found")
+	}
+
+	item := result.(*domain.Item)
 
 	return &pb.GetItemResponse{
 		Item: mapper.ItemToProto(item),
@@ -69,16 +90,28 @@ func (h *ItemHandler) ListItems(ctx context.Context, req *pb.ListItemsRequest) (
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	items, total, err := h.itemUC.ListItems(ctx, int(page), int(pageSize), categoryID, companyID, typeID, search, includeDeleted)
+	qry := &query.ListItemsQuery{
+		BaseQuery:      cqrs.BaseQuery{},
+		Page:           int(page),
+		PageSize:       int(pageSize),
+		CategoryID:     categoryID,
+		CompanyID:      companyID,
+		TypeID:         typeID,
+		Search:         search,
+		IncludeDeleted: includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListItemsResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.ListItemsResponse{
-		Items:      mapper.ItemsToProto(items),
-		Total:      int32(total),
+		Items:      mapper.ItemsToProto(listResult.Items),
+		Total:      int32(listResult.Total),
 		Page:       page,
 		PageSize:   pageSize,
 		TotalPages: int32(totalPages),
@@ -86,48 +119,30 @@ func (h *ItemHandler) ListItems(ctx context.Context, req *pb.ListItemsRequest) (
 }
 
 func (h *ItemHandler) UpdateItem(ctx context.Context, req *pb.UpdateItemRequest) (*pb.UpdateItemResponse, error) {
-	var name, categoryID, companyID, typeID string
+	cmd := &command.UpdateItemCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Name:        req.Name,
+		CategoryID:  req.CategoryId,
+		CompanyID:   req.CompanyId,
+		TypeID:      req.TypeId,
+	}
 
-	// Get existing to use as defaults
-	existing, err := h.itemUC.GetItemByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrItemNotFound {
-			return nil, status.Error(codes.NotFound, "item not found")
-		}
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	if req.Name != nil {
-		name = *req.Name
-	} else {
-		name = existing.Name
+	// Query the updated item
+	qry := &query.GetItemByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
 
-	if req.CategoryId != nil {
-		categoryID = *req.CategoryId
-	} else {
-		categoryID = existing.CategoryID
-	}
-
-	if req.CompanyId != nil {
-		companyID = *req.CompanyId
-	} else {
-		companyID = existing.CompanyID
-	}
-
-	if req.TypeId != nil {
-		typeID = *req.TypeId
-	} else {
-		typeID = existing.TypeID
-	}
-
-	item, err := h.itemUC.UpdateItem(ctx, req.Id, name, categoryID, companyID, typeID)
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
-		if err == usecase.ErrItemNotFound {
-			return nil, status.Error(codes.NotFound, "item not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.NotFound, "item not found")
 	}
+
+	item := result.(*domain.Item)
 
 	return &pb.UpdateItemResponse{
 		Item: mapper.ItemToProto(item),
@@ -135,43 +150,16 @@ func (h *ItemHandler) UpdateItem(ctx context.Context, req *pb.UpdateItemRequest)
 }
 
 func (h *ItemHandler) DeleteItem(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	err := h.itemUC.DeleteItem(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrItemNotFound {
-			return nil, status.Error(codes.NotFound, "item not found")
-		}
+	cmd := &command.DeleteItemCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.DeleteResponse{
 		Success: true,
 		Message: "Item deleted successfully",
-	}, nil
-}
-
-func (h *ItemHandler) SearchItems(ctx context.Context, req *pb.SearchItemsRequest) (*pb.SearchItemsResponse, error) {
-	page, pageSize := mapper.GetDefaultPagination(req.Page, req.PageSize)
-
-	var categoryID, companyID *string
-	if req.CategoryId != nil {
-		categoryID = req.CategoryId
-	}
-	if req.CompanyId != nil {
-		companyID = req.CompanyId
-	}
-
-	items, total, err := h.itemUC.SearchItems(ctx, req.Query, int(page), int(pageSize), categoryID, companyID)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
-
-	return &pb.SearchItemsResponse{
-		Items:      mapper.ItemsToProto(items),
-		Total:      int32(total),
-		Page:       page,
-		PageSize:   pageSize,
-		TotalPages: int32(totalPages),
 	}, nil
 }

@@ -6,41 +6,56 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"toxictoast/services/foodfolio-service/internal/handler/mapper"
-	"toxictoast/services/foodfolio-service/internal/usecase"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/foodfolio-service/api/proto"
+	"toxictoast/services/foodfolio-service/internal/command"
+	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/handler/mapper"
+	"toxictoast/services/foodfolio-service/internal/query"
 )
 
 type WarehouseHandler struct {
 	pb.UnimplementedWarehouseServiceServer
-	warehouseUC usecase.WarehouseUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewWarehouseHandler(warehouseUC usecase.WarehouseUseCase) *WarehouseHandler {
+func NewWarehouseHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *WarehouseHandler {
 	return &WarehouseHandler{
-		warehouseUC: warehouseUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
 func (h *WarehouseHandler) CreateWarehouse(ctx context.Context, req *pb.CreateWarehouseRequest) (*pb.CreateWarehouseResponse, error) {
-	warehouse, err := h.warehouseUC.CreateWarehouse(ctx, req.Name)
-	if err != nil {
+	cmd := &command.CreateWarehouseCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Name:        req.Name,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.CreateWarehouseResponse{
-		Warehouse: mapper.WarehouseToProto(warehouse),
+		Warehouse: &pb.Warehouse{
+			Name: req.Name,
+		},
 	}, nil
 }
 
 func (h *WarehouseHandler) GetWarehouse(ctx context.Context, req *pb.IdRequest) (*pb.GetWarehouseResponse, error) {
-	warehouse, err := h.warehouseUC.GetWarehouseByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrWarehouseNotFound {
-			return nil, status.Error(codes.NotFound, "warehouse not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetWarehouseByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "warehouse not found")
+	}
+
+	warehouse := result.(*domain.Warehouse)
 
 	return &pb.GetWarehouseResponse{
 		Warehouse: mapper.WarehouseToProto(warehouse),
@@ -60,16 +75,25 @@ func (h *WarehouseHandler) ListWarehouses(ctx context.Context, req *pb.ListWareh
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	warehouses, total, err := h.warehouseUC.ListWarehouses(ctx, int(page), int(pageSize), search, includeDeleted)
+	qry := &query.ListWarehousesQuery{
+		BaseQuery:      cqrs.BaseQuery{},
+		Page:           int(page),
+		PageSize:       int(pageSize),
+		Search:         search,
+		IncludeDeleted: includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListWarehousesResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.ListWarehousesResponse{
-		Warehouses: mapper.WarehousesToProto(warehouses),
-		Total:      int32(total),
+		Warehouses: mapper.WarehousesToProto(listResult.Warehouses),
+		Total:      int32(listResult.Total),
 		Page:       page,
 		PageSize:   pageSize,
 		TotalPages: int32(totalPages),
@@ -77,13 +101,27 @@ func (h *WarehouseHandler) ListWarehouses(ctx context.Context, req *pb.ListWareh
 }
 
 func (h *WarehouseHandler) UpdateWarehouse(ctx context.Context, req *pb.UpdateWarehouseRequest) (*pb.UpdateWarehouseResponse, error) {
-	warehouse, err := h.warehouseUC.UpdateWarehouse(ctx, req.Id, req.Name)
-	if err != nil {
-		if err == usecase.ErrWarehouseNotFound {
-			return nil, status.Error(codes.NotFound, "warehouse not found")
-		}
+	cmd := &command.UpdateWarehouseCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Name:        req.Name,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Query the updated warehouse
+	qry := &query.GetWarehouseByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "warehouse not found")
+	}
+
+	warehouse := result.(*domain.Warehouse)
 
 	return &pb.UpdateWarehouseResponse{
 		Warehouse: mapper.WarehouseToProto(warehouse),
@@ -91,11 +129,11 @@ func (h *WarehouseHandler) UpdateWarehouse(ctx context.Context, req *pb.UpdateWa
 }
 
 func (h *WarehouseHandler) DeleteWarehouse(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	err := h.warehouseUC.DeleteWarehouse(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrWarehouseNotFound {
-			return nil, status.Error(codes.NotFound, "warehouse not found")
-		}
+	cmd := &command.DeleteWarehouseCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 

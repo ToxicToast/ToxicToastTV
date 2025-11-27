@@ -8,45 +8,58 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/toxictoast/toxictoastgo/shared/auth"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 
 	pb "toxictoast/services/blog-service/api/proto"
+	"toxictoast/services/blog-service/internal/command"
 	"toxictoast/services/blog-service/internal/domain"
+	"toxictoast/services/blog-service/internal/query"
 	"toxictoast/services/blog-service/internal/repository"
-	"toxictoast/services/blog-service/internal/usecase"
 )
 
 type CategoryHandler struct {
 	pb.UnimplementedBlogServiceServer
-	categoryUseCase usecase.CategoryUseCase
-	authEnabled     bool
+	commandBus  *cqrs.CommandBus
+	queryBus    *cqrs.QueryBus
+	authEnabled bool
 }
 
-func NewCategoryHandler(categoryUseCase usecase.CategoryUseCase, authEnabled bool) *CategoryHandler {
+func NewCategoryHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus, authEnabled bool) *CategoryHandler {
 	return &CategoryHandler{
-		categoryUseCase: categoryUseCase,
-		authEnabled:     authEnabled,
+		commandBus:  commandBus,
+		queryBus:    queryBus,
+		authEnabled: authEnabled,
 	}
 }
 
 func (h *CategoryHandler) CreateCategory(ctx context.Context, req *pb.CreateCategoryRequest) (*pb.CategoryResponse, error) {
-	// Get user from context (authenticated by middleware)
 	_, err := h.requireAuth(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert request to use case input
-	input := usecase.CreateCategoryInput{
+	cmd := &command.CreateCategoryCommand{
+		BaseCommand: cqrs.BaseCommand{},
 		Name:        req.Name,
 		Description: req.Description,
-		ParentID:    stringPtrFromOptional(req.ParentId),
+		ParentID:    stringPtrToOptional(req.ParentId),
 	}
 
-	// Create category
-	category, err := h.categoryUseCase.CreateCategory(ctx, input)
-	if err != nil {
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create category: %v", err)
 	}
+
+	getQuery := &query.GetCategoryByIDQuery{
+		BaseQuery:  cqrs.BaseQuery{},
+		CategoryID: cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve created category: %v", err)
+	}
+
+	category := result.(*domain.Category)
 
 	return &pb.CategoryResponse{
 		Category: domainCategoryToProto(category),
@@ -56,12 +69,29 @@ func (h *CategoryHandler) CreateCategory(ctx context.Context, req *pb.CreateCate
 func (h *CategoryHandler) GetCategory(ctx context.Context, req *pb.GetCategoryRequest) (*pb.CategoryResponse, error) {
 	var category *domain.Category
 	var err error
+	var result interface{}
 
 	switch identifier := req.Identifier.(type) {
 	case *pb.GetCategoryRequest_Id:
-		category, err = h.categoryUseCase.GetCategory(ctx, identifier.Id)
+		getQuery := &query.GetCategoryByIDQuery{
+			BaseQuery:  cqrs.BaseQuery{},
+			CategoryID: identifier.Id,
+		}
+		result, err = h.queryBus.Dispatch(ctx, getQuery)
+		if err == nil {
+			category = result.(*domain.Category)
+		}
+
 	case *pb.GetCategoryRequest_Slug:
-		category, err = h.categoryUseCase.GetCategoryBySlug(ctx, identifier.Slug)
+		getQuery := &query.GetCategoryBySlugQuery{
+			BaseQuery: cqrs.BaseQuery{},
+			Slug:      identifier.Slug,
+		}
+		result, err = h.queryBus.Dispatch(ctx, getQuery)
+		if err == nil {
+			category = result.(*domain.Category)
+		}
+
 	default:
 		return nil, status.Error(codes.InvalidArgument, "must provide either id or slug")
 	}
@@ -76,24 +106,33 @@ func (h *CategoryHandler) GetCategory(ctx context.Context, req *pb.GetCategoryRe
 }
 
 func (h *CategoryHandler) UpdateCategory(ctx context.Context, req *pb.UpdateCategoryRequest) (*pb.CategoryResponse, error) {
-	// Get user from context (authenticated by middleware)
 	_, err := h.requireAuth(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert request to use case input
-	input := usecase.UpdateCategoryInput{
+	cmd := &command.UpdateCategoryCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
 		Name:        stringPtrFromOptional(req.Name),
 		Description: stringPtrFromOptional(req.Description),
-		ParentID:    stringPtrFromOptional(req.ParentId),
+		ParentID:    stringPtrToOptional(req.ParentId),
 	}
 
-	// Update category
-	category, err := h.categoryUseCase.UpdateCategory(ctx, req.Id, input)
-	if err != nil {
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to update category: %v", err)
 	}
+
+	getQuery := &query.GetCategoryByIDQuery{
+		BaseQuery:  cqrs.BaseQuery{},
+		CategoryID: req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, getQuery)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to retrieve updated category: %v", err)
+	}
+
+	category := result.(*domain.Category)
 
 	return &pb.CategoryResponse{
 		Category: domainCategoryToProto(category),
@@ -101,14 +140,16 @@ func (h *CategoryHandler) UpdateCategory(ctx context.Context, req *pb.UpdateCate
 }
 
 func (h *CategoryHandler) DeleteCategory(ctx context.Context, req *pb.DeleteCategoryRequest) (*pb.DeleteResponse, error) {
-	// Get user from context (authenticated by middleware)
 	_, err := h.requireAuth(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Delete category
-	if err := h.categoryUseCase.DeleteCategory(ctx, req.Id); err != nil {
+	cmd := &command.DeleteCategoryCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete category: %v", err)
 	}
 
@@ -119,40 +160,41 @@ func (h *CategoryHandler) DeleteCategory(ctx context.Context, req *pb.DeleteCate
 }
 
 func (h *CategoryHandler) ListCategories(ctx context.Context, req *pb.ListCategoriesRequest) (*pb.ListCategoriesResponse, error) {
-	// Convert request to filters
 	filters := repository.CategoryFilters{
 		Page:     int(req.Page),
 		PageSize: int(req.PageSize),
 		ParentID: stringPtrFromOptional(req.ParentId),
 	}
 
-	// Default pagination
 	if filters.Page < 1 {
 		filters.Page = 1
 	}
 	if filters.PageSize < 1 {
-		filters.PageSize = 50 // Higher default for categories
+		filters.PageSize = 100
 	}
 
-	// List categories
-	categories, total, err := h.categoryUseCase.ListCategories(ctx, filters)
+	listQuery := &query.ListCategoriesQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Filters:   filters,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, listQuery)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list categories: %v", err)
 	}
 
-	// Convert to proto
-	protoCategories := make([]*pb.Category, len(categories))
-	for i, category := range categories {
-		protoCategories[i] = domainCategoryToProto(&category)
+	listResult := result.(*query.ListCategoriesResult)
+
+	protoCategories := make([]*pb.Category, len(listResult.Categories))
+	for i, cat := range listResult.Categories {
+		protoCategories[i] = domainCategoryToProto(&cat)
 	}
 
 	return &pb.ListCategoriesResponse{
 		Categories: protoCategories,
-		Total:      int32(total),
+		Total:      int32(listResult.Total),
 	}, nil
 }
-
-// Helper functions for conversion
 
 func domainCategoryToProto(category *domain.Category) *pb.Category {
 	if category == nil {
@@ -164,13 +206,9 @@ func domainCategoryToProto(category *domain.Category) *pb.Category {
 		Name:        category.Name,
 		Slug:        category.Slug,
 		Description: category.Description,
+		ParentId:    category.ParentID,
 		CreatedAt:   timestamppb.New(category.CreatedAt),
 		UpdatedAt:   timestamppb.New(category.UpdatedAt),
-	}
-
-	// Add parent ID if exists
-	if category.ParentID != nil {
-		protoCategory.ParentId = stringPtrToOptional(category.ParentID)
 	}
 
 	return protoCategory
@@ -183,10 +221,8 @@ func stringPtrToOptional(s *string) *string {
 	return s
 }
 
-// requireAuth checks authentication if enabled, returns user context or error
 func (h *CategoryHandler) requireAuth(ctx context.Context) (*auth.UserContext, error) {
 	if !h.authEnabled {
-		// Return a dummy user context when auth is disabled
 		return &auth.UserContext{
 			UserID:   "test-user",
 			Username: "test",

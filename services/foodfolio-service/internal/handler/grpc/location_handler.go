@@ -6,19 +6,24 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"toxictoast/services/foodfolio-service/internal/handler/mapper"
-	"toxictoast/services/foodfolio-service/internal/usecase"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/foodfolio-service/api/proto"
+	"toxictoast/services/foodfolio-service/internal/command"
+	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/handler/mapper"
+	"toxictoast/services/foodfolio-service/internal/query"
 )
 
 type LocationHandler struct {
 	pb.UnimplementedLocationServiceServer
-	locationUC usecase.LocationUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewLocationHandler(locationUC usecase.LocationUseCase) *LocationHandler {
+func NewLocationHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *LocationHandler {
 	return &LocationHandler{
-		locationUC: locationUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
@@ -28,24 +33,36 @@ func (h *LocationHandler) CreateLocation(ctx context.Context, req *pb.CreateLoca
 		parentID = req.ParentId
 	}
 
-	location, err := h.locationUC.CreateLocation(ctx, req.Name, parentID)
-	if err != nil {
+	cmd := &command.CreateLocationCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Name:        req.Name,
+		ParentID:    parentID,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.CreateLocationResponse{
-		Location: mapper.LocationToProto(location),
+		Location: &pb.Location{
+			Name:     req.Name,
+			ParentId: parentID,
+		},
 	}, nil
 }
 
 func (h *LocationHandler) GetLocation(ctx context.Context, req *pb.IdRequest) (*pb.GetLocationResponse, error) {
-	location, err := h.locationUC.GetLocationByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrLocationNotFound {
-			return nil, status.Error(codes.NotFound, "location not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetLocationByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "location not found")
+	}
+
+	location := result.(*domain.Location)
 
 	return &pb.GetLocationResponse{
 		Location: mapper.LocationToProto(location),
@@ -67,16 +84,26 @@ func (h *LocationHandler) ListLocations(ctx context.Context, req *pb.ListLocatio
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	locations, total, err := h.locationUC.ListLocations(ctx, int(page), int(pageSize), parentID, includeChildren, includeDeleted)
+	qry := &query.ListLocationsQuery{
+		BaseQuery:       cqrs.BaseQuery{},
+		Page:            int(page),
+		PageSize:        int(pageSize),
+		ParentID:        parentID,
+		IncludeChildren: includeChildren,
+		IncludeDeleted:  includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListLocationsResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.ListLocationsResponse{
-		Locations:  mapper.LocationsToProto(locations),
-		Total:      int32(total),
+		Locations:  mapper.LocationsToProto(listResult.Locations),
+		Total:      int32(listResult.Total),
 		Page:       page,
 		PageSize:   pageSize,
 		TotalPages: int32(totalPages),
@@ -84,36 +111,28 @@ func (h *LocationHandler) ListLocations(ctx context.Context, req *pb.ListLocatio
 }
 
 func (h *LocationHandler) UpdateLocation(ctx context.Context, req *pb.UpdateLocationRequest) (*pb.UpdateLocationResponse, error) {
-	var name string
-	if req.Name != nil {
-		name = *req.Name
-	} else {
-		// Get existing to keep name
-		loc, err := h.locationUC.GetLocationByID(ctx, req.Id)
-		if err != nil {
-			if err == usecase.ErrLocationNotFound {
-				return nil, status.Error(codes.NotFound, "location not found")
-			}
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		name = loc.Name
+	cmd := &command.UpdateLocationCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Name:        req.Name,
+		ParentID:    req.ParentId,
 	}
 
-	var parentID *string
-	if req.ParentId != nil {
-		parentID = req.ParentId
-	}
-
-	location, err := h.locationUC.UpdateLocation(ctx, req.Id, name, parentID)
-	if err != nil {
-		if err == usecase.ErrLocationNotFound {
-			return nil, status.Error(codes.NotFound, "location not found")
-		}
-		if err == usecase.ErrCircularReference {
-			return nil, status.Error(codes.InvalidArgument, "circular reference detected")
-		}
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Query the updated location
+	qry := &query.GetLocationByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "location not found")
+	}
+
+	location := result.(*domain.Location)
 
 	return &pb.UpdateLocationResponse{
 		Location: mapper.LocationToProto(location),
@@ -121,11 +140,11 @@ func (h *LocationHandler) UpdateLocation(ctx context.Context, req *pb.UpdateLoca
 }
 
 func (h *LocationHandler) DeleteLocation(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	err := h.locationUC.DeleteLocation(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrLocationNotFound {
-			return nil, status.Error(codes.NotFound, "location not found")
-		}
+	cmd := &command.DeleteLocationCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -143,10 +162,18 @@ func (h *LocationHandler) GetLocationTree(ctx context.Context, req *pb.GetLocati
 
 	maxDepth := int(req.MaxDepth)
 
-	locations, err := h.locationUC.GetLocationTree(ctx, rootID, maxDepth)
+	qry := &query.GetLocationTreeQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		RootID:    rootID,
+		MaxDepth:  maxDepth,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	locations := result.([]*domain.Location)
 
 	return &pb.GetLocationTreeResponse{
 		Locations: mapper.LocationsToProto(locations),

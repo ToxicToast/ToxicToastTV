@@ -3,33 +3,44 @@ package grpc
 import (
 	"context"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/weather-service/api/proto"
-	"toxictoast/services/weather-service/internal/usecase"
+	"toxictoast/services/weather-service/internal/domain"
+	"toxictoast/services/weather-service/internal/query"
 )
 
 type WeatherHandler struct {
 	pb.UnimplementedWeatherServiceServer
-	weatherUC usecase.WeatherUseCase
-	version   string
+	queryBus *cqrs.QueryBus
+	version  string
 }
 
-func NewWeatherHandler(weatherUC usecase.WeatherUseCase, version string) *WeatherHandler {
+func NewWeatherHandler(queryBus *cqrs.QueryBus, version string) *WeatherHandler {
 	return &WeatherHandler{
-		weatherUC: weatherUC,
-		version:   version,
+		queryBus: queryBus,
+		version:  version,
 	}
 }
 
 func (h *WeatherHandler) GetCurrentWeather(ctx context.Context, req *pb.WeatherRequest) (*pb.CurrentWeatherResponse, error) {
-	// Get weather from use case
-	weather, err := h.weatherUC.GetCurrentWeather(ctx, req.Latitude, req.Longitude, req.Timezone)
-	if err != nil {
-		return nil, err
+	qry := &query.GetCurrentWeatherQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Latitude:  req.Latitude,
+		Longitude: req.Longitude,
+		Timezone:  req.Timezone,
 	}
 
-	// Convert to proto response
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	weather := result.(*domain.CurrentWeather)
+
 	return &pb.CurrentWeatherResponse{
 		Latitude:            weather.Latitude,
 		Longitude:           weather.Longitude,
@@ -49,13 +60,21 @@ func (h *WeatherHandler) GetCurrentWeather(ctx context.Context, req *pb.WeatherR
 }
 
 func (h *WeatherHandler) GetForecast(ctx context.Context, req *pb.ForecastRequest) (*pb.ForecastResponse, error) {
-	// Get forecast from use case
-	forecast, err := h.weatherUC.GetForecast(ctx, req.Latitude, req.Longitude, int(req.Days), req.Timezone)
-	if err != nil {
-		return nil, err
+	qry := &query.GetForecastQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Latitude:  req.Latitude,
+		Longitude: req.Longitude,
+		Days:      int(req.Days),
+		Timezone:  req.Timezone,
 	}
 
-	// Convert to proto response
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	forecast := result.(*domain.Forecast)
+
 	daily := make([]*pb.DailyForecast, 0, len(forecast.Daily))
 	for _, d := range forecast.Daily {
 		daily = append(daily, &pb.DailyForecast{

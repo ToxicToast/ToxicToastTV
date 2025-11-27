@@ -5,30 +5,31 @@ import (
 	"log"
 	"time"
 
+	"github.com/toxictoast/toxictoastgo/shared/kafka"
+
 	"toxictoast/services/foodfolio-service/internal/repository/interfaces"
-	"toxictoast/services/foodfolio-service/internal/usecase"
 )
 
 type StockLevelScheduler struct {
-	itemVariantUseCase usecase.ItemVariantUseCase
-	itemVariantRepo    interfaces.ItemVariantRepository
-	interval           time.Duration
-	enabled            bool
-	stopChan           chan struct{}
+	kafkaProducer   *kafka.Producer
+	itemVariantRepo interfaces.ItemVariantRepository
+	interval        time.Duration
+	enabled         bool
+	stopChan        chan struct{}
 }
 
 func NewStockLevelScheduler(
-	itemVariantUseCase usecase.ItemVariantUseCase,
+	kafkaProducer *kafka.Producer,
 	itemVariantRepo interfaces.ItemVariantRepository,
 	interval time.Duration,
 	enabled bool,
 ) *StockLevelScheduler {
 	return &StockLevelScheduler{
-		itemVariantUseCase: itemVariantUseCase,
-		itemVariantRepo:    itemVariantRepo,
-		interval:           interval,
-		enabled:            enabled,
-		stopChan:           make(chan struct{}),
+		kafkaProducer:   kafkaProducer,
+		itemVariantRepo: itemVariantRepo,
+		interval:        interval,
+		enabled:         enabled,
+		stopChan:        make(chan struct{}),
 	}
 }
 
@@ -93,22 +94,38 @@ func (s *StockLevelScheduler) checkStockLevels() {
 
 		// Check if empty
 		if currentStock == 0 {
-			err := s.itemVariantUseCase.NotifyStockEmpty(ctx, variant)
-			if err != nil {
-				log.Printf("Error notifying empty stock for variant %s: %v", variant.ID, err)
-				errorCount++
-				continue
+			if s.kafkaProducer != nil {
+				event := kafka.FoodfolioVariantStockEmptyEvent{
+					VariantID:   variant.ID,
+					ItemID:      variant.ItemID,
+					VariantName: variant.VariantName,
+					DetectedAt:  time.Now(),
+				}
+				if err := s.kafkaProducer.PublishFoodfolioVariantStockEmpty("foodfolio.variant.stock.empty", event); err != nil {
+					log.Printf("Error notifying empty stock for variant %s: %v", variant.ID, err)
+					errorCount++
+					continue
+				}
 			}
 
 			log.Printf("Notified empty stock: %s (current: %d, min: %d)", variant.VariantName, currentStock, variant.MinSKU)
 			emptyStockCount++
 		} else if currentStock < variant.MinSKU {
 			// Check if below minimum
-			err := s.itemVariantUseCase.NotifyStockLow(ctx, variant, currentStock)
-			if err != nil {
-				log.Printf("Error notifying low stock for variant %s: %v", variant.ID, err)
-				errorCount++
-				continue
+			if s.kafkaProducer != nil {
+				event := kafka.FoodfolioVariantStockLowEvent{
+					VariantID:    variant.ID,
+					ItemID:       variant.ItemID,
+					VariantName:  variant.VariantName,
+					CurrentStock: currentStock,
+					MinSKU:       variant.MinSKU,
+					DetectedAt:   time.Now(),
+				}
+				if err := s.kafkaProducer.PublishFoodfolioVariantStockLow("foodfolio.variant.stock.low", event); err != nil {
+					log.Printf("Error notifying low stock for variant %s: %v", variant.ID, err)
+					errorCount++
+					continue
+				}
 			}
 
 			log.Printf("Notified low stock: %s (current: %d, min: %d)", variant.VariantName, currentStock, variant.MinSKU)

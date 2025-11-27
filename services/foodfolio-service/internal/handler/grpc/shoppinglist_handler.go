@@ -6,27 +6,49 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"toxictoast/services/foodfolio-service/internal/handler/mapper"
-	"toxictoast/services/foodfolio-service/internal/usecase"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/foodfolio-service/api/proto"
+	"toxictoast/services/foodfolio-service/internal/command"
+	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/handler/mapper"
+	"toxictoast/services/foodfolio-service/internal/query"
 )
 
 type ShoppinglistHandler struct {
 	pb.UnimplementedShoppinglistServiceServer
-	shoppinglistUC usecase.ShoppinglistUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewShoppinglistHandler(shoppinglistUC usecase.ShoppinglistUseCase) *ShoppinglistHandler {
+func NewShoppinglistHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *ShoppinglistHandler {
 	return &ShoppinglistHandler{
-		shoppinglistUC: shoppinglistUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
 func (h *ShoppinglistHandler) CreateShoppinglist(ctx context.Context, req *pb.CreateShoppinglistRequest) (*pb.CreateShoppinglistResponse, error) {
-	list, err := h.shoppinglistUC.CreateShoppinglist(ctx, req.Name)
-	if err != nil {
+	cmd := &command.CreateShoppinglistCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Name:        req.Name,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Query the created shoppinglist
+	qry := &query.GetShoppinglistByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "shoppinglist not found")
+	}
+
+	list := result.(*domain.Shoppinglist)
 
 	return &pb.CreateShoppinglistResponse{
 		Shoppinglist: mapper.ShoppinglistToProto(list),
@@ -34,13 +56,17 @@ func (h *ShoppinglistHandler) CreateShoppinglist(ctx context.Context, req *pb.Cr
 }
 
 func (h *ShoppinglistHandler) GetShoppinglist(ctx context.Context, req *pb.IdRequest) (*pb.GetShoppinglistResponse, error) {
-	list, err := h.shoppinglistUC.GetShoppinglistByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrShoppinglistNotFound {
-			return nil, status.Error(codes.NotFound, "shoppinglist not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetShoppinglistByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "shoppinglist not found")
+	}
+
+	list := result.(*domain.Shoppinglist)
 
 	return &pb.GetShoppinglistResponse{
 		Shoppinglist: mapper.ShoppinglistToProto(list),
@@ -55,16 +81,24 @@ func (h *ShoppinglistHandler) ListShoppinglists(ctx context.Context, req *pb.Lis
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	lists, total, err := h.shoppinglistUC.ListShoppinglists(ctx, int(page), int(pageSize), includeDeleted)
+	qry := &query.ListShoppinglistsQuery{
+		BaseQuery:      cqrs.BaseQuery{},
+		Page:           int(page),
+		PageSize:       int(pageSize),
+		IncludeDeleted: includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListShoppinglistsResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.ListShoppinglistsResponse{
-		Shoppinglists: mapper.ShoppinglistsToProto(lists),
-		Total:         int32(total),
+		Shoppinglists: mapper.ShoppinglistsToProto(listResult.Shoppinglists),
+		Total:         int32(listResult.Total),
 		Page:          page,
 		PageSize:      pageSize,
 		TotalPages:    int32(totalPages),
@@ -72,13 +106,27 @@ func (h *ShoppinglistHandler) ListShoppinglists(ctx context.Context, req *pb.Lis
 }
 
 func (h *ShoppinglistHandler) UpdateShoppinglist(ctx context.Context, req *pb.UpdateShoppinglistRequest) (*pb.UpdateShoppinglistResponse, error) {
-	list, err := h.shoppinglistUC.UpdateShoppinglist(ctx, req.Id, req.Name)
-	if err != nil {
-		if err == usecase.ErrShoppinglistNotFound {
-			return nil, status.Error(codes.NotFound, "shoppinglist not found")
-		}
+	cmd := &command.UpdateShoppinglistCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Name:        req.Name,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Query the updated shoppinglist
+	qry := &query.GetShoppinglistByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "shoppinglist not found")
+	}
+
+	list := result.(*domain.Shoppinglist)
 
 	return &pb.UpdateShoppinglistResponse{
 		Shoppinglist: mapper.ShoppinglistToProto(list),
@@ -86,11 +134,11 @@ func (h *ShoppinglistHandler) UpdateShoppinglist(ctx context.Context, req *pb.Up
 }
 
 func (h *ShoppinglistHandler) DeleteShoppinglist(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	err := h.shoppinglistUC.DeleteShoppinglist(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrShoppinglistNotFound {
-			return nil, status.Error(codes.NotFound, "shoppinglist not found")
-		}
+	cmd := &command.DeleteShoppinglistCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -101,28 +149,37 @@ func (h *ShoppinglistHandler) DeleteShoppinglist(ctx context.Context, req *pb.Id
 }
 
 func (h *ShoppinglistHandler) AddItemToShoppinglist(ctx context.Context, req *pb.AddItemToShoppinglistRequest) (*pb.AddItemToShoppinglistResponse, error) {
-	item, err := h.shoppinglistUC.AddItemToShoppinglist(ctx, req.ShoppinglistId, req.ItemVariantId, int(req.Quantity))
-	if err != nil {
-		if err == usecase.ErrShoppinglistNotFound {
-			return nil, status.Error(codes.NotFound, "shoppinglist not found")
-		}
-		if err == usecase.ErrItemVariantNotFound {
-			return nil, status.Error(codes.NotFound, "item variant not found")
-		}
+	cmd := &command.AddItemToShoppinglistCommand{
+		BaseCommand:    cqrs.BaseCommand{},
+		ShoppinglistID: req.ShoppinglistId,
+		VariantID:      req.ItemVariantId,
+		Quantity:       int(req.Quantity),
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// TODO: Query individual item when GetShoppinglistItemByIDQuery is implemented
+	// For now, return a basic response
 	return &pb.AddItemToShoppinglistResponse{
-		Item: mapper.ShoppinglistItemToProto(item),
+		Item: &pb.ShoppinglistItem{
+			Id:            cmd.AggregateID,
+			ShoppinglistId: req.ShoppinglistId,
+			ItemVariantId: req.ItemVariantId,
+			Quantity:      req.Quantity,
+			IsPurchased:   false,
+		},
 	}, nil
 }
 
 func (h *ShoppinglistHandler) RemoveItemFromShoppinglist(ctx context.Context, req *pb.RemoveItemFromShoppinglistRequest) (*pb.DeleteResponse, error) {
-	err := h.shoppinglistUC.RemoveItemFromShoppinglist(ctx, req.ShoppinglistId, req.ItemId)
-	if err != nil {
-		if err == usecase.ErrShoppinglistItemNotFound {
-			return nil, status.Error(codes.NotFound, "shoppinglist item not found")
-		}
+	cmd := &command.RemoveItemFromShoppinglistCommand{
+		BaseCommand:    cqrs.BaseCommand{AggregateID: req.ItemId},
+		ShoppinglistID: req.ShoppinglistId,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -143,69 +200,101 @@ func (h *ShoppinglistHandler) UpdateShoppinglistItem(ctx context.Context, req *p
 		isPurchased = *req.IsPurchased
 	}
 
-	item, err := h.shoppinglistUC.UpdateShoppinglistItem(ctx, req.Id, quantity, isPurchased)
-	if err != nil {
-		if err == usecase.ErrShoppinglistItemNotFound {
-			return nil, status.Error(codes.NotFound, "shoppinglist item not found")
-		}
+	cmd := &command.UpdateShoppinglistItemCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Quantity:    quantity,
+		IsPurchased: isPurchased,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// TODO: Query individual item when GetShoppinglistItemByIDQuery is implemented
+	// For now, return a basic response
 	return &pb.UpdateShoppinglistItemResponse{
-		Item: mapper.ShoppinglistItemToProto(item),
+		Item: &pb.ShoppinglistItem{
+			Id:          req.Id,
+			Quantity:    int32(quantity),
+			IsPurchased: isPurchased,
+		},
 	}, nil
 }
 
 func (h *ShoppinglistHandler) MarkItemPurchased(ctx context.Context, req *pb.MarkItemPurchasedRequest) (*pb.MarkItemPurchasedResponse, error) {
-	item, err := h.shoppinglistUC.MarkItemPurchased(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrShoppinglistItemNotFound {
-			return nil, status.Error(codes.NotFound, "shoppinglist item not found")
-		}
+	cmd := &command.MarkItemPurchasedCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// TODO: Query individual item when GetShoppinglistItemByIDQuery is implemented
+	// For now, return a basic response
 	return &pb.MarkItemPurchasedResponse{
-		Item: mapper.ShoppinglistItemToProto(item),
+		Item: &pb.ShoppinglistItem{
+			Id:          req.Id,
+			IsPurchased: true,
+		},
 	}, nil
 }
 
 func (h *ShoppinglistHandler) MarkAllItemsPurchased(ctx context.Context, req *pb.MarkAllItemsPurchasedRequest) (*pb.MarkAllItemsPurchasedResponse, error) {
-	count, err := h.shoppinglistUC.MarkAllItemsPurchased(ctx, req.ShoppinglistId)
-	if err != nil {
-		if err == usecase.ErrShoppinglistNotFound {
-			return nil, status.Error(codes.NotFound, "shoppinglist not found")
-		}
+	cmd := &command.MarkAllItemsPurchasedCommand{
+		BaseCommand:    cqrs.BaseCommand{},
+		ShoppinglistID: req.ShoppinglistId,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.MarkAllItemsPurchasedResponse{
-		UpdatedCount: int32(count),
+		UpdatedCount: int32(cmd.ItemsMarked),
 	}, nil
 }
 
 func (h *ShoppinglistHandler) ClearPurchasedItems(ctx context.Context, req *pb.ClearPurchasedItemsRequest) (*pb.ClearPurchasedItemsResponse, error) {
-	count, err := h.shoppinglistUC.ClearPurchasedItems(ctx, req.ShoppinglistId)
-	if err != nil {
-		if err == usecase.ErrShoppinglistNotFound {
-			return nil, status.Error(codes.NotFound, "shoppinglist not found")
-		}
+	cmd := &command.ClearPurchasedItemsCommand{
+		BaseCommand:    cqrs.BaseCommand{},
+		ShoppinglistID: req.ShoppinglistId,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.ClearPurchasedItemsResponse{
-		RemovedCount: int32(count),
+		RemovedCount: int32(cmd.ItemsCleared),
 	}, nil
 }
 
 func (h *ShoppinglistHandler) GenerateFromLowStock(ctx context.Context, req *pb.GenerateFromLowStockRequest) (*pb.GenerateFromLowStockResponse, error) {
-	list, itemsAdded, err := h.shoppinglistUC.GenerateFromLowStock(ctx, req.Name)
-	if err != nil {
+	cmd := &command.GenerateFromLowStockCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Name:        req.Name,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// Query the created shoppinglist
+	qry := &query.GetShoppinglistByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "shoppinglist not found")
+	}
+
+	list := result.(*domain.Shoppinglist)
+
 	return &pb.GenerateFromLowStockResponse{
 		Shoppinglist: mapper.ShoppinglistToProto(list),
-		ItemsAdded:   int32(itemsAdded),
+		ItemsAdded:   int32(cmd.ItemsAdded),
 	}, nil
 }

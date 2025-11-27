@@ -6,19 +6,24 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"toxictoast/services/foodfolio-service/internal/handler/mapper"
-	"toxictoast/services/foodfolio-service/internal/usecase"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/foodfolio-service/api/proto"
+	"toxictoast/services/foodfolio-service/internal/command"
+	"toxictoast/services/foodfolio-service/internal/domain"
+	"toxictoast/services/foodfolio-service/internal/handler/mapper"
+	"toxictoast/services/foodfolio-service/internal/query"
 )
 
 type CategoryHandler struct {
 	pb.UnimplementedCategoryServiceServer
-	categoryUC usecase.CategoryUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewCategoryHandler(categoryUC usecase.CategoryUseCase) *CategoryHandler {
+func NewCategoryHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *CategoryHandler {
 	return &CategoryHandler{
-		categoryUC: categoryUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
@@ -28,24 +33,36 @@ func (h *CategoryHandler) CreateCategory(ctx context.Context, req *pb.CreateCate
 		parentID = req.ParentId
 	}
 
-	category, err := h.categoryUC.CreateCategory(ctx, req.Name, parentID)
-	if err != nil {
+	cmd := &command.CreateCategoryCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Name:        req.Name,
+		ParentID:    parentID,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return &pb.CreateCategoryResponse{
-		Category: mapper.CategoryToProto(category),
+		Category: &pb.Category{
+			Name:     req.Name,
+			ParentId: parentID,
+		},
 	}, nil
 }
 
 func (h *CategoryHandler) GetCategory(ctx context.Context, req *pb.IdRequest) (*pb.GetCategoryResponse, error) {
-	category, err := h.categoryUC.GetCategoryByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrCategoryNotFound {
-			return nil, status.Error(codes.NotFound, "category not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetCategoryByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "category not found")
+	}
+
+	category := result.(*domain.Category)
 
 	return &pb.GetCategoryResponse{
 		Category: mapper.CategoryToProto(category),
@@ -67,16 +84,26 @@ func (h *CategoryHandler) ListCategories(ctx context.Context, req *pb.ListCatego
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	categories, total, err := h.categoryUC.ListCategories(ctx, int(page), int(pageSize), parentID, includeChildren, includeDeleted)
+	qry := &query.ListCategoriesQuery{
+		BaseQuery:       cqrs.BaseQuery{},
+		Page:            int(page),
+		PageSize:        int(pageSize),
+		ParentID:        parentID,
+		IncludeChildren: includeChildren,
+		IncludeDeleted:  includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	totalPages := (int(total) + int(pageSize) - 1) / int(pageSize)
+	listResult := result.(*query.ListCategoriesResult)
+	totalPages := (int(listResult.Total) + int(pageSize) - 1) / int(pageSize)
 
 	return &pb.ListCategoriesResponse{
-		Categories: mapper.CategoriesToProto(categories),
-		Total:      int32(total),
+		Categories: mapper.CategoriesToProto(listResult.Categories),
+		Total:      int32(listResult.Total),
 		Page:       page,
 		PageSize:   pageSize,
 		TotalPages: int32(totalPages),
@@ -84,36 +111,28 @@ func (h *CategoryHandler) ListCategories(ctx context.Context, req *pb.ListCatego
 }
 
 func (h *CategoryHandler) UpdateCategory(ctx context.Context, req *pb.UpdateCategoryRequest) (*pb.UpdateCategoryResponse, error) {
-	var name string
-	if req.Name != nil {
-		name = *req.Name
-	} else {
-		// Get existing to keep name
-		cat, err := h.categoryUC.GetCategoryByID(ctx, req.Id)
-		if err != nil {
-			if err == usecase.ErrCategoryNotFound {
-				return nil, status.Error(codes.NotFound, "category not found")
-			}
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		name = cat.Name
+	cmd := &command.UpdateCategoryCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Name:        req.Name,
+		ParentID:    req.ParentId,
 	}
 
-	var parentID *string
-	if req.ParentId != nil {
-		parentID = req.ParentId
-	}
-
-	category, err := h.categoryUC.UpdateCategory(ctx, req.Id, name, parentID)
-	if err != nil {
-		if err == usecase.ErrCategoryNotFound {
-			return nil, status.Error(codes.NotFound, "category not found")
-		}
-		if err == usecase.ErrCircularReference {
-			return nil, status.Error(codes.InvalidArgument, "circular reference detected")
-		}
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Query the updated category
+	qry := &query.GetCategoryByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "category not found")
+	}
+
+	category := result.(*domain.Category)
 
 	return &pb.UpdateCategoryResponse{
 		Category: mapper.CategoryToProto(category),
@@ -121,11 +140,11 @@ func (h *CategoryHandler) UpdateCategory(ctx context.Context, req *pb.UpdateCate
 }
 
 func (h *CategoryHandler) DeleteCategory(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	err := h.categoryUC.DeleteCategory(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrCategoryNotFound {
-			return nil, status.Error(codes.NotFound, "category not found")
-		}
+	cmd := &command.DeleteCategoryCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -143,10 +162,18 @@ func (h *CategoryHandler) GetCategoryTree(ctx context.Context, req *pb.GetCatego
 
 	maxDepth := int(req.MaxDepth)
 
-	categories, err := h.categoryUC.GetCategoryTree(ctx, rootID, maxDepth)
+	qry := &query.GetCategoryTreeQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		RootID:    rootID,
+		MaxDepth:  maxDepth,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	categories := result.([]*domain.Category)
 
 	return &pb.GetCategoryTreeResponse{
 		Categories: mapper.CategoriesToProto(categories),

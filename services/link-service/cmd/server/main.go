@@ -19,17 +19,19 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/toxictoast/toxictoastgo/shared/auth"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	"github.com/toxictoast/toxictoastgo/shared/database"
 	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
 	pb "toxictoast/services/link-service/api/proto"
+	"toxictoast/services/link-service/internal/command"
 	grpcHandler "toxictoast/services/link-service/internal/handler/grpc"
+	"toxictoast/services/link-service/internal/query"
 	"toxictoast/services/link-service/internal/repository/entity"
 	"toxictoast/services/link-service/internal/repository/impl"
 	"toxictoast/services/link-service/internal/scheduler"
-	"toxictoast/services/link-service/internal/usecase"
 	"toxictoast/services/link-service/pkg/config"
 )
 
@@ -108,13 +110,40 @@ func main() {
 	linkRepo := impl.NewLinkRepository(db)
 	clickRepo := impl.NewClickRepository(db)
 
-	// Initialize use cases
-	linkUseCase := usecase.NewLinkUseCase(linkRepo, kafkaProducer, cfg)
-	clickUseCase := usecase.NewClickUseCase(clickRepo, linkRepo, kafkaProducer)
+	// Initialize Command Bus
+	commandBus := cqrs.NewCommandBus()
+
+	// Register Link Command Handlers (5 commands)
+	commandBus.RegisterHandler("create_link", command.NewCreateLinkHandler(linkRepo, kafkaProducer, cfg))
+	commandBus.RegisterHandler("update_link", command.NewUpdateLinkHandler(linkRepo, kafkaProducer))
+	commandBus.RegisterHandler("delete_link", command.NewDeleteLinkHandler(linkRepo, kafkaProducer))
+	commandBus.RegisterHandler("increment_click", command.NewIncrementClickHandler(linkRepo))
+	commandBus.RegisterHandler("deactivate_expired_link", command.NewDeactivateExpiredLinkHandler(linkRepo, kafkaProducer))
+
+	// Register Click Command Handlers (1 command)
+	commandBus.RegisterHandler("record_click", command.NewRecordClickHandler(clickRepo, linkRepo, kafkaProducer))
+
+	logger.Info("Command Bus initialized with 6 command handlers")
+
+	// Initialize Query Bus
+	queryBus := cqrs.NewQueryBus()
+
+	// Register Link Query Handlers (4 queries)
+	queryBus.RegisterHandler("get_link_by_id", query.NewGetLinkByIDHandler(linkRepo))
+	queryBus.RegisterHandler("get_link_by_short_code", query.NewGetLinkByShortCodeHandler(linkRepo))
+	queryBus.RegisterHandler("list_links", query.NewListLinksHandler(linkRepo))
+	queryBus.RegisterHandler("get_link_stats", query.NewGetLinkStatsHandler(linkRepo))
+
+	// Register Click Query Handlers (3 queries)
+	queryBus.RegisterHandler("get_link_clicks", query.NewGetLinkClicksHandler(clickRepo, linkRepo))
+	queryBus.RegisterHandler("get_link_analytics", query.NewGetLinkAnalyticsHandler(clickRepo, linkRepo))
+	queryBus.RegisterHandler("get_clicks_by_date", query.NewGetClicksByDateHandler(clickRepo, linkRepo))
+
+	logger.Info("Query Bus initialized with 7 query handlers")
 
 	// Initialize background job schedulers
 	linkExpirationScheduler := scheduler.NewLinkExpirationScheduler(
-		linkUseCase,
+		commandBus,
 		linkRepo,
 		cfg.LinkExpirationInterval,
 		cfg.LinkExpirationEnabled,
@@ -124,8 +153,8 @@ func main() {
 	linkExpirationScheduler.Start()
 	log.Printf("Background jobs initialized")
 
-	// Initialize gRPC handler
-	linkHandler := grpcHandler.NewLinkHandler(linkUseCase, clickUseCase)
+	// Initialize gRPC handler with CQRS components
+	linkHandler := grpcHandler.NewLinkHandler(commandBus, queryBus, cfg)
 
 	// Setup gRPC server
 	grpcServer := setupGRPCServer(cfg, keycloakAuth, linkHandler)
