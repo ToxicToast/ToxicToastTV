@@ -17,18 +17,20 @@ import (
 	"google.golang.org/grpc/reflection"
 	"gorm.io/gorm"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	"github.com/toxictoast/toxictoastgo/shared/database"
 	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
 
 	pb "toxictoast/services/webhook-service/api/proto"
+	"toxictoast/services/webhook-service/internal/command"
 	"toxictoast/services/webhook-service/internal/consumer"
 	"toxictoast/services/webhook-service/internal/delivery"
 	grpcHandler "toxictoast/services/webhook-service/internal/handler/grpc"
+	"toxictoast/services/webhook-service/internal/query"
 	"toxictoast/services/webhook-service/internal/repository/entity"
 	"toxictoast/services/webhook-service/internal/repository/impl"
 	"toxictoast/services/webhook-service/internal/scheduler"
-	"toxictoast/services/webhook-service/internal/usecase"
 	"toxictoast/services/webhook-service/pkg/config"
 )
 
@@ -112,10 +114,34 @@ func main() {
 	deliveryPool.Start()
 	logger.Info("Delivery pool started")
 
-	// Initialize use cases
-	webhookUC := usecase.NewWebhookUseCase(webhookRepo)
-	deliveryUC := usecase.NewDeliveryUseCase(deliveryRepo, webhookRepo, deliveryPool)
-	logger.Info("Use cases initialized")
+	// Initialize CQRS buses
+	commandBus := cqrs.NewCommandBus()
+	queryBus := cqrs.NewQueryBus()
+	logger.Info("CQRS buses initialized")
+
+	// Register command handlers
+	logger.Info("Registering command handlers...")
+	commandBus.RegisterHandler("create_webhook", command.NewCreateWebhookHandler(webhookRepo))
+	commandBus.RegisterHandler("update_webhook", command.NewUpdateWebhookHandler(webhookRepo))
+	commandBus.RegisterHandler("delete_webhook", command.NewDeleteWebhookHandler(webhookRepo))
+	commandBus.RegisterHandler("toggle_webhook", command.NewToggleWebhookHandler(webhookRepo))
+	commandBus.RegisterHandler("regenerate_secret", command.NewRegenerateSecretHandler(webhookRepo))
+	commandBus.RegisterHandler("process_event", command.NewProcessEventHandler(deliveryRepo, webhookRepo, deliveryPool))
+	commandBus.RegisterHandler("retry_delivery", command.NewRetryDeliveryHandler(deliveryRepo))
+	commandBus.RegisterHandler("delete_delivery", command.NewDeleteDeliveryHandler(deliveryRepo))
+	commandBus.RegisterHandler("cleanup_old_deliveries", command.NewCleanupOldDeliveriesHandler(deliveryRepo))
+	commandBus.RegisterHandler("test_webhook", command.NewTestWebhookHandler(deliveryRepo, webhookRepo, deliveryPool))
+	logger.Info("Command handlers registered")
+
+	// Register query handlers
+	logger.Info("Registering query handlers...")
+	queryBus.RegisterHandler("get_webhook_by_id", query.NewGetWebhookByIDHandler(webhookRepo))
+	queryBus.RegisterHandler("list_webhooks", query.NewListWebhooksHandler(webhookRepo))
+	queryBus.RegisterHandler("get_active_webhooks_for_event", query.NewGetActiveWebhooksForEventHandler(webhookRepo))
+	queryBus.RegisterHandler("get_delivery_by_id", query.NewGetDeliveryByIDHandler(deliveryRepo))
+	queryBus.RegisterHandler("list_deliveries", query.NewListDeliveriesHandler(deliveryRepo))
+	queryBus.RegisterHandler("get_queue_status", query.NewGetQueueStatusHandler(deliveryPool))
+	logger.Info("Query handlers registered")
 
 	// Initialize Kafka consumer
 	kafkaConsumer := consumer.NewKafkaConsumer(
@@ -125,7 +151,7 @@ func main() {
 			GroupID:     cfg.Kafka.GroupID,
 			WorkerCount: cfg.Webhook.WorkerCount,
 		},
-		deliveryUC,
+		commandBus,
 	)
 	logger.Info("Kafka consumer created")
 
@@ -157,8 +183,8 @@ func main() {
 	logger.Info("Background jobs initialized")
 
 	// Initialize gRPC handlers
-	webhookHandler := grpcHandler.NewWebhookHandler(webhookUC, deliveryUC)
-	deliveryHandler := grpcHandler.NewDeliveryHandler(deliveryUC)
+	webhookHandler := grpcHandler.NewWebhookHandler(commandBus, queryBus)
+	deliveryHandler := grpcHandler.NewDeliveryHandler(commandBus, queryBus)
 	logger.Info("gRPC handlers initialized")
 
 	// Create gRPC server with auth interceptors

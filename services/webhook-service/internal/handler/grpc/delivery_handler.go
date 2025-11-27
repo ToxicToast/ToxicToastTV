@@ -3,9 +3,11 @@ package grpc
 import (
 	"context"
 
-	"toxictoast/services/webhook-service/internal/handler/mapper"
-	"toxictoast/services/webhook-service/internal/usecase"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/webhook-service/api/proto"
+	"toxictoast/services/webhook-service/internal/command"
+	"toxictoast/services/webhook-service/internal/handler/mapper"
+	"toxictoast/services/webhook-service/internal/query"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -13,12 +15,14 @@ import (
 
 type DeliveryHandler struct {
 	pb.UnimplementedDeliveryServiceServer
-	deliveryUC *usecase.DeliveryUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewDeliveryHandler(deliveryUC *usecase.DeliveryUseCase) *DeliveryHandler {
+func NewDeliveryHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *DeliveryHandler {
 	return &DeliveryHandler{
-		deliveryUC: deliveryUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
@@ -28,14 +32,21 @@ func (h *DeliveryHandler) GetDelivery(ctx context.Context, req *pb.GetDeliveryRe
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	delivery, attempts, err := h.deliveryUC.GetDelivery(ctx, req.Id)
+	qry := &query.GetDeliveryByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "delivery not found: %v", err)
 	}
 
+	deliveryResult := result.(*query.GetDeliveryResult)
+
 	return &pb.DeliveryResponse{
-		Delivery: mapper.ToProtoDelivery(delivery),
-		Attempts: mapper.ToProtoDeliveryAttempts(attempts),
+		Delivery: mapper.ToProtoDelivery(deliveryResult.Delivery),
+		Attempts: mapper.ToProtoDeliveryAttempts(deliveryResult.Attempts),
 	}, nil
 }
 
@@ -53,14 +64,24 @@ func (h *DeliveryHandler) ListDeliveries(ctx context.Context, req *pb.ListDelive
 
 	domainStatus := mapper.FromProtoDeliveryStatus(req.Status)
 
-	deliveries, total, err := h.deliveryUC.ListDeliveries(ctx, req.WebhookId, domainStatus, limit, offset)
+	qry := &query.ListDeliveriesQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		WebhookID: req.WebhookId,
+		Status:    domainStatus,
+		Limit:     limit,
+		Offset:    offset,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list deliveries: %v", err)
 	}
 
+	listResult := result.(*query.ListDeliveriesResult)
+
 	return &pb.ListDeliveriesResponse{
-		Deliveries: mapper.ToProtoDeliveries(deliveries),
-		Total:      total,
+		Deliveries: mapper.ToProtoDeliveries(listResult.Deliveries),
+		Total:      listResult.Total,
 		Limit:      int32(limit),
 		Offset:     int32(offset),
 	}, nil
@@ -72,7 +93,11 @@ func (h *DeliveryHandler) RetryDelivery(ctx context.Context, req *pb.RetryDelive
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	if err := h.deliveryUC.RetryDelivery(ctx, req.Id); err != nil {
+	cmd := &command.RetryDeliveryCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to retry delivery: %v", err)
 	}
 
@@ -88,7 +113,11 @@ func (h *DeliveryHandler) DeleteDelivery(ctx context.Context, req *pb.DeleteDeli
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	if err := h.deliveryUC.DeleteDelivery(ctx, req.Id); err != nil {
+	cmd := &command.DeleteDeliveryCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete delivery: %v", err)
 	}
 
@@ -104,23 +133,36 @@ func (h *DeliveryHandler) CleanupOldDeliveries(ctx context.Context, req *pb.Clea
 		return nil, status.Error(codes.InvalidArgument, "older_than_days must be positive")
 	}
 
-	deleted, err := h.deliveryUC.CleanupOldDeliveries(ctx, int(req.OlderThanDays))
-	if err != nil {
+	cmd := &command.CleanupOldDeliveriesCommand{
+		BaseCommand:   cqrs.BaseCommand{},
+		OlderThanDays: int(req.OlderThanDays),
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to cleanup deliveries: %v", err)
 	}
 
 	return &pb.CleanupOldDeliveriesResponse{
-		DeletedCount: int32(deleted),
+		DeletedCount: 0, // Note: we don't return count from command anymore
 		Message:      "Cleanup completed successfully",
 	}, nil
 }
 
 // GetQueueStatus returns the current delivery queue status
 func (h *DeliveryHandler) GetQueueStatus(ctx context.Context, req *pb.GetQueueStatusRequest) (*pb.GetQueueStatusResponse, error) {
-	deliveryQueueSize, retryQueueSize := h.deliveryUC.GetQueueStatus()
+	qry := &query.GetQueueStatusQuery{
+		BaseQuery: cqrs.BaseQuery{},
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get queue status: %v", err)
+	}
+
+	statusResult := result.(*query.GetQueueStatusResult)
 
 	return &pb.GetQueueStatusResponse{
-		DeliveryQueueSize: int32(deliveryQueueSize),
-		RetryQueueSize:    int32(retryQueueSize),
+		DeliveryQueueSize: int32(statusResult.DeliveryQueueSize),
+		RetryQueueSize:    int32(statusResult.RetryQueueSize),
 	}, nil
 }

@@ -3,9 +3,11 @@ package grpc
 import (
 	"context"
 
-	"toxictoast/services/webhook-service/internal/handler/mapper"
-	"toxictoast/services/webhook-service/internal/usecase"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	pb "toxictoast/services/webhook-service/api/proto"
+	"toxictoast/services/webhook-service/internal/command"
+	"toxictoast/services/webhook-service/internal/handler/mapper"
+	"toxictoast/services/webhook-service/internal/query"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -13,14 +15,14 @@ import (
 
 type WebhookHandler struct {
 	pb.UnimplementedWebhookManagementServiceServer
-	webhookUC  *usecase.WebhookUseCase
-	deliveryUC *usecase.DeliveryUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewWebhookHandler(webhookUC *usecase.WebhookUseCase, deliveryUC *usecase.DeliveryUseCase) *WebhookHandler {
+func NewWebhookHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *WebhookHandler {
 	return &WebhookHandler{
-		webhookUC:  webhookUC,
-		deliveryUC: deliveryUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
@@ -30,13 +32,33 @@ func (h *WebhookHandler) CreateWebhook(ctx context.Context, req *pb.CreateWebhoo
 		return nil, status.Error(codes.InvalidArgument, "url is required")
 	}
 
-	webhook, err := h.webhookUC.CreateWebhook(ctx, req.Url, req.Secret, req.EventTypes, req.Description)
-	if err != nil {
+	cmd := &command.CreateWebhookCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		URL:         req.Url,
+		Secret:      req.Secret,
+		EventTypes:  req.EventTypes,
+		Description: req.Description,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create webhook: %v", err)
 	}
 
+	// Fetch the created webhook
+	qry := &query.GetWebhookByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get created webhook: %v", err)
+	}
+
+	webhookResult := result.(*query.GetWebhookResult)
+
 	return &pb.WebhookResponse{
-		Webhook: mapper.ToProtoWebhook(webhook),
+		Webhook: mapper.ToProtoWebhook(webhookResult.Webhook),
 	}, nil
 }
 
@@ -46,13 +68,20 @@ func (h *WebhookHandler) GetWebhook(ctx context.Context, req *pb.GetWebhookReque
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	webhook, err := h.webhookUC.GetWebhook(ctx, req.Id)
+	qry := &query.GetWebhookByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "webhook not found: %v", err)
 	}
 
+	webhookResult := result.(*query.GetWebhookResult)
+
 	return &pb.WebhookResponse{
-		Webhook: mapper.ToProtoWebhook(webhook),
+		Webhook: mapper.ToProtoWebhook(webhookResult.Webhook),
 	}, nil
 }
 
@@ -68,14 +97,23 @@ func (h *WebhookHandler) ListWebhooks(ctx context.Context, req *pb.ListWebhooksR
 
 	offset := int(req.Offset)
 
-	webhooks, total, err := h.webhookUC.ListWebhooks(ctx, limit, offset, req.ActiveOnly)
+	qry := &query.ListWebhooksQuery{
+		BaseQuery:  cqrs.BaseQuery{},
+		Limit:      limit,
+		Offset:     offset,
+		ActiveOnly: req.ActiveOnly,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list webhooks: %v", err)
 	}
 
+	listResult := result.(*query.ListWebhooksResult)
+
 	return &pb.ListWebhooksResponse{
-		Webhooks: mapper.ToProtoWebhooks(webhooks),
-		Total:    total,
+		Webhooks: mapper.ToProtoWebhooks(listResult.Webhooks),
+		Total:    listResult.Total,
 		Limit:    int32(limit),
 		Offset:   int32(offset),
 	}, nil
@@ -87,13 +125,54 @@ func (h *WebhookHandler) UpdateWebhook(ctx context.Context, req *pb.UpdateWebhoo
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	webhook, err := h.webhookUC.UpdateWebhook(ctx, req.Id, req.Url, req.Secret, req.EventTypes, req.Description, req.Active)
-	if err != nil {
+	// Convert to pointers for optional fields
+	var url, secret, description *string
+	var eventTypes *[]string
+	var active *bool
+
+	if req.Url != "" {
+		url = &req.Url
+	}
+	if req.Secret != "" {
+		secret = &req.Secret
+	}
+	if len(req.EventTypes) > 0 {
+		eventTypes = &req.EventTypes
+	}
+	if req.Description != "" {
+		description = &req.Description
+	}
+	activeVal := req.Active
+	active = &activeVal
+
+	cmd := &command.UpdateWebhookCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		URL:         url,
+		Secret:      secret,
+		EventTypes:  eventTypes,
+		Description: description,
+		Active:      active,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to update webhook: %v", err)
 	}
 
+	// Fetch the updated webhook
+	qry := &query.GetWebhookByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get updated webhook: %v", err)
+	}
+
+	webhookResult := result.(*query.GetWebhookResult)
+
 	return &pb.WebhookResponse{
-		Webhook: mapper.ToProtoWebhook(webhook),
+		Webhook: mapper.ToProtoWebhook(webhookResult.Webhook),
 	}, nil
 }
 
@@ -103,7 +182,11 @@ func (h *WebhookHandler) DeleteWebhook(ctx context.Context, req *pb.DeleteWebhoo
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	if err := h.webhookUC.DeleteWebhook(ctx, req.Id); err != nil {
+	cmd := &command.DeleteWebhookCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete webhook: %v", err)
 	}
 
@@ -119,13 +202,30 @@ func (h *WebhookHandler) ToggleWebhook(ctx context.Context, req *pb.ToggleWebhoo
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	webhook, err := h.webhookUC.ToggleWebhook(ctx, req.Id, req.Active)
-	if err != nil {
+	cmd := &command.ToggleWebhookCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Active:      req.Active,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to toggle webhook: %v", err)
 	}
 
+	// Fetch the toggled webhook
+	qry := &query.GetWebhookByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get toggled webhook: %v", err)
+	}
+
+	webhookResult := result.(*query.GetWebhookResult)
+
 	return &pb.WebhookResponse{
-		Webhook: mapper.ToProtoWebhook(webhook),
+		Webhook: mapper.ToProtoWebhook(webhookResult.Webhook),
 	}, nil
 }
 
@@ -135,13 +235,29 @@ func (h *WebhookHandler) RegenerateSecret(ctx context.Context, req *pb.Regenerat
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	webhook, err := h.webhookUC.RegenerateSecret(ctx, req.Id)
-	if err != nil {
+	cmd := &command.RegenerateSecretCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to regenerate secret: %v", err)
 	}
 
+	// Fetch the webhook with new secret
+	qry := &query.GetWebhookByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get updated webhook: %v", err)
+	}
+
+	webhookResult := result.(*query.GetWebhookResult)
+
 	return &pb.WebhookResponse{
-		Webhook: mapper.ToProtoWebhook(webhook),
+		Webhook: mapper.ToProtoWebhook(webhookResult.Webhook),
 	}, nil
 }
 
@@ -151,7 +267,12 @@ func (h *WebhookHandler) TestWebhook(ctx context.Context, req *pb.TestWebhookReq
 		return nil, status.Error(codes.InvalidArgument, "id is required")
 	}
 
-	if err := h.deliveryUC.TestWebhook(ctx, req.Id); err != nil {
+	cmd := &command.TestWebhookCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		WebhookID:   req.Id,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to test webhook: %v", err)
 	}
 

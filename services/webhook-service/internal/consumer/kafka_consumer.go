@@ -6,16 +6,17 @@ import (
 	"fmt"
 	"sync"
 
-	"toxictoast/services/webhook-service/internal/domain"
-	"toxictoast/services/webhook-service/internal/usecase"
-
 	"github.com/segmentio/kafka-go"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	"github.com/toxictoast/toxictoastgo/shared/logger"
+
+	"toxictoast/services/webhook-service/internal/command"
+	"toxictoast/services/webhook-service/internal/domain"
 )
 
 type KafkaConsumer struct {
 	reader         *kafka.Reader
-	deliveryUC     *usecase.DeliveryUseCase
+	commandBus     *cqrs.CommandBus
 	wg             sync.WaitGroup
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -24,15 +25,15 @@ type KafkaConsumer struct {
 }
 
 type Config struct {
-	Brokers      []string
-	Topics       []string
-	GroupID      string
-	WorkerCount  int
+	Brokers     []string
+	Topics      []string
+	GroupID     string
+	WorkerCount int
 }
 
 func NewKafkaConsumer(
 	config Config,
-	deliveryUC *usecase.DeliveryUseCase,
+	commandBus *cqrs.CommandBus,
 ) *KafkaConsumer {
 	if config.WorkerCount == 0 {
 		config.WorkerCount = 5
@@ -65,7 +66,7 @@ func NewKafkaConsumer(
 
 	return &KafkaConsumer{
 		reader:         reader,
-		deliveryUC:     deliveryUC,
+		commandBus:     commandBus,
 		ctx:            ctx,
 		cancel:         cancel,
 		messageChannel: make(chan kafka.Message, 100),
@@ -186,8 +187,13 @@ func (c *KafkaConsumer) processMessage(msg kafka.Message) error {
 		event.Source = "kafka"
 	}
 
-	// Process event and queue deliveries
-	if err := c.deliveryUC.ProcessEvent(c.ctx, &event); err != nil {
+	// Process event and queue deliveries using CommandBus
+	cmd := &command.ProcessEventCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Event:       &event,
+	}
+
+	if err := c.commandBus.Dispatch(c.ctx, cmd); err != nil {
 		return fmt.Errorf("failed to process event: %w", err)
 	}
 
