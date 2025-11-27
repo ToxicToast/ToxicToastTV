@@ -6,19 +6,23 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
+	"toxictoast/services/twitchbot-service/internal/command"
 	"toxictoast/services/twitchbot-service/internal/handler/mapper"
-	"toxictoast/services/twitchbot-service/internal/usecase"
+	"toxictoast/services/twitchbot-service/internal/query"
 	pb "toxictoast/services/twitchbot-service/api/proto"
 )
 
 type ChannelViewerHandler struct {
 	pb.UnimplementedChannelViewerServiceServer
-	channelViewerUC usecase.ChannelViewerUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewChannelViewerHandler(channelViewerUC usecase.ChannelViewerUseCase) *ChannelViewerHandler {
+func NewChannelViewerHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *ChannelViewerHandler {
 	return &ChannelViewerHandler{
-		channelViewerUC: channelViewerUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
@@ -30,17 +34,24 @@ func (h *ChannelViewerHandler) GetChannelViewer(ctx context.Context, req *pb.Get
 		return nil, status.Error(codes.InvalidArgument, "twitch_id is required")
 	}
 
-	viewer, err := h.channelViewerUC.GetViewer(ctx, req.Channel, req.TwitchId)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetChannelViewerQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Channel:   req.Channel,
+		TwitchID:  req.TwitchId,
 	}
 
-	if viewer == nil {
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "viewer not found in this channel")
+	}
+
+	viewerResult := result.(*query.GetChannelViewerResult)
+	if viewerResult.ChannelViewer == nil {
 		return nil, status.Error(codes.NotFound, "viewer not found in this channel")
 	}
 
 	return &pb.GetChannelViewerResponse{
-		Viewer: mapper.ChannelViewerToProto(viewer),
+		Viewer: mapper.ChannelViewerToProto(viewerResult.ChannelViewer),
 	}, nil
 }
 
@@ -59,14 +70,23 @@ func (h *ChannelViewerHandler) ListChannelViewers(ctx context.Context, req *pb.L
 		offset = 0
 	}
 
-	viewers, total, err := h.channelViewerUC.ListViewers(ctx, req.Channel, limit, offset)
+	qry := &query.ListChannelViewersQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Channel:   req.Channel,
+		Limit:     limit,
+		Offset:    offset,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	listResult := result.(*query.ListChannelViewersResult)
+
 	return &pb.ListChannelViewersResponse{
-		Viewers: mapper.ChannelViewersToProto(viewers),
-		Total:   int32(total),
+		Viewers: mapper.ChannelViewersToProto(listResult.ChannelViewers),
+		Total:   int32(listResult.Total),
 	}, nil
 }
 
@@ -75,13 +95,20 @@ func (h *ChannelViewerHandler) CountChannelViewers(ctx context.Context, req *pb.
 		return nil, status.Error(codes.InvalidArgument, "channel is required")
 	}
 
-	count, err := h.channelViewerUC.CountViewers(ctx, req.Channel)
+	qry := &query.CountChannelViewersQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Channel:   req.Channel,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	countResult := result.(*query.CountChannelViewersResult)
+
 	return &pb.CountChannelViewersResponse{
-		Count: int32(count),
+		Count: int32(countResult.Count),
 	}, nil
 }
 
@@ -93,7 +120,13 @@ func (h *ChannelViewerHandler) RemoveChannelViewer(ctx context.Context, req *pb.
 		return nil, status.Error(codes.InvalidArgument, "twitch_id is required")
 	}
 
-	err := h.channelViewerUC.RemoveViewer(ctx, req.Channel, req.TwitchId)
+	cmd := &command.RemoveViewerCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Channel:     req.Channel,
+		TwitchID:    req.TwitchId,
+	}
+
+	err := h.commandBus.Dispatch(ctx, cmd)
 	if err != nil {
 		return &pb.DeleteResponse{
 			Success: false,

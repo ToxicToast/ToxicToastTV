@@ -6,62 +6,84 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
+	"toxictoast/services/twitchbot-service/internal/command"
 	"toxictoast/services/twitchbot-service/internal/handler/mapper"
-	"toxictoast/services/twitchbot-service/internal/usecase"
+	"toxictoast/services/twitchbot-service/internal/query"
 	pb "toxictoast/services/twitchbot-service/api/proto"
 )
 
 type CommandHandler struct {
 	pb.UnimplementedCommandServiceServer
-	commandUC usecase.CommandUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewCommandHandler(commandUC usecase.CommandUseCase) *CommandHandler {
+func NewCommandHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *CommandHandler {
 	return &CommandHandler{
-		commandUC: commandUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
 func (h *CommandHandler) CreateCommand(ctx context.Context, req *pb.CreateCommandRequest) (*pb.CreateCommandResponse, error) {
-	command, err := h.commandUC.CreateCommand(
-		ctx,
-		req.Name,
-		req.Description,
-		req.Response,
-		req.IsActive,
-		req.ModeratorOnly,
-		req.SubscriberOnly,
-		int(req.CooldownSeconds),
-	)
+	cmd := &command.CreateCommandCommand{
+		BaseCommand:     cqrs.BaseCommand{},
+		Name:            req.Name,
+		Description:     req.Description,
+		Response:        req.Response,
+		IsActive:        req.IsActive,
+		ModeratorOnly:   req.ModeratorOnly,
+		SubscriberOnly:  req.SubscriberOnly,
+		CooldownSeconds: int(req.CooldownSeconds),
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	// Fetch the created command
+	qry := &query.GetCommandByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	commandResult := result.(*query.GetCommandResult)
+
 	return &pb.CreateCommandResponse{
-		Command: mapper.CommandToProto(command),
+		Command: mapper.CommandToProto(commandResult.Command),
 	}, nil
 }
 
 func (h *CommandHandler) GetCommand(ctx context.Context, req *pb.IdRequest) (*pb.GetCommandResponse, error) {
-	command, err := h.commandUC.GetCommandByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrCommandNotFound {
-			return nil, status.Error(codes.NotFound, "command not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetCommandByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
 
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "command not found")
+	}
+
+	commandResult := result.(*query.GetCommandResult)
+
 	return &pb.GetCommandResponse{
-		Command: mapper.CommandToProto(command),
+		Command: mapper.CommandToProto(commandResult.Command),
 	}, nil
 }
 
 func (h *CommandHandler) ListCommands(ctx context.Context, req *pb.ListCommandsRequest) (*pb.ListCommandsResponse, error) {
-	page := req.Offset
+	page := int(req.Offset)
 	if page <= 0 {
 		page = 1
 	}
-	pageSize := req.Limit
+	pageSize := int(req.Limit)
 	if pageSize <= 0 {
 		pageSize = 10
 	}
@@ -71,14 +93,24 @@ func (h *CommandHandler) ListCommands(ctx context.Context, req *pb.ListCommandsR
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	commands, total, err := h.commandUC.ListCommands(ctx, int(page), int(pageSize), req.OnlyActive, includeDeleted)
+	qry := &query.ListCommandsQuery{
+		BaseQuery:      cqrs.BaseQuery{},
+		Page:           page,
+		PageSize:       pageSize,
+		OnlyActive:     req.OnlyActive,
+		IncludeDeleted: includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	listResult := result.(*query.ListCommandsResult)
+
 	return &pb.ListCommandsResponse{
-		Commands: mapper.CommandsToProto(commands),
-		Total:    int32(total),
+		Commands: mapper.CommandsToProto(listResult.Commands),
+		Total:    int32(listResult.Total),
 	}, nil
 }
 
@@ -110,24 +142,45 @@ func (h *CommandHandler) UpdateCommand(ctx context.Context, req *pb.UpdateComman
 		cooldownSeconds = &cs
 	}
 
-	command, err := h.commandUC.UpdateCommand(ctx, req.Id, name, description, response, isActive, moderatorOnly, subscriberOnly, cooldownSeconds)
-	if err != nil {
-		if err == usecase.ErrCommandNotFound {
-			return nil, status.Error(codes.NotFound, "command not found")
-		}
+	cmd := &command.UpdateCommandCommand{
+		BaseCommand:     cqrs.BaseCommand{AggregateID: req.Id},
+		Name:            name,
+		Description:     description,
+		Response:        response,
+		IsActive:        isActive,
+		ModeratorOnly:   moderatorOnly,
+		SubscriberOnly:  subscriberOnly,
+		CooldownSeconds: cooldownSeconds,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// Fetch the updated command
+	qry := &query.GetCommandByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "command not found")
+	}
+
+	commandResult := result.(*query.GetCommandResult)
+
 	return &pb.UpdateCommandResponse{
-		Command: mapper.CommandToProto(command),
+		Command: mapper.CommandToProto(commandResult.Command),
 	}, nil
 }
 
 func (h *CommandHandler) DeleteCommand(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	if err := h.commandUC.DeleteCommand(ctx, req.Id); err != nil {
-		if err == usecase.ErrCommandNotFound {
-			return nil, status.Error(codes.NotFound, "command not found")
-		}
+	cmd := &command.DeleteCommandCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -138,31 +191,38 @@ func (h *CommandHandler) DeleteCommand(ctx context.Context, req *pb.IdRequest) (
 }
 
 func (h *CommandHandler) GetCommandByName(ctx context.Context, req *pb.GetCommandByNameRequest) (*pb.GetCommandResponse, error) {
-	command, err := h.commandUC.GetCommandByName(ctx, req.Name)
-	if err != nil {
-		if err == usecase.ErrCommandNotFound {
-			return nil, status.Error(codes.NotFound, "command not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetCommandByNameQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Name:      req.Name,
 	}
 
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "command not found")
+	}
+
+	commandResult := result.(*query.GetCommandResult)
+
 	return &pb.GetCommandResponse{
-		Command: mapper.CommandToProto(command),
+		Command: mapper.CommandToProto(commandResult.Command),
 	}, nil
 }
 
 func (h *CommandHandler) ExecuteCommand(ctx context.Context, req *pb.ExecuteCommandRequest) (*pb.ExecuteCommandResponse, error) {
-	success, response, err, cooldownRemaining := h.commandUC.ExecuteCommand(
-		ctx,
-		req.CommandName,
-		req.UserId,
-		req.Username,
-		req.IsModerator,
-		req.IsSubscriber,
-	)
+	cmd := &command.ExecuteCommandCommand{
+		BaseCommand:  cqrs.BaseCommand{},
+		Name:         req.CommandName,
+		UserID:       req.UserId,
+		Username:     req.Username,
+		IsModerator:  req.IsModerator,
+		IsSubscriber: req.IsSubscriber,
+	}
 
+	err := h.commandBus.Dispatch(ctx, cmd)
+
+	// Handle specific errors
 	if err != nil {
-		if err == usecase.ErrCommandNotFound {
+		if err.Error() == "command not found" {
 			return &pb.ExecuteCommandResponse{
 				Success:           false,
 				Response:          "",
@@ -170,7 +230,7 @@ func (h *CommandHandler) ExecuteCommand(ctx context.Context, req *pb.ExecuteComm
 				CooldownRemaining: 0,
 			}, nil
 		}
-		if err == usecase.ErrCommandNotActive {
+		if err.Error() == "command is not active" {
 			return &pb.ExecuteCommandResponse{
 				Success:           false,
 				Response:          "",
@@ -178,7 +238,7 @@ func (h *CommandHandler) ExecuteCommand(ctx context.Context, req *pb.ExecuteComm
 				CooldownRemaining: 0,
 			}, nil
 		}
-		if err == usecase.ErrCommandNotAuthorized {
+		if err.Error() == "user not authorized to use this command" {
 			return &pb.ExecuteCommandResponse{
 				Success:           false,
 				Response:          "",
@@ -186,20 +246,33 @@ func (h *CommandHandler) ExecuteCommand(ctx context.Context, req *pb.ExecuteComm
 				CooldownRemaining: 0,
 			}, nil
 		}
-		if err == usecase.ErrCommandOnCooldown {
+		if err.Error() == "command is on cooldown" {
 			return &pb.ExecuteCommandResponse{
 				Success:           false,
 				Response:          "",
 				Error:             "command is on cooldown",
-				CooldownRemaining: int32(cooldownRemaining),
+				CooldownRemaining: 0, // TODO: Calculate remaining cooldown
 			}, nil
 		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// Get the command to return its response
+	qry := &query.GetCommandByNameQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		Name:      req.CommandName,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	commandResult := result.(*query.GetCommandResult)
+
 	return &pb.ExecuteCommandResponse{
-		Success:           success,
-		Response:          response,
+		Success:           true,
+		Response:          commandResult.Command.Response,
 		Error:             "",
 		CooldownRemaining: 0,
 	}, nil

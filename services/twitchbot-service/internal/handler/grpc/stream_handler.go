@@ -6,53 +6,80 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
+	"toxictoast/services/twitchbot-service/internal/command"
 	"toxictoast/services/twitchbot-service/internal/handler/mapper"
-	"toxictoast/services/twitchbot-service/internal/usecase"
+	"toxictoast/services/twitchbot-service/internal/query"
 	pb "toxictoast/services/twitchbot-service/api/proto"
 )
 
 type StreamHandler struct {
 	pb.UnimplementedStreamServiceServer
-	streamUC usecase.StreamUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewStreamHandler(streamUC usecase.StreamUseCase) *StreamHandler {
+func NewStreamHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *StreamHandler {
 	return &StreamHandler{
-		streamUC: streamUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
 func (h *StreamHandler) CreateStream(ctx context.Context, req *pb.CreateStreamRequest) (*pb.CreateStreamResponse, error) {
-	stream, err := h.streamUC.CreateStream(ctx, req.Title, req.GameName, req.GameId)
+	cmd := &command.CreateStreamCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		Title:       req.Title,
+		GameName:    req.GameName,
+		GameID:      req.GameId,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	// Fetch the created stream
+	qry := &query.GetStreamByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	streamResult := result.(*query.GetStreamResult)
+
 	return &pb.CreateStreamResponse{
-		Stream: mapper.StreamToProto(stream),
+		Stream: mapper.StreamToProto(streamResult.Stream),
 	}, nil
 }
 
 func (h *StreamHandler) GetStream(ctx context.Context, req *pb.IdRequest) (*pb.GetStreamResponse, error) {
-	stream, err := h.streamUC.GetStreamByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrStreamNotFound {
-			return nil, status.Error(codes.NotFound, "stream not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetStreamByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
 
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "stream not found")
+	}
+
+	streamResult := result.(*query.GetStreamResult)
+
 	return &pb.GetStreamResponse{
-		Stream: mapper.StreamToProto(stream),
+		Stream: mapper.StreamToProto(streamResult.Stream),
 	}, nil
 }
 
 func (h *StreamHandler) ListStreams(ctx context.Context, req *pb.ListStreamsRequest) (*pb.ListStreamsResponse, error) {
-	page := req.Offset
+	page := int(req.Offset)
 	if page <= 0 {
 		page = 1
 	}
-	pageSize := req.Limit
+	pageSize := int(req.Limit)
 	if pageSize <= 0 {
 		pageSize = 10
 	}
@@ -62,14 +89,25 @@ func (h *StreamHandler) ListStreams(ctx context.Context, req *pb.ListStreamsRequ
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	streams, total, err := h.streamUC.ListStreams(ctx, int(page), int(pageSize), req.OnlyActive, req.GameName, includeDeleted)
+	qry := &query.ListStreamsQuery{
+		BaseQuery:      cqrs.BaseQuery{},
+		Page:           page,
+		PageSize:       pageSize,
+		OnlyActive:     req.OnlyActive,
+		GameName:       req.GameName,
+		IncludeDeleted: includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	listResult := result.(*query.ListStreamsResult)
+
 	return &pb.ListStreamsResponse{
-		Streams: mapper.StreamsToProto(streams),
-		Total:   int32(total),
+		Streams: mapper.StreamsToProto(listResult.Streams),
+		Total:   int32(listResult.Total),
 	}, nil
 }
 
@@ -95,24 +133,43 @@ func (h *StreamHandler) UpdateStream(ctx context.Context, req *pb.UpdateStreamRe
 		averageViewers = &av
 	}
 
-	stream, err := h.streamUC.UpdateStream(ctx, req.Id, title, gameName, gameID, peakViewers, averageViewers)
-	if err != nil {
-		if err == usecase.ErrStreamNotFound {
-			return nil, status.Error(codes.NotFound, "stream not found")
-		}
+	cmd := &command.UpdateStreamCommand{
+		BaseCommand:    cqrs.BaseCommand{AggregateID: req.Id},
+		Title:          title,
+		GameName:       gameName,
+		GameID:         gameID,
+		PeakViewers:    peakViewers,
+		AverageViewers: averageViewers,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// Fetch the updated stream
+	qry := &query.GetStreamByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "stream not found")
+	}
+
+	streamResult := result.(*query.GetStreamResult)
+
 	return &pb.UpdateStreamResponse{
-		Stream: mapper.StreamToProto(stream),
+		Stream: mapper.StreamToProto(streamResult.Stream),
 	}, nil
 }
 
 func (h *StreamHandler) DeleteStream(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	if err := h.streamUC.DeleteStream(ctx, req.Id); err != nil {
-		if err == usecase.ErrStreamNotFound {
-			return nil, status.Error(codes.NotFound, "stream not found")
-		}
+	cmd := &command.DeleteStreamCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -123,50 +180,67 @@ func (h *StreamHandler) DeleteStream(ctx context.Context, req *pb.IdRequest) (*p
 }
 
 func (h *StreamHandler) EndStream(ctx context.Context, req *pb.EndStreamRequest) (*pb.EndStreamResponse, error) {
-	stream, err := h.streamUC.EndStream(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrStreamNotFound {
-			return nil, status.Error(codes.NotFound, "stream not found")
-		}
-		if err == usecase.ErrStreamAlreadyEnded {
-			return nil, status.Error(codes.FailedPrecondition, "stream already ended")
-		}
+	cmd := &command.EndStreamCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// Fetch the ended stream
+	qry := &query.GetStreamByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "stream not found")
+	}
+
+	streamResult := result.(*query.GetStreamResult)
+
 	return &pb.EndStreamResponse{
-		Stream: mapper.StreamToProto(stream),
+		Stream: mapper.StreamToProto(streamResult.Stream),
 	}, nil
 }
 
 func (h *StreamHandler) GetActiveStream(ctx context.Context, req *pb.GetActiveStreamRequest) (*pb.GetActiveStreamResponse, error) {
-	stream, err := h.streamUC.GetActiveStream(ctx)
-	if err != nil {
-		if err == usecase.ErrNoActiveStream {
-			return nil, status.Error(codes.NotFound, "no active stream")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetActiveStreamQuery{
+		BaseQuery: cqrs.BaseQuery{},
 	}
 
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "no active stream")
+	}
+
+	streamResult := result.(*query.GetActiveStreamResult)
+
 	return &pb.GetActiveStreamResponse{
-		Stream: mapper.StreamToProto(stream),
+		Stream: mapper.StreamToProto(streamResult.Stream),
 	}, nil
 }
 
 func (h *StreamHandler) GetStreamStats(ctx context.Context, req *pb.IdRequest) (*pb.GetStreamStatsResponse, error) {
-	peakViewers, averageViewers, totalMessages, uniqueViewers, durationSeconds, err := h.streamUC.GetStreamStats(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrStreamNotFound {
-			return nil, status.Error(codes.NotFound, "stream not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetStreamStatsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
 
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "stream not found")
+	}
+
+	statsResult := result.(*query.GetStreamStatsResult)
+
 	return &pb.GetStreamStatsResponse{
-		PeakViewers:     int32(peakViewers),
-		AverageViewers:  int32(averageViewers),
-		TotalMessages:   int32(totalMessages),
-		UniqueViewers:   int32(uniqueViewers),
-		DurationSeconds: durationSeconds,
+		PeakViewers:     int32(statsResult.PeakViewers),
+		AverageViewers:  int32(statsResult.AverageViewers),
+		TotalMessages:   int32(statsResult.TotalMessages),
+		UniqueViewers:   int32(statsResult.UniqueViewers),
+		DurationSeconds: statsResult.DurationSeconds,
 	}, nil
 }

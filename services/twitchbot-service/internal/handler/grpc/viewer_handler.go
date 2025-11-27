@@ -6,53 +6,80 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
+	"toxictoast/services/twitchbot-service/internal/command"
 	"toxictoast/services/twitchbot-service/internal/handler/mapper"
-	"toxictoast/services/twitchbot-service/internal/usecase"
+	"toxictoast/services/twitchbot-service/internal/query"
 	pb "toxictoast/services/twitchbot-service/api/proto"
 )
 
 type ViewerHandler struct {
 	pb.UnimplementedViewerServiceServer
-	viewerUC usecase.ViewerUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewViewerHandler(viewerUC usecase.ViewerUseCase) *ViewerHandler {
+func NewViewerHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *ViewerHandler {
 	return &ViewerHandler{
-		viewerUC: viewerUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
 func (h *ViewerHandler) CreateViewer(ctx context.Context, req *pb.CreateViewerRequest) (*pb.CreateViewerResponse, error) {
-	viewer, err := h.viewerUC.CreateViewer(ctx, req.TwitchId, req.Username, req.DisplayName)
+	cmd := &command.CreateViewerCommand{
+		BaseCommand: cqrs.BaseCommand{},
+		TwitchID:    req.TwitchId,
+		Username:    req.Username,
+		DisplayName: req.DisplayName,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	// Fetch the created viewer
+	qry := &query.GetViewerByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	viewerResult := result.(*query.GetViewerResult)
+
 	return &pb.CreateViewerResponse{
-		Viewer: mapper.ViewerToProto(viewer),
+		Viewer: mapper.ViewerToProto(viewerResult.Viewer),
 	}, nil
 }
 
 func (h *ViewerHandler) GetViewer(ctx context.Context, req *pb.IdRequest) (*pb.GetViewerResponse, error) {
-	viewer, err := h.viewerUC.GetViewerByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrViewerNotFound {
-			return nil, status.Error(codes.NotFound, "viewer not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetViewerByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
 
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "viewer not found")
+	}
+
+	viewerResult := result.(*query.GetViewerResult)
+
 	return &pb.GetViewerResponse{
-		Viewer: mapper.ViewerToProto(viewer),
+		Viewer: mapper.ViewerToProto(viewerResult.Viewer),
 	}, nil
 }
 
 func (h *ViewerHandler) ListViewers(ctx context.Context, req *pb.ListViewersRequest) (*pb.ListViewersResponse, error) {
-	page := req.Offset
+	page := int(req.Offset)
 	if page <= 0 {
 		page = 1
 	}
-	pageSize := req.Limit
+	pageSize := int(req.Limit)
 	if pageSize <= 0 {
 		pageSize = 10
 	}
@@ -62,14 +89,24 @@ func (h *ViewerHandler) ListViewers(ctx context.Context, req *pb.ListViewersRequ
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	viewers, total, err := h.viewerUC.ListViewers(ctx, int(page), int(pageSize), req.OrderBy, includeDeleted)
+	qry := &query.ListViewersQuery{
+		BaseQuery:      cqrs.BaseQuery{},
+		Page:           page,
+		PageSize:       pageSize,
+		OrderBy:        req.OrderBy,
+		IncludeDeleted: includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	listResult := result.(*query.ListViewersResult)
+
 	return &pb.ListViewersResponse{
-		Viewers: mapper.ViewersToProto(viewers),
-		Total:   int32(total),
+		Viewers: mapper.ViewersToProto(listResult.Viewers),
+		Total:   int32(listResult.Total),
 	}, nil
 }
 
@@ -92,24 +129,42 @@ func (h *ViewerHandler) UpdateViewer(ctx context.Context, req *pb.UpdateViewerRe
 		totalStreamsWatched = &tsw
 	}
 
-	viewer, err := h.viewerUC.UpdateViewer(ctx, req.Id, username, displayName, totalMessages, totalStreamsWatched)
-	if err != nil {
-		if err == usecase.ErrViewerNotFound {
-			return nil, status.Error(codes.NotFound, "viewer not found")
-		}
+	cmd := &command.UpdateViewerCommand{
+		BaseCommand:         cqrs.BaseCommand{AggregateID: req.Id},
+		Username:            username,
+		DisplayName:         displayName,
+		TotalMessages:       totalMessages,
+		TotalStreamsWatched: totalStreamsWatched,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// Fetch the updated viewer
+	qry := &query.GetViewerByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "viewer not found")
+	}
+
+	viewerResult := result.(*query.GetViewerResult)
+
 	return &pb.UpdateViewerResponse{
-		Viewer: mapper.ViewerToProto(viewer),
+		Viewer: mapper.ViewerToProto(viewerResult.Viewer),
 	}, nil
 }
 
 func (h *ViewerHandler) DeleteViewer(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	if err := h.viewerUC.DeleteViewer(ctx, req.Id); err != nil {
-		if err == usecase.ErrViewerNotFound {
-			return nil, status.Error(codes.NotFound, "viewer not found")
-		}
+	cmd := &command.DeleteViewerCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -120,32 +175,40 @@ func (h *ViewerHandler) DeleteViewer(ctx context.Context, req *pb.IdRequest) (*p
 }
 
 func (h *ViewerHandler) GetViewerByTwitchId(ctx context.Context, req *pb.GetViewerByTwitchIdRequest) (*pb.GetViewerResponse, error) {
-	viewer, err := h.viewerUC.GetViewerByTwitchID(ctx, req.TwitchId)
-	if err != nil {
-		if err == usecase.ErrViewerNotFound {
-			return nil, status.Error(codes.NotFound, "viewer not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetViewerByTwitchIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		TwitchID:  req.TwitchId,
 	}
 
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "viewer not found")
+	}
+
+	viewerResult := result.(*query.GetViewerResult)
+
 	return &pb.GetViewerResponse{
-		Viewer: mapper.ViewerToProto(viewer),
+		Viewer: mapper.ViewerToProto(viewerResult.Viewer),
 	}, nil
 }
 
 func (h *ViewerHandler) GetViewerStats(ctx context.Context, req *pb.IdRequest) (*pb.GetViewerStatsResponse, error) {
-	totalMessages, totalStreamsWatched, daysSinceFirstSeen, daysSinceLastSeen, err := h.viewerUC.GetViewerStats(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrViewerNotFound {
-			return nil, status.Error(codes.NotFound, "viewer not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetViewerStatsQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
 
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "viewer not found")
+	}
+
+	statsResult := result.(*query.GetViewerStatsResult)
+
 	return &pb.GetViewerStatsResponse{
-		TotalMessages:       int32(totalMessages),
-		TotalStreamsWatched: int32(totalStreamsWatched),
-		DaysSinceFirstSeen:  int32(daysSinceFirstSeen),
-		DaysSinceLastSeen:   int32(daysSinceLastSeen),
+		TotalMessages:       int32(statsResult.TotalMessages),
+		TotalStreamsWatched: int32(statsResult.TotalStreamsWatched),
+		DaysSinceFirstSeen:  int32(statsResult.DaysSinceFirstSeen),
+		DaysSinceLastSeen:   int32(statsResult.DaysSinceLastSeen),
 	}, nil
 }

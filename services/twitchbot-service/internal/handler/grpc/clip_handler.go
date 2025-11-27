@@ -6,66 +6,88 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
+	"toxictoast/services/twitchbot-service/internal/command"
 	"toxictoast/services/twitchbot-service/internal/handler/mapper"
-	"toxictoast/services/twitchbot-service/internal/usecase"
+	"toxictoast/services/twitchbot-service/internal/query"
 	pb "toxictoast/services/twitchbot-service/api/proto"
 )
 
 type ClipHandler struct {
 	pb.UnimplementedClipServiceServer
-	clipUC usecase.ClipUseCase
+	commandBus *cqrs.CommandBus
+	queryBus   *cqrs.QueryBus
 }
 
-func NewClipHandler(clipUC usecase.ClipUseCase) *ClipHandler {
+func NewClipHandler(commandBus *cqrs.CommandBus, queryBus *cqrs.QueryBus) *ClipHandler {
 	return &ClipHandler{
-		clipUC: clipUC,
+		commandBus: commandBus,
+		queryBus:   queryBus,
 	}
 }
 
 func (h *ClipHandler) CreateClip(ctx context.Context, req *pb.CreateClipRequest) (*pb.CreateClipResponse, error) {
-	clip, err := h.clipUC.CreateClip(
-		ctx,
-		req.StreamId,
-		req.TwitchClipId,
-		req.Title,
-		req.Url,
-		req.EmbedUrl,
-		req.ThumbnailUrl,
-		req.CreatorName,
-		req.CreatorId,
-		int(req.ViewCount),
-		int(req.DurationSeconds),
-		mapper.ProtoToTime(req.CreatedAtTwitch),
-	)
+	cmd := &command.CreateClipCommand{
+		BaseCommand:    cqrs.BaseCommand{},
+		StreamID:       req.StreamId,
+		TwitchClipID:   req.TwitchClipId,
+		Title:          req.Title,
+		URL:            req.Url,
+		EmbedURL:       req.EmbedUrl,
+		ThumbnailURL:   req.ThumbnailUrl,
+		CreatorName:    req.CreatorName,
+		CreatorID:      req.CreatorId,
+		ViewCount:      int(req.ViewCount),
+		DurationSeconds: int(req.DurationSeconds),
+		CreatedAtTwitch: mapper.ProtoToTime(req.CreatedAtTwitch),
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	// Fetch the created clip
+	qry := &query.GetClipByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        cmd.AggregateID,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	clipResult := result.(*query.GetClipResult)
+
 	return &pb.CreateClipResponse{
-		Clip: mapper.ClipToProto(clip),
+		Clip: mapper.ClipToProto(clipResult.Clip),
 	}, nil
 }
 
 func (h *ClipHandler) GetClip(ctx context.Context, req *pb.IdRequest) (*pb.GetClipResponse, error) {
-	clip, err := h.clipUC.GetClipByID(ctx, req.Id)
-	if err != nil {
-		if err == usecase.ErrClipNotFound {
-			return nil, status.Error(codes.NotFound, "clip not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetClipByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
 	}
 
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "clip not found")
+	}
+
+	clipResult := result.(*query.GetClipResult)
+
 	return &pb.GetClipResponse{
-		Clip: mapper.ClipToProto(clip),
+		Clip: mapper.ClipToProto(clipResult.Clip),
 	}, nil
 }
 
 func (h *ClipHandler) ListClips(ctx context.Context, req *pb.ListClipsRequest) (*pb.ListClipsResponse, error) {
-	page := req.Offset
+	page := int(req.Offset)
 	if page <= 0 {
 		page = 1
 	}
-	pageSize := req.Limit
+	pageSize := int(req.Limit)
 	if pageSize <= 0 {
 		pageSize = 10
 	}
@@ -75,14 +97,25 @@ func (h *ClipHandler) ListClips(ctx context.Context, req *pb.ListClipsRequest) (
 		includeDeleted = req.DeletedFilter.IncludeDeleted
 	}
 
-	clips, total, err := h.clipUC.ListClips(ctx, int(page), int(pageSize), req.StreamId, req.OrderBy, includeDeleted)
+	qry := &query.ListClipsQuery{
+		BaseQuery:      cqrs.BaseQuery{},
+		Page:           page,
+		PageSize:       pageSize,
+		StreamID:       req.StreamId,
+		OrderBy:        req.OrderBy,
+		IncludeDeleted: includeDeleted,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	listResult := result.(*query.ListClipsResult)
+
 	return &pb.ListClipsResponse{
-		Clips: mapper.ClipsToProto(clips),
-		Total: int32(total),
+		Clips: mapper.ClipsToProto(listResult.Clips),
+		Total: int32(listResult.Total),
 	}, nil
 }
 
@@ -98,24 +131,40 @@ func (h *ClipHandler) UpdateClip(ctx context.Context, req *pb.UpdateClipRequest)
 		viewCount = &vc
 	}
 
-	clip, err := h.clipUC.UpdateClip(ctx, req.Id, title, viewCount)
-	if err != nil {
-		if err == usecase.ErrClipNotFound {
-			return nil, status.Error(codes.NotFound, "clip not found")
-		}
+	cmd := &command.UpdateClipCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+		Title:       title,
+		ViewCount:   viewCount,
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// Fetch the updated clip
+	qry := &query.GetClipByIDQuery{
+		BaseQuery: cqrs.BaseQuery{},
+		ID:        req.Id,
+	}
+
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "clip not found")
+	}
+
+	clipResult := result.(*query.GetClipResult)
+
 	return &pb.UpdateClipResponse{
-		Clip: mapper.ClipToProto(clip),
+		Clip: mapper.ClipToProto(clipResult.Clip),
 	}, nil
 }
 
 func (h *ClipHandler) DeleteClip(ctx context.Context, req *pb.IdRequest) (*pb.DeleteResponse, error) {
-	if err := h.clipUC.DeleteClip(ctx, req.Id); err != nil {
-		if err == usecase.ErrClipNotFound {
-			return nil, status.Error(codes.NotFound, "clip not found")
-		}
+	cmd := &command.DeleteClipCommand{
+		BaseCommand: cqrs.BaseCommand{AggregateID: req.Id},
+	}
+
+	if err := h.commandBus.Dispatch(ctx, cmd); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -126,15 +175,19 @@ func (h *ClipHandler) DeleteClip(ctx context.Context, req *pb.IdRequest) (*pb.De
 }
 
 func (h *ClipHandler) GetClipByTwitchId(ctx context.Context, req *pb.GetClipByTwitchIdRequest) (*pb.GetClipResponse, error) {
-	clip, err := h.clipUC.GetClipByTwitchClipID(ctx, req.TwitchClipId)
-	if err != nil {
-		if err == usecase.ErrClipNotFound {
-			return nil, status.Error(codes.NotFound, "clip not found")
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+	qry := &query.GetClipByTwitchClipIDQuery{
+		BaseQuery:    cqrs.BaseQuery{},
+		TwitchClipID: req.TwitchClipId,
 	}
 
+	result, err := h.queryBus.Dispatch(ctx, qry)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, "clip not found")
+	}
+
+	clipResult := result.(*query.GetClipResult)
+
 	return &pb.GetClipResponse{
-		Clip: mapper.ClipToProto(clip),
+		Clip: mapper.ClipToProto(clipResult.Clip),
 	}, nil
 }

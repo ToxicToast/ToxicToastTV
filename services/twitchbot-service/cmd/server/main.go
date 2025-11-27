@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/toxictoast/toxictoastgo/shared/auth"
+	"github.com/toxictoast/toxictoastgo/shared/cqrs"
 	"github.com/toxictoast/toxictoastgo/shared/database"
 	sharedgrpc "github.com/toxictoast/toxictoastgo/shared/grpc"
 	"github.com/toxictoast/toxictoastgo/shared/kafka"
@@ -26,11 +27,15 @@ import (
 	"toxictoast/services/twitchbot-service/pkg/config"
 	"toxictoast/services/twitchbot-service/pkg/events"
 
+	// CQRS layer
+	"toxictoast/services/twitchbot-service/internal/command"
+	"toxictoast/services/twitchbot-service/internal/query"
+
 	// Repository layer
 	"toxictoast/services/twitchbot-service/internal/repository/entity"
 	repoImpl "toxictoast/services/twitchbot-service/internal/repository/impl"
 
-	// Use case layer
+	// Use case layer (still used by bot manager)
 	"toxictoast/services/twitchbot-service/internal/usecase"
 
 	// Handler layer
@@ -126,8 +131,67 @@ func main() {
 	channelViewerRepo := repoImpl.NewChannelViewerRepository(db)
 	log.Println("Repositories initialized")
 
-	// Initialize use cases
-	log.Println("Initializing use cases...")
+	// Initialize CQRS buses
+	log.Println("Initializing CQRS buses...")
+	commandBus := cqrs.NewCommandBus()
+	queryBus := cqrs.NewQueryBus()
+
+	// Register stream handlers
+	commandBus.RegisterHandler("create_stream", command.NewCreateStreamHandler(streamRepo))
+	commandBus.RegisterHandler("update_stream", command.NewUpdateStreamHandler(streamRepo))
+	commandBus.RegisterHandler("end_stream", command.NewEndStreamHandler(streamRepo))
+	commandBus.RegisterHandler("delete_stream", command.NewDeleteStreamHandler(streamRepo))
+	queryBus.RegisterHandler("get_stream_by_id", query.NewGetStreamByIDHandler(streamRepo))
+	queryBus.RegisterHandler("list_streams", query.NewListStreamsHandler(streamRepo))
+	queryBus.RegisterHandler("get_active_stream", query.NewGetActiveStreamHandler(streamRepo))
+	queryBus.RegisterHandler("get_stream_stats", query.NewGetStreamStatsHandler(streamRepo, messageRepo))
+
+	// Register message handlers
+	commandBus.RegisterHandler("create_message", command.NewCreateMessageHandler(messageRepo, streamRepo, viewerRepo))
+	commandBus.RegisterHandler("delete_message", command.NewDeleteMessageHandler(messageRepo))
+	queryBus.RegisterHandler("get_message_by_id", query.NewGetMessageByIDHandler(messageRepo))
+	queryBus.RegisterHandler("list_messages", query.NewListMessagesHandler(messageRepo))
+	queryBus.RegisterHandler("search_messages", query.NewSearchMessagesHandler(messageRepo))
+	queryBus.RegisterHandler("get_message_stats", query.NewGetMessageStatsHandler(messageRepo))
+
+	// Register viewer handlers
+	commandBus.RegisterHandler("create_viewer", command.NewCreateViewerHandler(viewerRepo))
+	commandBus.RegisterHandler("update_viewer", command.NewUpdateViewerHandler(viewerRepo))
+	commandBus.RegisterHandler("delete_viewer", command.NewDeleteViewerHandler(viewerRepo))
+	queryBus.RegisterHandler("get_viewer_by_id", query.NewGetViewerByIDHandler(viewerRepo))
+	queryBus.RegisterHandler("get_viewer_by_twitch_id", query.NewGetViewerByTwitchIDHandler(viewerRepo))
+	queryBus.RegisterHandler("list_viewers", query.NewListViewersHandler(viewerRepo))
+	queryBus.RegisterHandler("get_viewer_stats", query.NewGetViewerStatsHandler(viewerRepo))
+
+	// Register clip handlers
+	commandBus.RegisterHandler("create_clip", command.NewCreateClipHandler(clipRepo, streamRepo))
+	commandBus.RegisterHandler("update_clip", command.NewUpdateClipHandler(clipRepo))
+	commandBus.RegisterHandler("delete_clip", command.NewDeleteClipHandler(clipRepo))
+	queryBus.RegisterHandler("get_clip_by_id", query.NewGetClipByIDHandler(clipRepo))
+	queryBus.RegisterHandler("get_clip_by_twitch_clip_id", query.NewGetClipByTwitchClipIDHandler(clipRepo))
+	queryBus.RegisterHandler("list_clips", query.NewListClipsHandler(clipRepo))
+
+	// Register command handlers
+	commandBus.RegisterHandler("create_command", command.NewCreateCommandHandler(commandRepo))
+	commandBus.RegisterHandler("update_command", command.NewUpdateCommandHandler(commandRepo))
+	commandBus.RegisterHandler("execute_command", command.NewExecuteCommandHandler(commandRepo))
+	commandBus.RegisterHandler("delete_command", command.NewDeleteCommandHandler(commandRepo))
+	queryBus.RegisterHandler("get_command_by_id", query.NewGetCommandByIDHandler(commandRepo))
+	queryBus.RegisterHandler("get_command_by_name", query.NewGetCommandByNameHandler(commandRepo))
+	queryBus.RegisterHandler("list_commands", query.NewListCommandsHandler(commandRepo))
+
+	// Register channel viewer handlers
+	commandBus.RegisterHandler("add_viewer", command.NewAddViewerHandler(channelViewerRepo, viewerRepo))
+	commandBus.RegisterHandler("update_last_seen", command.NewUpdateLastSeenHandler(channelViewerRepo))
+	commandBus.RegisterHandler("remove_viewer", command.NewRemoveViewerHandler(channelViewerRepo))
+	queryBus.RegisterHandler("get_channel_viewer", query.NewGetChannelViewerHandler(channelViewerRepo))
+	queryBus.RegisterHandler("list_channel_viewers", query.NewListChannelViewersHandler(channelViewerRepo))
+	queryBus.RegisterHandler("count_channel_viewers", query.NewCountChannelViewersHandler(channelViewerRepo))
+
+	log.Printf("CQRS buses initialized (19 commands, 21 queries registered)")
+
+	// Initialize use cases (still used by bot manager)
+	log.Println("Initializing use cases for bot manager...")
 	streamUC := usecase.NewStreamUseCase(streamRepo, messageRepo)
 	messageUC := usecase.NewMessageUseCase(messageRepo, streamRepo, viewerRepo)
 	viewerUC := usecase.NewViewerUseCase(viewerRepo)
@@ -173,13 +237,13 @@ func main() {
 
 	// Initialize gRPC handlers
 	log.Println("Initializing gRPC handlers...")
-	streamHandler := grpcHandler.NewStreamHandler(streamUC)
-	messageHandler := grpcHandler.NewMessageHandler(messageUC)
-	viewerHandler := grpcHandler.NewViewerHandler(viewerUC)
-	clipHandler := grpcHandler.NewClipHandler(clipUC)
-	commandHandler := grpcHandler.NewCommandHandler(commandUC)
+	streamHandler := grpcHandler.NewStreamHandler(commandBus, queryBus)
+	messageHandler := grpcHandler.NewMessageHandler(commandBus, queryBus)
+	viewerHandler := grpcHandler.NewViewerHandler(commandBus, queryBus)
+	clipHandler := grpcHandler.NewClipHandler(commandBus, queryBus)
+	commandHandler := grpcHandler.NewCommandHandler(commandBus, queryBus)
 	botHandler := grpcHandler.NewBotHandler(botMgr)
-	channelViewerHandler := grpcHandler.NewChannelViewerHandler(channelViewerUC)
+	channelViewerHandler := grpcHandler.NewChannelViewerHandler(commandBus, queryBus)
 	log.Println("gRPC handlers initialized")
 
 	// Setup gRPC server
