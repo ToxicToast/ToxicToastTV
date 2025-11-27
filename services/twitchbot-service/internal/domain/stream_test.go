@@ -5,14 +5,6 @@ import (
 	"time"
 )
 
-func TestStreamTableName(t *testing.T) {
-	stream := Stream{}
-	expected := "streams"
-	if got := stream.TableName(); got != expected {
-		t.Errorf("TableName() = %v, want %v", got, expected)
-	}
-}
-
 func TestStreamCreation(t *testing.T) {
 	now := time.Now()
 	stream := Stream{

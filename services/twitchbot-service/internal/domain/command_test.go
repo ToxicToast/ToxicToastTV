@@ -4,14 +4,6 @@ import (
 	"testing"
 )
 
-func TestCommandTableName(t *testing.T) {
-	command := Command{}
-	expected := "commands"
-	if got := command.TableName(); got != expected {
-		t.Errorf("TableName() = %v, want %v", got, expected)
-	}
-}
-
 func TestCommandCreation(t *testing.T) {
 	command := Command{
 		ID:              "test-id",

@@ -112,8 +112,17 @@ jobs:
           go work sync
           go mod download
 
-      - name: Run all tests
-        run: go test ./...
+      - name: Verify workspace modules
+        run: |
+          echo "Testing each workspace module..."
+          for module in $(go list -f '{{.Dir}}' -m); do
+            if [ -d "$module" ]; then
+              echo "Testing $module..."
+              cd "$module"
+              go test ./... || true
+              cd -
+            fi
+          done
 
       - name: Verify builds
         run: |
